@@ -8,13 +8,14 @@ Phase 1 delivers a reliable ingestion and live-streaming baseline for the EPL le
 - Device health tracking (online/offline, last seen, RSSI when available)
 - Admin REST endpoints + WebSocket push
 - Bounded in-memory live feed buffer
+- Classical rolling log files (`logs/epl-backend.log`)
 
 ## Project structure
 
 ```text
 Event-Pipeline-Lab/
   backend/
-    src/main/java/com/sostiges/epl/
+    src/main/java/ch/marcovogt/epl/
       admin/
       authsession/
       deviceregistryhealth/
@@ -29,9 +30,11 @@ Event-Pipeline-Lab/
     src/main/resources/
       application.yml
       db/migration/V1__init_phase1_schema.sql
+      db/migration/V2__json_columns_to_text.sql
       static/admin-test.html
     Dockerfile
-    pom.xml
+    build.gradle
+    settings.gradle
   frontend/
     src/
     package.json
@@ -40,7 +43,6 @@ Event-Pipeline-Lab/
     mosquitto/mosquitto.conf
     cloudflared/config.yml.example
   docker-compose.yml
-  .env.example
 ```
 
 ## Frontend framework confirmation
@@ -64,31 +66,41 @@ Phase 1 live test UI is served by backend at:
 - `/infra/mosquitto/mosquitto.conf`
 - `/infra/cloudflared/config.yml.example`
 - `/backend/Dockerfile`
+- `/backend/build.gradle`
+- `/backend/settings.gradle`
 - `/backend/src/main/resources/application.yml`
 - `/backend/src/main/resources/db/migration/V1__init_phase1_schema.sql`
-- `/.env.example`
+- `/backend/src/main/resources/db/migration/V2__json_columns_to_text.sql`
 
 ## Run locally
 
-1. Copy env file:
-
-```bash
-cp .env.example .env
-```
-
-2. Start stack:
+1. Start stack:
 
 ```bash
 docker compose up --build -d
 ```
 
-3. Check backend health:
+2. Check backend health:
 
 ```bash
-curl http://localhost:8080/actuator/health
+docker compose exec -T backend sh -lc 'echo OK'
+docker run --rm --network epl_default curlimages/curl:8.12.1 -sS http://backend:8080/actuator/health
 ```
 
 Expected: `{"status":"UP"...}`
+
+## Classical log files
+
+Backend logs are written to a classical rolling log file:
+
+- container path: `/app/logs/epl-backend.log`
+- compose volume: `backend_logs`
+
+Live log stream is still available via:
+
+```bash
+docker compose logs -f backend
+```
 
 ## Test MQTT ingestion locally
 
@@ -97,13 +109,13 @@ Expected: `{"status":"UP"...}`
 Publish a button event:
 
 ```bash
-mosquitto_pub -h localhost -t epld/epld01/event/button -m '{"button":"black","action":"press"}'
+docker compose exec -T mosquitto mosquitto_pub -h localhost -t epld/epld01/event/button -m '{"button":"black","action":"press"}'
 ```
 
 Publish Wi-Fi status update:
 
 ```bash
-mosquitto_pub -h localhost -t epld/epld01/status/wifi -m '{"rssi":-61,"ssid":"lab-wifi"}'
+docker compose exec -T mosquitto mosquitto_pub -h localhost -t epld/epld01/status/wifi -m '{"rssi":-61,"ssid":"lab-wifi"}'
 ```
 
 ### B) Shelly capture-compatible topics (supported in Phase 1 normalizer)
@@ -111,19 +123,19 @@ mosquitto_pub -h localhost -t epld/epld01/status/wifi -m '{"rssi":-61,"ssid":"la
 Publish online transition:
 
 ```bash
-mosquitto_pub -h localhost -t epld01/online -m 'true'
+docker compose exec -T mosquitto mosquitto_pub -h localhost -t epld01/online -m 'true'
 ```
 
 Publish `NotifyStatus` button press:
 
 ```bash
-mosquitto_pub -h localhost -t epld01/events/rpc -m '{"method":"NotifyStatus","params":{"ts":1772015093.26,"input:0":{"state":true}}}'
+docker compose exec -T mosquitto mosquitto_pub -h localhost -t epld01/events/rpc -m '{"method":"NotifyStatus","params":{"ts":1772015093.26,"input:0":{"state":true}}}'
 ```
 
 Publish telemetry payload:
 
 ```bash
-mosquitto_pub -h localhost -t epld01/telemetry -m '{"kind":"epl_shelly_telemetry_v1","wifi":{"rssi":-58},"mqtt":{"connected":true}}'
+docker compose exec -T mosquitto mosquitto_pub -h localhost -t epld01/telemetry -m '{"kind":"epl_shelly_telemetry_v1","wifi":{"rssi":-58},"mqtt":{"connected":true}}'
 ```
 
 ## Verify ingestion + live feed
@@ -131,19 +143,19 @@ mosquitto_pub -h localhost -t epld01/telemetry -m '{"kind":"epl_shelly_telemetry
 Recent canonical events:
 
 ```bash
-curl "http://localhost:8080/api/admin/events?limit=20"
+docker run --rm --network epl_default curlimages/curl:8.12.1 -sS "http://backend:8080/api/admin/events?limit=20"
 ```
 
 Bounded live buffer snapshot:
 
 ```bash
-curl "http://localhost:8080/api/admin/events/live?limit=20"
+docker run --rm --network epl_default curlimages/curl:8.12.1 -sS "http://backend:8080/api/admin/events/live?limit=20"
 ```
 
 Device status:
 
 ```bash
-curl "http://localhost:8080/api/admin/devices"
+docker run --rm --network epl_default curlimages/curl:8.12.1 -sS "http://backend:8080/api/admin/devices"
 ```
 
 Live WebSocket stream:
@@ -153,7 +165,9 @@ Live WebSocket stream:
 
 ## Cloudflare tunnel (optional)
 
-Run with public profile (requires `CLOUDFLARE_TUNNEL_TOKEN` in `.env`):
+The `cloudflared` service now uses file-based config (`infra/cloudflared/config.yml.example`) instead of token environment variables.
+
+Run with public profile:
 
 ```bash
 docker compose --profile public up -d cloudflared

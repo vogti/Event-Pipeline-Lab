@@ -1,16 +1,16 @@
 # syntax=docker/dockerfile:1
 
-FROM maven:3.9.11-eclipse-temurin-25 AS build
+FROM gradle:jdk25 AS build
 WORKDIR /app
 
-COPY pom.xml ./
+COPY build.gradle settings.gradle ./
 COPY src ./src
-RUN mvn -q -DskipTests package
+RUN gradle --no-daemon clean bootJar
 
 FROM eclipse-temurin:25-jre
 WORKDIR /app
 
-COPY --from=build /app/target/epl-backend-*.jar /app/app.jar
+COPY --from=build /app/build/libs/epl-backend-*.jar /app/app.jar
 
 EXPOSE 8080
 
