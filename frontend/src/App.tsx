@@ -45,6 +45,10 @@ type FeedViewMode = 'rendered' | 'raw';
 type EventDetailsViewMode = 'rendered' | 'raw';
 type AdminPage = 'dashboard' | 'devices' | 'feed' | 'groupsTasks' | 'settings';
 
+function isAdminFeedHotPage(page: AdminPage): boolean {
+  return page === 'feed' || page === 'dashboard';
+}
+
 interface DeviceTelemetrySnapshot {
   temperatureC: number | null;
   humidityPct: number | null;
@@ -398,6 +402,28 @@ function extractIpAddressFromDeviceStatus(device: DeviceStatus, events: Canonica
   return null;
 }
 
+function extractIpAddressesFromEvents(events: CanonicalEvent[]): Record<string, string> {
+  const latestByDevice: Record<string, { value: string; ingestEpoch: number }> = {};
+
+  for (const event of events) {
+    const ipAddress = findIpAddress(tryParsePayload(event.payloadJson));
+    if (!ipAddress) {
+      continue;
+    }
+    const ingestEpoch = timestampToEpochMillis(event.ingestTs) ?? Number.MIN_SAFE_INTEGER;
+    const current = latestByDevice[event.deviceId];
+    if (!current || ingestEpoch >= current.ingestEpoch) {
+      latestByDevice[event.deviceId] = { value: ipAddress, ingestEpoch };
+    }
+  }
+
+  const output: Record<string, string> = {};
+  for (const [deviceId, entry] of Object.entries(latestByDevice)) {
+    output[deviceId] = entry.value;
+  }
+  return output;
+}
+
 function sameDeviceStatus(a: DeviceStatus, b: DeviceStatus): boolean {
   return (
     a.deviceId === b.deviceId &&
@@ -550,14 +576,27 @@ function tryParsePayload(payloadJson: string): unknown | null {
     return null;
   }
 
+  const looksLikeJsonLiteral = (value: string): boolean => {
+    if (value.startsWith('{') || value.startsWith('[') || value.startsWith('"')) {
+      return true;
+    }
+    if (value === 'true' || value === 'false' || value === 'null') {
+      return true;
+    }
+    return /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(value);
+  };
+
   let current = initial;
   for (let depth = 0; depth < 4; depth += 1) {
     try {
       const parsed = JSON.parse(current);
       if (typeof parsed === 'string') {
         const next = parsed.trim();
-        if (!next || next === current) {
-          return null;
+        if (!next) {
+          return '';
+        }
+        if (!looksLikeJsonLiteral(next) || next === current) {
+          return parsed;
         }
         current = next;
         continue;
@@ -1293,8 +1332,11 @@ export default function App() {
 
   const studentPauseRef = useRef(studentFeedPaused);
   const adminPauseRef = useRef(adminFeedPaused);
+  const adminDataRef = useRef<AdminViewData | null>(null);
+  const adminPageRef = useRef(adminPage);
+  const deferredAdminFeedRef = useRef<CanonicalEvent[]>([]);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
-  const recentFeedTimersRef = useRef<Record<string, number>>({});
+  const recentFeedClearTimerRef = useRef<number | null>(null);
 
   const reportBackgroundError = useCallback((context: string, error: unknown) => {
     const message = toErrorMessage(error);
@@ -1302,11 +1344,11 @@ export default function App() {
   }, []);
 
   const clearRecentFeedHighlights = useCallback(() => {
-    for (const timerId of Object.values(recentFeedTimersRef.current)) {
-      window.clearTimeout(timerId);
+    if (recentFeedClearTimerRef.current !== null) {
+      window.clearTimeout(recentFeedClearTimerRef.current);
+      recentFeedClearTimerRef.current = null;
     }
-    recentFeedTimersRef.current = {};
-    setRecentFeedEventIds({});
+    setRecentFeedEventIds((previous) => (Object.keys(previous).length === 0 ? previous : {}));
   }, []);
 
   const markFeedEventsRecent = useCallback((events: CanonicalEvent[]) => {
@@ -1320,28 +1362,100 @@ export default function App() {
       }
       return next;
     });
-    for (const event of events) {
-      const existingTimer = recentFeedTimersRef.current[event.id];
-      if (existingTimer !== undefined) {
-        window.clearTimeout(existingTimer);
-      }
-      recentFeedTimersRef.current[event.id] = window.setTimeout(() => {
-        setRecentFeedEventIds((previous) => {
-          if (!(event.id in previous)) {
-            return previous;
-          }
-          const next = { ...previous };
-          delete next[event.id];
-          return next;
-        });
-        delete recentFeedTimersRef.current[event.id];
-      }, 1000);
+    if (recentFeedClearTimerRef.current !== null) {
+      window.clearTimeout(recentFeedClearTimerRef.current);
     }
+    recentFeedClearTimerRef.current = window.setTimeout(() => {
+      recentFeedClearTimerRef.current = null;
+      setRecentFeedEventIds((previous) => (Object.keys(previous).length === 0 ? previous : {}));
+    }, 1000);
   }, []);
+
+  const queueDeferredAdminFeedEvents = useCallback((events: CanonicalEvent[]) => {
+    if (events.length === 0) {
+      return;
+    }
+    deferredAdminFeedRef.current = mergeEventsBounded(
+      deferredAdminFeedRef.current,
+      events,
+      MAX_FEED_EVENTS
+    );
+  }, []);
+
+  const flushDeferredAdminFeedEvents = useCallback(
+    (highlight: boolean) => {
+      if (!adminDataRef.current) {
+        return;
+      }
+      const deferredEvents = deferredAdminFeedRef.current;
+      if (deferredEvents.length === 0) {
+        return;
+      }
+
+      deferredAdminFeedRef.current = [];
+      if (highlight) {
+        markFeedEventsRecent(deferredEvents);
+      }
+      setAdminData((previous) => {
+        if (!previous) {
+          return previous;
+        }
+        const nextFeed = mergeEventsBounded(previous.events, deferredEvents, MAX_FEED_EVENTS);
+        if (nextFeed === previous.events) {
+          return previous;
+        }
+        return {
+          ...previous,
+          events: nextFeed
+        };
+      });
+    },
+    [markFeedEventsRecent]
+  );
 
   useEffect(() => {
     studentPauseRef.current = studentFeedPaused;
   }, [studentFeedPaused]);
+
+  useEffect(() => {
+    adminPageRef.current = adminPage;
+  }, [adminPage]);
+
+  useEffect(() => {
+    adminDataRef.current = adminData;
+  }, [adminData]);
+
+  useEffect(() => {
+    if (!isAdminFeedHotPage(adminPage)) {
+      return;
+    }
+    flushDeferredAdminFeedEvents(adminPage === 'feed');
+  }, [adminPage, flushDeferredAdminFeedEvents]);
+
+  useEffect(() => {
+    if (adminPage !== 'devices') {
+      return;
+    }
+    const deferredEvents = deferredAdminFeedRef.current;
+    if (deferredEvents.length === 0) {
+      return;
+    }
+
+    const latestSnapshots = buildDeviceTelemetrySnapshots(deferredEvents);
+    if (Object.keys(latestSnapshots).length > 0) {
+      setAdminDeviceSnapshots((previous) => mergeTelemetrySnapshotCache(previous, latestSnapshots));
+    }
+
+    const latestIpByDeviceId = extractIpAddressesFromEvents(deferredEvents);
+    if (Object.keys(latestIpByDeviceId).length > 0) {
+      setAdminDeviceIpById((previous) => {
+        const activeDeviceIds =
+          adminDataRef.current?.devices.map((device) => device.deviceId) ??
+          Array.from(new Set([...Object.keys(previous), ...Object.keys(latestIpByDeviceId)]));
+        return mergeIpAddressCache(previous, latestIpByDeviceId, activeDeviceIds);
+      });
+    }
+  }, [adminPage]);
 
   useEffect(() => {
     return () => {
@@ -1404,6 +1518,8 @@ export default function App() {
     setPinEditorValue('');
     setPinEditorLoading(false);
     setAdminPage('dashboard');
+    adminDataRef.current = null;
+    deferredAdminFeedRef.current = [];
     clearRecentFeedHighlights();
   }, [clearRecentFeedHighlights]);
 
@@ -1471,6 +1587,7 @@ export default function App() {
       settings,
       events: clampFeed(events)
     });
+    deferredAdminFeedRef.current = [];
     setAdminSettingsDraftMode(settings.defaultLanguageMode);
     setAdminSettingsDraftTimeFormat24h(settings.timeFormat24h);
     setDefaultLanguageMode(settings.defaultLanguageMode);
@@ -1617,14 +1734,18 @@ export default function App() {
     if (!adminData) {
       setAdminDeviceSnapshots({});
       setAdminDeviceIpById({});
-      return;
     }
-    if (adminPage !== 'devices') {
+  }, [adminData]);
+
+  useEffect(() => {
+    if (!adminData || adminPage !== 'devices') {
       return;
     }
 
     const latestSnapshots = buildDeviceTelemetrySnapshots(adminData.events);
-    setAdminDeviceSnapshots((previous) => mergeTelemetrySnapshotCache(previous, latestSnapshots));
+    if (Object.keys(latestSnapshots).length > 0) {
+      setAdminDeviceSnapshots((previous) => mergeTelemetrySnapshotCache(previous, latestSnapshots));
+    }
 
     const latestIpByDeviceId: Record<string, string> = {};
     for (const device of adminData.devices) {
@@ -1640,7 +1761,34 @@ export default function App() {
         adminData.devices.map((device) => device.deviceId)
       )
     );
-  }, [adminData, adminPage]);
+  }, [adminData?.events, adminPage]);
+
+  useEffect(() => {
+    if (!adminData || adminPage !== 'devices') {
+      return;
+    }
+
+    const latestWifiIpByDeviceId: Record<string, string> = {};
+    for (const device of adminData.devices) {
+      if (!device.wifiPayloadJson) {
+        continue;
+      }
+      const ipAddress = findIpAddress(tryParsePayload(device.wifiPayloadJson));
+      if (ipAddress) {
+        latestWifiIpByDeviceId[device.deviceId] = ipAddress;
+      }
+    }
+    if (Object.keys(latestWifiIpByDeviceId).length === 0) {
+      return;
+    }
+    setAdminDeviceIpById((previous) =>
+      mergeIpAddressCache(
+        previous,
+        latestWifiIpByDeviceId,
+        adminData.devices.map((device) => device.deviceId)
+      )
+    );
+  }, [adminData?.devices, adminPage]);
 
   useEffect(() => {
     if (!session || !token) {
@@ -1719,20 +1867,32 @@ export default function App() {
       }
       const queued = adminFeedQueue;
       adminFeedQueue = [];
-      markFeedEventsRecent(queued);
-      setAdminData((previous) => {
-        if (!previous) {
-          return previous;
+
+      queueDeferredAdminFeedEvents(queued);
+
+      const currentPage = adminPageRef.current;
+      if (currentPage === 'devices') {
+        const latestSnapshots = buildDeviceTelemetrySnapshots(queued);
+        if (Object.keys(latestSnapshots).length > 0) {
+          setAdminDeviceSnapshots((previous) =>
+            mergeTelemetrySnapshotCache(previous, latestSnapshots)
+          );
         }
-        const nextFeed = mergeEventsBounded(previous.events, queued, MAX_FEED_EVENTS);
-        if (nextFeed === previous.events) {
-          return previous;
+
+        const latestIpByDeviceId = extractIpAddressesFromEvents(queued);
+        if (Object.keys(latestIpByDeviceId).length > 0) {
+          setAdminDeviceIpById((previous) => {
+            const activeDeviceIds =
+              adminDataRef.current?.devices.map((device) => device.deviceId) ??
+              Array.from(new Set([...Object.keys(previous), ...Object.keys(latestIpByDeviceId)]));
+            return mergeIpAddressCache(previous, latestIpByDeviceId, activeDeviceIds);
+          });
         }
-        return {
-          ...previous,
-          events: nextFeed
-        };
-      });
+      }
+
+      if (isAdminFeedHotPage(currentPage)) {
+        flushDeferredAdminFeedEvents(currentPage === 'feed');
+      }
     };
 
     const queueAdminFeedEvent = (eventPayload: CanonicalEvent) => {
@@ -2002,7 +2162,15 @@ export default function App() {
         socket.close();
       }
     };
-  }, [markFeedEventsRecent, refreshAdminGroups, refreshAdminTasks, reportBackgroundError, session, token]);
+  }, [
+    flushDeferredAdminFeedEvents,
+    queueDeferredAdminFeedEvents,
+    refreshAdminGroups,
+    refreshAdminTasks,
+    reportBackgroundError,
+    session,
+    token
+  ]);
 
   const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -2300,6 +2468,7 @@ export default function App() {
           settings
         };
       });
+      deferredAdminFeedRef.current = [];
       setAdminSettingsDraftMode(settings.defaultLanguageMode);
       setAdminSettingsDraftTimeFormat24h(settings.timeFormat24h);
       setDefaultLanguageMode(settings.defaultLanguageMode);
@@ -2325,7 +2494,7 @@ export default function App() {
   }, [studentData, studentShowInternal, studentTopicFilter]);
 
   const adminVisibleFeed = useMemo(() => {
-    if (!adminData) {
+    if (!adminData || session?.role !== 'ADMIN' || adminPage !== 'feed') {
       return [];
     }
 
@@ -2344,7 +2513,7 @@ export default function App() {
 
       return feedMatchesTopic(event, adminTopicFilter);
     });
-  }, [adminCategoryFilter, adminData, adminDeviceFilter, adminIncludeInternal, adminTopicFilter]);
+  }, [adminCategoryFilter, adminData, adminDeviceFilter, adminIncludeInternal, adminPage, adminTopicFilter, session?.role]);
 
   const studentFeedValues = useMemo(() => {
     const values = new Map<string, string>();
@@ -2733,9 +2902,9 @@ export default function App() {
 
             <section className="panel panel-animate">
               <h2>{t('groupPresence')}</h2>
-              <ul className="presence-list">
-                {studentData.groupPresence.map((presence) => (
-                  <li key={`${presence.username}-${presence.lastSeen}`}>
+                <ul className="presence-list">
+                  {studentData.groupPresence.map((presence) => (
+                  <li key={`${presence.username}-${presence.displayName}`}>
                     <strong>{presence.displayName}</strong>
                     <span>{formatTs(presence.lastSeen)}</span>
                   </li>
@@ -3095,7 +3264,7 @@ export default function App() {
                         <p className="muted">cfg rev {group.config.revision}</p>
                         <ul>
                           {group.presence.map((presence) => (
-                            <li key={`${presence.username}-${presence.lastSeen}`}>
+                            <li key={`${presence.username}-${presence.displayName}`}>
                               {presence.displayName} - {formatTs(presence.lastSeen)}
                             </li>
                           ))}
