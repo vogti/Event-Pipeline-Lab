@@ -2848,49 +2848,57 @@ export default function App() {
                 {adminData.devices.map((device) => {
                   const snapshot = adminDeviceSnapshots[device.deviceId];
                   const uptimeNow = estimateUptimeNow(snapshot, nowEpochMs);
+                  const redPressed = snapshot?.buttonRedPressed ?? null;
+                  const blackPressed = snapshot?.buttonBlackPressed ?? null;
+                  const greenOn = snapshot?.ledGreenOn ?? null;
+                  const orangeOn = snapshot?.ledOrangeOn ?? null;
+                  const temperatureC = snapshot?.temperatureC ?? null;
+                  const humidityPct = snapshot?.humidityPct ?? null;
+                  const brightnessRaw = snapshot?.brightness ?? null;
+                  const counterRaw = snapshot?.counterValue ?? null;
                   const redButton =
-                    snapshot?.buttonRedPressed === null
+                    redPressed === null
                       ? t('stateUnknown')
-                      : snapshot.buttonRedPressed
+                      : redPressed
                         ? t('statePressed')
                         : t('stateReleased');
                   const blackButton =
-                    snapshot?.buttonBlackPressed === null
+                    blackPressed === null
                       ? t('stateUnknown')
-                      : snapshot.buttonBlackPressed
+                      : blackPressed
                         ? t('statePressed')
                         : t('stateReleased');
                   const greenLed =
-                    snapshot?.ledGreenOn === null
+                    greenOn === null
                       ? t('stateUnknown')
-                      : snapshot.ledGreenOn
+                      : greenOn
                         ? t('stateOn')
                         : t('stateOff');
                   const orangeLed =
-                    snapshot?.ledOrangeOn === null
+                    orangeOn === null
                       ? t('stateUnknown')
-                      : snapshot.ledOrangeOn
+                      : orangeOn
                         ? t('stateOn')
                         : t('stateOff');
                   const temperature =
-                    snapshot?.temperatureC === null ? '-' : `${snapshot.temperatureC.toFixed(1)} °C`;
+                    temperatureC === null ? '-' : `${temperatureC.toFixed(1)} °C`;
                   const humidity =
-                    snapshot?.humidityPct === null ? '-' : `${Math.round(snapshot.humidityPct)} %`;
+                    humidityPct === null ? '-' : `${Math.round(humidityPct)} %`;
                   const brightness =
-                    snapshot?.brightness === null ? '-' : formatBrightnessMeasurement(snapshot.brightness);
+                    brightnessRaw === null ? '-' : formatBrightnessMeasurement(brightnessRaw);
                   const counterValue =
-                    snapshot?.counterValue === null || snapshot?.counterValue === undefined
+                    counterRaw === null
                       ? '-'
-                      : Number.isInteger(snapshot.counterValue)
-                        ? String(snapshot.counterValue)
-                        : snapshot.counterValue.toFixed(2);
+                      : Number.isInteger(counterRaw)
+                        ? String(counterRaw)
+                        : counterRaw.toFixed(2);
                   const ipAddress = adminDeviceIpById[device.deviceId] ?? '-';
                   const ipAddressHref = ipAddressToHref(ipAddress);
                   const lastEventRelative = formatRelativeFromNow(device.lastSeen, nowEpochMs, language);
                   const bars = rssiBars(device.rssi);
                   const rssiHint = device.rssi === null ? t('rssiNoData') : `${device.rssi} dBm`;
-                  const nextGreenState = snapshot?.ledGreenOn === null ? true : !snapshot.ledGreenOn;
-                  const nextOrangeState = snapshot?.ledOrangeOn === null ? true : !snapshot.ledOrangeOn;
+                  const nextGreenState = greenOn === null ? true : !greenOn;
+                  const nextOrangeState = orangeOn === null ? true : !orangeOn;
                   const greenBusy =
                     busyKey?.startsWith(`admin-command-${device.deviceId}-LED_GREEN-`) ?? false;
                   const orangeBusy =
@@ -3003,7 +3011,7 @@ export default function App() {
 
                       <div className="button-grid">
                         <button
-                          className={`button ${snapshot?.ledGreenOn ? 'active' : 'secondary'}`}
+                          className={`button ${greenOn ? 'active' : 'secondary'}`}
                           type="button"
                           onClick={() => sendAdminDeviceCommand(device.deviceId, 'LED_GREEN', nextGreenState)}
                           disabled={greenBusy}
@@ -3011,7 +3019,7 @@ export default function App() {
                           {t('commandGreenToggle')} ({greenLed})
                         </button>
                         <button
-                          className={`button ${snapshot?.ledOrangeOn ? 'active' : 'secondary'}`}
+                          className={`button ${orangeOn ? 'active' : 'secondary'}`}
                           type="button"
                           onClick={() => sendAdminDeviceCommand(device.deviceId, 'LED_ORANGE', nextOrangeState)}
                           disabled={orangeBusy}
