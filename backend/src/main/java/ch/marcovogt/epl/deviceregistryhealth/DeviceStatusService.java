@@ -55,7 +55,9 @@ public class DeviceStatusService {
         DeviceStatus status = deviceStatusRepository.findById(deviceId)
                 .orElseGet(() -> new DeviceStatus(deviceId));
 
-        status.setLastSeen(event.getIngestTs());
+        if (explicitOnline == null || explicitOnline) {
+            status.setLastSeen(event.getIngestTs());
+        }
         status.setOnline(explicitOnline != null ? explicitOnline : true);
 
         extractRssi(payloadNode).ifPresent(status::setRssi);

@@ -590,6 +590,11 @@ textarea {
   outline-offset: 1px;
 }
 
+.counter-metric-trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .device-metric.full {
   grid-column: 1 / -1;
 }

@@ -2910,11 +2910,11 @@ export default function App() {
                         ? t('statePressed')
                         : t('stateReleased');
                   const temperature =
-                    temperatureC === null ? '-' : `${temperatureC.toFixed(1)} °C`;
+                    !isDeviceOnline || temperatureC === null ? '-' : `${temperatureC.toFixed(1)} °C`;
                   const humidity =
-                    humidityPct === null ? '-' : `${Math.round(humidityPct)} %`;
+                    !isDeviceOnline || humidityPct === null ? '-' : `${Math.round(humidityPct)} %`;
                   const brightness =
-                    brightnessRaw === null ? '-' : formatBrightnessMeasurement(brightnessRaw);
+                    !isDeviceOnline || brightnessRaw === null ? '-' : formatBrightnessMeasurement(brightnessRaw);
                   const counterValue =
                     counterRaw === null
                       ? '-'
@@ -2939,6 +2939,7 @@ export default function App() {
                     busyKey?.startsWith(`admin-command-${device.deviceId}-LED_GREEN-`) ?? false;
                   const orangeBusy =
                     busyKey?.startsWith(`admin-command-${device.deviceId}-LED_ORANGE-`) ?? false;
+                  const counterBusy = busyKey === `admin-command-${device.deviceId}-COUNTER_RESET-undefined`;
                   const rssiTooltipId = `rssi-tooltip-${device.deviceId}`;
 
                   return (
@@ -3028,6 +3029,7 @@ export default function App() {
                           type="button"
                           onClick={() => openCounterResetModal(device.deviceId)}
                           title={t('commandCounterReset')}
+                          disabled={!isDeviceOnline || counterBusy}
                         >
                           <span className="metric-icon">
                             <MetricIcon kind="counter" />
@@ -3059,7 +3061,7 @@ export default function App() {
                           className={`button ${greenOn ? 'active' : 'secondary'}`}
                           type="button"
                           onClick={() => sendAdminDeviceCommand(device.deviceId, 'LED_GREEN', nextGreenState)}
-                          disabled={greenBusy}
+                          disabled={greenBusy || !isDeviceOnline}
                         >
                           {t('commandGreenLed')}
                         </button>
@@ -3067,7 +3069,7 @@ export default function App() {
                           className={`button ${orangeOn ? 'active' : 'secondary'}`}
                           type="button"
                           onClick={() => sendAdminDeviceCommand(device.deviceId, 'LED_ORANGE', nextOrangeState)}
-                          disabled={orangeBusy}
+                          disabled={orangeBusy || !isDeviceOnline}
                         >
                           {t('commandOrangeLed')}
                         </button>
