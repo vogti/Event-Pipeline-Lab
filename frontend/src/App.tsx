@@ -1528,6 +1528,7 @@ export default function App() {
   const [studentTopicFilter, setStudentTopicFilter] = useState('');
   const [studentShowInternal, setStudentShowInternal] = useState(false);
   const [studentFeedPaused, setStudentFeedPaused] = useState(false);
+  const [studentOnboardingDone, setStudentOnboardingDone] = useState(false);
 
   const [adminData, setAdminData] = useState<AdminViewData | null>(null);
   const [adminSystemStatus, setAdminSystemStatus] = useState<AdminSystemStatus | null>(null);
@@ -1743,6 +1744,7 @@ export default function App() {
     setStudentTopicFilter('');
     setStudentShowInternal(false);
     setStudentFeedPaused(false);
+    setStudentOnboardingDone(false);
 
     setAdminData(null);
     setAdminSystemStatus(null);
@@ -1825,6 +1827,7 @@ export default function App() {
       setStudentConfigDraft(safeConfigMap(bootstrap.groupConfig.config));
       setDisplayNameDraft(bootstrap.me.displayName);
       setStudentVirtualPatch(bootstrap.virtualDevice ? patchFromVirtualDevice(bootstrap.virtualDevice) : null);
+      setStudentOnboardingDone(false);
       setDefaultLanguageMode(bootstrap.settings.defaultLanguageMode);
       setTimeFormat24h(bootstrap.settings.timeFormat24h);
       return;
@@ -2673,6 +2676,34 @@ export default function App() {
       const updated = await api.updateDisplayName(token, displayNameDraft.trim());
       setSession(updated);
       setInfoMessage(t('displayNameSaved'));
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const continueStudentOnboarding = async () => {
+    if (!token || !session || session.role !== 'STUDENT') {
+      return;
+    }
+
+    const nextDisplayName = displayNameDraft.trim();
+    if (nextDisplayName.length === 0) {
+      setErrorMessage(t('onboardingNameRequired'));
+      return;
+    }
+
+    setBusyKey('student-onboarding');
+    setErrorMessage(null);
+
+    try {
+      if (nextDisplayName !== session.displayName) {
+        const updated = await api.updateDisplayName(token, nextDisplayName);
+        setSession(updated);
+        setDisplayNameDraft(updated.displayName);
+      }
+      setStudentOnboardingDone(true);
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
@@ -3834,9 +3865,12 @@ export default function App() {
         ) : null}
 
         {!booting && !session ? (
-          <section className="panel login-panel">
-            <h2>{t('loginTitle')}</h2>
-            <form onSubmit={handleLogin} className="form-grid">
+          <section className="panel login-panel panel-animate">
+            <div className="login-panel-header">
+              <h2>{t('loginTitle')}</h2>
+              <p className="login-panel-subtitle">{t('appSubtitle')}</p>
+            </div>
+            <form onSubmit={handleLogin} className="form-grid login-form">
               <label>
                 <span>{t('username')}</span>
                 <input
@@ -3862,11 +3896,60 @@ export default function App() {
                 {t('login')}
               </button>
             </form>
-            <p className="muted">{t('loginHint')}</p>
+            <p className="muted login-hint">{t('loginHint')}</p>
           </section>
         ) : null}
 
-        {!booting && session?.role === 'STUDENT' && studentData ? (
+        {!booting && session?.role === 'STUDENT' && studentData && !studentOnboardingDone ? (
+          <section className="panel panel-animate student-onboarding-panel">
+            <h2>{t('onboardingTitle')}</h2>
+            <p className="muted">{t('onboardingSubtitle')}</p>
+
+            <form
+              className="form-grid student-onboarding-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                continueStudentOnboarding().catch((error) => setErrorMessage(toErrorMessage(error)));
+              }}
+            >
+              <label>
+                <span>{t('displayName')}</span>
+                <input
+                  className="input"
+                  value={displayNameDraft}
+                  onChange={(event) => setDisplayNameDraft(event.target.value)}
+                  autoFocus
+                />
+              </label>
+
+              <div className="student-onboarding-language">
+                <span>{t('language')}</span>
+                <div className="user-menu-actions">
+                  <button
+                    className={`button tiny ${language === 'de' ? 'active' : 'secondary'}`}
+                    type="button"
+                    onClick={() => setManualLanguage('de')}
+                  >
+                    DE
+                  </button>
+                  <button
+                    className={`button tiny ${language === 'en' ? 'active' : 'secondary'}`}
+                    type="button"
+                    onClick={() => setManualLanguage('en')}
+                  >
+                    EN
+                  </button>
+                </div>
+              </div>
+
+              <button className="button" type="submit" disabled={busyKey === 'student-onboarding'}>
+                {t('onboardingContinue')}
+              </button>
+            </form>
+          </section>
+        ) : null}
+
+        {!booting && session?.role === 'STUDENT' && studentData && studentOnboardingDone ? (
           <div className="dashboard-grid">
             <section className="panel hero panel-animate">
               <h2>{t('currentTask')}</h2>
