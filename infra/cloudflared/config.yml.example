@@ -4,5 +4,5 @@ credentials-file: /etc/cloudflared/<tunnel-uuid>.json
 
 ingress:
   - hostname: epl.example.com
-    service: http://backend:8080
+    service: http://frontend:80
   - service: http_status:404

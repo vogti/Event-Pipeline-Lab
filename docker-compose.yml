@@ -53,6 +53,18 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: epl-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      backend:
+        condition: service_started
+    restart: unless-stopped
+
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: epl-cloudflared
@@ -60,7 +72,7 @@ services:
     volumes:
       - ./infra/cloudflared/config.yml.example:/etc/cloudflared/config.yml:ro
     depends_on:
-      - backend
+      - frontend
     restart: unless-stopped
     profiles: ["public"]
 

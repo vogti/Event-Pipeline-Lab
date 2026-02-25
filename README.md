@@ -1,9 +1,9 @@
-# Event Pipeline Lab (EPL) - Phase 1 + Phase 2 Backend Foundation
+# Event Pipeline Lab (EPL) - Phase 1 + Phase 2 Foundation
 
 This repository currently delivers:
 
 - **Phase 1**: reliable MQTT ingestion, canonical normalization, persistence, bounded live feeds, device health
-- **Phase 2**: auth/session, task activation + capability gating, group shared config + presence sync, admin/student REST APIs, authenticated WebSocket channels
+- **Phase 2**: auth/session, task activation + capability gating, group shared config + presence sync, admin/student REST APIs, authenticated WebSocket channels, and React frontend dashboards
 
 Backend package namespace: `ch.marcovogt.epl`.
 Build system: **Gradle**.
@@ -16,7 +16,7 @@ Configuration style: classical config files and Docker Compose service env value
 - Spring Web, WebSocket, Security, Data JPA, Validation, Actuator
 - Eclipse Paho MQTT client
 - PostgreSQL + Flyway
-- React + Vite + TypeScript scaffold (`frontend/`)
+- React + Vite + TypeScript frontend (`frontend/`)
 - Docker Compose with `postgres`, `mosquitto`, `backend`, optional `cloudflared`
 
 ## Project Structure
@@ -47,6 +47,8 @@ Event-Pipeline-Lab/
     build.gradle
     settings.gradle
   frontend/
+    Dockerfile
+    nginx.conf
   infra/
     mosquitto/mosquitto.conf
     cloudflared/config.yml.example
@@ -58,13 +60,22 @@ Event-Pipeline-Lab/
 1. `postgres`
 2. `mosquitto`
 3. `backend`
-4. `cloudflared` (optional, profile: `public`)
+4. `frontend`
+5. `cloudflared` (optional, profile: `public`)
 
 ## Run Locally
 
 ```bash
 docker compose up --build -d
 ```
+
+Frontend UI:
+
+- [http://localhost:5173](http://localhost:5173)
+
+Backend API (direct, optional):
+
+- [http://localhost:8080](http://localhost:8080)
 
 Health check:
 
@@ -73,6 +84,16 @@ docker run --rm --network epl_default curlimages/curl:8.12.1 -sS http://backend:
 ```
 
 Expected: `{"status":"UP",...}`
+
+## Frontend Run (Phase 2 UI)
+
+```bash
+npm --prefix frontend install
+npm --prefix frontend run dev
+```
+
+Vite runs on `http://localhost:5173` and proxies `/api` + `/ws` to backend.
+For one-command stack startup, prefer Docker Compose.
 
 ## Default Phase 2 Credentials (dev seed)
 
