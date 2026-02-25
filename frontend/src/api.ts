@@ -209,12 +209,16 @@ export const api = {
     return request<AppSettings>('/api/admin/settings', undefined, token);
   },
 
-  updateAdminSettings(token: string, defaultLanguageMode: LanguageMode): Promise<AppSettings> {
+  updateAdminSettings(
+    token: string,
+    defaultLanguageMode: LanguageMode,
+    timeFormat24h: boolean
+  ): Promise<AppSettings> {
     return request<AppSettings>(
       '/api/admin/settings',
       {
         method: 'POST',
-        body: JSON.stringify({ defaultLanguageMode })
+        body: JSON.stringify({ defaultLanguageMode, timeFormat24h })
       },
       token
     );

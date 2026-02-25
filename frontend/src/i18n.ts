@@ -56,6 +56,9 @@ const messages = {
     refresh: 'Aktualisieren',
     saveSettings: 'Einstellung speichern',
     defaultLanguageMode: 'Standard-Sprachmodus',
+    timeFormat: 'Zeitformat',
+    timeFormat24h: '24-Stunden',
+    timeFormat12h: '12-Stunden',
     modeDe: 'Deutsch',
     modeEn: 'Englisch',
     modeBrowser: 'Browser (EN Fallback)',
@@ -120,6 +123,9 @@ const messages = {
     refresh: 'Refresh',
     saveSettings: 'Save setting',
     defaultLanguageMode: 'Default language mode',
+    timeFormat: 'Time format',
+    timeFormat24h: '24-hour',
+    timeFormat12h: '12-hour',
     modeDe: 'German',
     modeEn: 'English',
     modeBrowser: 'Browser (EN fallback)',
@@ -147,7 +153,10 @@ export function taskDescription(task: TaskInfo, language: Language): string {
   return language === 'de' ? task.descriptionDe : task.descriptionEn;
 }
 
-export function resolveLanguageFromMode(mode: LanguageMode, browserLanguage?: string): Language {
+export function resolveLanguageFromMode(
+  mode: LanguageMode,
+  browserLanguages?: string | readonly string[]
+): Language {
   if (mode === 'DE') {
     return 'de';
   }
@@ -155,9 +164,16 @@ export function resolveLanguageFromMode(mode: LanguageMode, browserLanguage?: st
     return 'en';
   }
 
-  const normalized = (browserLanguage ?? '').toLowerCase();
-  if (normalized.startsWith('de')) {
+  const candidates = Array.isArray(browserLanguages)
+    ? browserLanguages
+    : [browserLanguages ?? ''];
+
+  const normalizedCandidates = candidates.map((candidate) => candidate.toLowerCase());
+  if (normalizedCandidates.some((candidate) => candidate.startsWith('de'))) {
     return 'de';
+  }
+  if (normalizedCandidates.some((candidate) => candidate.startsWith('en'))) {
+    return 'en';
   }
   return 'en';
 }

@@ -11,6 +11,7 @@ import {
   type GroupOverview,
   type LanguageMode,
   type PresenceUser,
+  type TimestampValue,
   type TaskCapabilities,
   type TaskDefinitionPayload,
   type TaskInfo,
@@ -52,19 +53,57 @@ const CATEGORY_OPTIONS: Array<EventCategory | 'ALL'> = [
   'ACK'
 ];
 
-function appendBounded<T>(items: T[], item: T, maxSize: number): T[] {
-  const next = [...items, item];
+function timestampToEpochMillis(value: TimestampValue): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) {
+      return null;
+    }
+    return Math.abs(value) < 10_000_000_000 ? Math.trunc(value * 1000) : Math.trunc(value);
+  }
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+  if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
+    const numeric = Number(trimmed);
+    if (!Number.isFinite(numeric)) {
+      return null;
+    }
+    return Math.abs(numeric) < 10_000_000_000 ? Math.trunc(numeric * 1000) : Math.trunc(numeric);
+  }
+  const parsed = Date.parse(trimmed);
+  if (Number.isNaN(parsed)) {
+    return null;
+  }
+  return parsed;
+}
+
+function compareByNewestIngestTs(a: CanonicalEvent, b: CanonicalEvent): number {
+  const aEpoch = timestampToEpochMillis(a.ingestTs) ?? Number.MIN_SAFE_INTEGER;
+  const bEpoch = timestampToEpochMillis(b.ingestTs) ?? Number.MIN_SAFE_INTEGER;
+  if (aEpoch === bEpoch) {
+    return b.id.localeCompare(a.id);
+  }
+  return bEpoch - aEpoch;
+}
+
+function prependBounded(items: CanonicalEvent[], item: CanonicalEvent, maxSize: number): CanonicalEvent[] {
+  const next = [item, ...items].sort(compareByNewestIngestTs);
   if (next.length <= maxSize) {
     return next;
   }
-  return next.slice(next.length - maxSize);
+  return next.slice(0, maxSize);
 }
 
 function clampFeed(items: CanonicalEvent[]): CanonicalEvent[] {
-  if (items.length <= MAX_FEED_EVENTS) {
-    return items;
+  const sorted = [...items].sort(compareByNewestIngestTs);
+  if (sorted.length <= MAX_FEED_EVENTS) {
+    return sorted;
   }
-  return items.slice(items.length - MAX_FEED_EVENTS);
+  return sorted.slice(0, MAX_FEED_EVENTS);
 }
 
 function getStoredToken(): string | null {
@@ -108,17 +147,27 @@ function toErrorMessage(error: unknown): string {
   return 'Unknown error';
 }
 
-function formatTimestamp(value: string | null): string {
-  if (!value) {
+function formatTimestamp(value: TimestampValue, language: Language, use24HourTime: boolean): string {
+  if (value === null || value === undefined || value === '') {
     return '-';
   }
 
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
+  const epochMillis = timestampToEpochMillis(value);
+  if (epochMillis === null) {
+    return typeof value === 'string' ? value : String(value);
   }
 
-  return parsed.toLocaleString();
+  const parsed = new Date(epochMillis);
+  const locale = language === 'de' ? 'de-CH' : 'en-US';
+  return parsed.toLocaleString(locale, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: !use24HourTime
+  });
 }
 
 function safeConfigMap(value: unknown): Record<string, unknown> {
@@ -214,6 +263,7 @@ export default function App() {
   const [adminIncludeInternal, setAdminIncludeInternal] = useState(false);
   const [adminFeedPaused, setAdminFeedPaused] = useState(false);
   const [adminSettingsDraftMode, setAdminSettingsDraftMode] = useState<LanguageMode>('BROWSER_EN_FALLBACK');
+  const [adminSettingsDraftTimeFormat24h, setAdminSettingsDraftTimeFormat24h] = useState(true);
 
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -221,6 +271,7 @@ export default function App() {
   const [wsConnection, setWsConnection] = useState<WsConnectionState>('disconnected');
 
   const [defaultLanguageMode, setDefaultLanguageMode] = useState<LanguageMode>('BROWSER_EN_FALLBACK');
+  const [timeFormat24h, setTimeFormat24h] = useState(true);
   const [languageOverride, setLanguageOverride] = useState<Language | null>(() => getStoredLanguageOverride());
 
   const studentPauseRef = useRef(studentFeedPaused);
@@ -238,8 +289,9 @@ export default function App() {
     if (languageOverride) {
       return languageOverride;
     }
-    const browserLanguage = typeof navigator === 'undefined' ? '' : navigator.language;
-    return resolveLanguageFromMode(defaultLanguageMode, browserLanguage);
+    const browserLanguages =
+      typeof navigator === 'undefined' ? [] : navigator.languages ?? [navigator.language];
+    return resolveLanguageFromMode(defaultLanguageMode, browserLanguages);
   }, [defaultLanguageMode, languageOverride]);
 
   const t = useCallback(
@@ -264,6 +316,7 @@ export default function App() {
     setAdminIncludeInternal(false);
     setAdminFeedPaused(false);
     setAdminSettingsDraftMode('BROWSER_EN_FALLBACK');
+    setAdminSettingsDraftTimeFormat24h(true);
   }, []);
 
   const clearAuth = useCallback(() => {
@@ -310,6 +363,7 @@ export default function App() {
       setStudentConfigDraft(safeConfigMap(bootstrap.groupConfig.config));
       setDisplayNameDraft(bootstrap.me.displayName);
       setDefaultLanguageMode(bootstrap.settings.defaultLanguageMode);
+      setTimeFormat24h(bootstrap.settings.timeFormat24h);
       return;
     }
 
@@ -329,7 +383,9 @@ export default function App() {
       events: clampFeed(events)
     });
     setAdminSettingsDraftMode(settings.defaultLanguageMode);
+    setAdminSettingsDraftTimeFormat24h(settings.timeFormat24h);
     setDefaultLanguageMode(settings.defaultLanguageMode);
+    setTimeFormat24h(settings.timeFormat24h);
   }, []);
 
   useEffect(() => {
@@ -411,10 +467,13 @@ export default function App() {
     };
 
     const scheduleReconnect = () => {
-      if (closed) {
+      if (closed || reconnectTimer !== null) {
         return;
       }
-      reconnectTimer = window.setTimeout(connect, 1500);
+      reconnectTimer = window.setTimeout(() => {
+        reconnectTimer = null;
+        connect();
+      }, 1500);
     };
 
     const handleEnvelope = (envelope: WsEnvelope<unknown>) => {
@@ -430,7 +489,7 @@ export default function App() {
             }
             return {
               ...previous,
-              feed: appendBounded(previous.feed, eventPayload, MAX_FEED_EVENTS)
+              feed: prependBounded(previous.feed, eventPayload, MAX_FEED_EVENTS)
             };
           });
           return;
@@ -507,6 +566,22 @@ export default function App() {
 
         if (envelope.type === 'error.notification') {
           setErrorMessage(String(envelope.payload));
+          return;
+        }
+
+        if (envelope.type === 'settings.updated') {
+          const settings = envelope.payload as AppSettings;
+          setStudentData((previous) => {
+            if (!previous) {
+              return previous;
+            }
+            return {
+              ...previous,
+              settings
+            };
+          });
+          setDefaultLanguageMode(settings.defaultLanguageMode);
+          setTimeFormat24h(settings.timeFormat24h);
         }
         return;
       }
@@ -522,7 +597,7 @@ export default function App() {
           }
           return {
             ...previous,
-            events: appendBounded(previous.events, eventPayload, MAX_FEED_EVENTS)
+            events: prependBounded(previous.events, eventPayload, MAX_FEED_EVENTS)
           };
         });
         return;
@@ -565,6 +640,24 @@ export default function App() {
         return;
       }
 
+      if (envelope.type === 'settings.updated') {
+        const settings = envelope.payload as AppSettings;
+        setAdminData((previous) => {
+          if (!previous) {
+            return previous;
+          }
+          return {
+            ...previous,
+            settings
+          };
+        });
+        setAdminSettingsDraftMode(settings.defaultLanguageMode);
+        setAdminSettingsDraftTimeFormat24h(settings.timeFormat24h);
+        setDefaultLanguageMode(settings.defaultLanguageMode);
+        setTimeFormat24h(settings.timeFormat24h);
+        return;
+      }
+
       if (envelope.type === 'error.notification') {
         setErrorMessage(String(envelope.payload));
       }
@@ -583,6 +676,10 @@ export default function App() {
       socket.onopen = () => {
         if (!closed) {
           setWsConnection('connected');
+        }
+        if (reconnectTimer !== null) {
+          window.clearTimeout(reconnectTimer);
+          reconnectTimer = null;
         }
       };
 
@@ -606,6 +703,7 @@ export default function App() {
       socket.onerror = () => {
         if (!closed) {
           setWsConnection('disconnected');
+          scheduleReconnect();
         }
       };
     };
@@ -783,7 +881,11 @@ export default function App() {
     setErrorMessage(null);
 
     try {
-      const updated = await api.updateAdminSettings(token, adminSettingsDraftMode);
+      const updated = await api.updateAdminSettings(
+        token,
+        adminSettingsDraftMode,
+        adminSettingsDraftTimeFormat24h
+      );
       setAdminData((previous) => {
         if (!previous) {
           return previous;
@@ -794,6 +896,8 @@ export default function App() {
         };
       });
       setDefaultLanguageMode(updated.defaultLanguageMode);
+      setTimeFormat24h(updated.timeFormat24h);
+      setAdminSettingsDraftTimeFormat24h(updated.timeFormat24h);
       setInfoMessage(t('settingsUpdated'));
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
@@ -832,11 +936,12 @@ export default function App() {
     setErrorMessage(null);
 
     try {
-      const [tasks, devices, groups, events] = await Promise.all([
+      const [tasks, devices, groups, events, settings] = await Promise.all([
         api.adminTasks(token),
         api.adminDevices(token),
         api.adminGroups(token),
-        api.eventsFeed(token, { limit: MAX_FEED_EVENTS, includeInternal: true })
+        api.eventsFeed(token, { limit: MAX_FEED_EVENTS, includeInternal: true }),
+        api.adminSettings(token)
       ]);
       setAdminData((previous) => {
         if (!previous) {
@@ -848,9 +953,14 @@ export default function App() {
           tasks,
           devices,
           groups,
-          events: clampFeed(events)
+          events: clampFeed(events),
+          settings
         };
       });
+      setAdminSettingsDraftMode(settings.defaultLanguageMode);
+      setAdminSettingsDraftTimeFormat24h(settings.timeFormat24h);
+      setDefaultLanguageMode(settings.defaultLanguageMode);
+      setTimeFormat24h(settings.timeFormat24h);
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
@@ -909,6 +1019,13 @@ export default function App() {
     }
     return session.role === 'ADMIN' ? t('roleAdmin') : t('roleStudent');
   }, [session, t]);
+
+  const formatTs = useCallback(
+    (value: TimestampValue): string => {
+      return formatTimestamp(value, language, timeFormat24h);
+    },
+    [language, timeFormat24h]
+  );
 
   const renderConfigInput = (
     option: string,
@@ -1125,7 +1242,7 @@ export default function App() {
                   {t('updatedBy')}: {studentData.groupConfig.updatedBy}
                 </span>
                 <span>
-                  {t('lastSeen')}: {formatTimestamp(studentData.groupConfig.updatedAt)}
+                  {t('lastSeen')}: {formatTs(studentData.groupConfig.updatedAt)}
                 </span>
               </div>
 
@@ -1145,7 +1262,7 @@ export default function App() {
                 {studentData.groupPresence.map((presence) => (
                   <li key={`${presence.username}-${presence.lastSeen}`}>
                     <strong>{presence.displayName}</strong>
-                    <span>{formatTimestamp(presence.lastSeen)}</span>
+                    <span>{formatTs(presence.lastSeen)}</span>
                   </li>
                 ))}
               </ul>
@@ -1287,12 +1404,9 @@ export default function App() {
                         </td>
                       </tr>
                     ) : (
-                      studentVisibleFeed
-                        .slice()
-                        .reverse()
-                        .map((eventItem) => (
+                      studentVisibleFeed.map((eventItem) => (
                           <tr key={eventItem.id}>
-                            <td>{formatTimestamp(eventItem.ingestTs)}</td>
+                            <td>{formatTs(eventItem.ingestTs)}</td>
                             <td>{eventItem.deviceId}</td>
                             <td>{eventItem.eventType}</td>
                             <td className="mono">{eventItem.topic}</td>
@@ -1347,6 +1461,17 @@ export default function App() {
                   <option value="BROWSER_EN_FALLBACK">{t('modeBrowser')}</option>
                 </select>
               </label>
+              <label>
+                <span>{t('timeFormat')}</span>
+                <select
+                  className="input"
+                  value={adminSettingsDraftTimeFormat24h ? '24' : '12'}
+                  onChange={(event) => setAdminSettingsDraftTimeFormat24h(event.target.value === '24')}
+                >
+                  <option value="24">{t('timeFormat24h')}</option>
+                  <option value="12">{t('timeFormat12h')}</option>
+                </select>
+              </label>
               <button
                 className="button"
                 type="button"
@@ -1370,7 +1495,7 @@ export default function App() {
                     <ul>
                       {group.presence.map((presence) => (
                         <li key={`${presence.username}-${presence.lastSeen}`}>
-                          {presence.displayName} - {formatTimestamp(presence.lastSeen)}
+                          {presence.displayName} - {formatTs(presence.lastSeen)}
                         </li>
                       ))}
                     </ul>
@@ -1403,7 +1528,7 @@ export default function App() {
                     </header>
 
                     <p>
-                      {t('lastSeen')}: {formatTimestamp(device.lastSeen)}
+                      {t('lastSeen')}: {formatTs(device.lastSeen)}
                     </p>
                     <p>
                       {t('rssi')}: {device.rssi ?? '-'}
@@ -1538,12 +1663,9 @@ export default function App() {
                         </td>
                       </tr>
                     ) : (
-                      adminVisibleFeed
-                        .slice()
-                        .reverse()
-                        .map((eventItem) => (
+                      adminVisibleFeed.map((eventItem) => (
                           <tr key={eventItem.id}>
-                            <td>{formatTimestamp(eventItem.ingestTs)}</td>
+                            <td>{formatTs(eventItem.ingestTs)}</td>
                             <td>{eventItem.deviceId}</td>
                             <td>{eventItem.eventType}</td>
                             <td>{eventItem.category}</td>

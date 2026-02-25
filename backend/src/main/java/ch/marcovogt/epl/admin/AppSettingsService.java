@@ -25,6 +25,7 @@ public class AppSettingsService {
                     AppSettings settings = new AppSettings();
                     settings.setId(SETTINGS_ROW_ID);
                     settings.setDefaultLanguageMode(LanguageMode.BROWSER_EN_FALLBACK);
+                    settings.setTimeFormat24h(true);
                     settings.setUpdatedAt(Instant.now(clock));
                     settings.setUpdatedBy("system");
                     return appSettingsRepository.save(settings);
@@ -32,9 +33,12 @@ public class AppSettingsService {
     }
 
     @Transactional
-    public AppSettings update(LanguageMode mode, String actor) {
+    public AppSettings update(LanguageMode mode, Boolean timeFormat24h, String actor) {
         AppSettings settings = getOrCreate();
         settings.setDefaultLanguageMode(mode);
+        if (timeFormat24h != null) {
+            settings.setTimeFormat24h(timeFormat24h);
+        }
         settings.setUpdatedAt(Instant.now(clock));
         settings.setUpdatedBy(actor);
         return appSettingsRepository.save(settings);

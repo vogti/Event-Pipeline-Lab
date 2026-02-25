@@ -19,6 +19,9 @@ public class AppSettings {
     @Column(name = "default_language_mode", nullable = false, length = 32)
     private LanguageMode defaultLanguageMode;
 
+    @Column(name = "time_format_24h", nullable = false)
+    private boolean timeFormat24h;
+
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
@@ -39,6 +42,14 @@ public class AppSettings {
 
     public void setDefaultLanguageMode(LanguageMode defaultLanguageMode) {
         this.defaultLanguageMode = defaultLanguageMode;
+    }
+
+    public boolean isTimeFormat24h() {
+        return timeFormat24h;
+    }
+
+    public void setTimeFormat24h(boolean timeFormat24h) {
+        this.timeFormat24h = timeFormat24h;
     }
 
     public Instant getUpdatedAt() {

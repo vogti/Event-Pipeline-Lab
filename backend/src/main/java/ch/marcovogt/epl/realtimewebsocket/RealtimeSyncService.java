@@ -1,5 +1,6 @@
 package ch.marcovogt.epl.realtimewebsocket;
 
+import ch.marcovogt.epl.admin.AppSettingsDto;
 import ch.marcovogt.epl.authsession.AuthService;
 import ch.marcovogt.epl.authsession.PresenceUserDto;
 import ch.marcovogt.epl.deviceregistryhealth.DeviceStatusDto;
@@ -75,5 +76,10 @@ public class RealtimeSyncService {
             );
         }
         adminBroadcaster.broadcast("task.updated", definition);
+    }
+
+    public void broadcastSettingsUpdated(AppSettingsDto settingsDto) {
+        studentBroadcaster.broadcastToAll("settings.updated", settingsDto);
+        adminBroadcaster.broadcast("settings.updated", settingsDto);
     }
 }

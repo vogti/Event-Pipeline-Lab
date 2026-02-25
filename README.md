@@ -42,6 +42,7 @@ Event-Pipeline-Lab/
         V1__init_phase1_schema.sql
         V2__json_columns_to_text.sql
         V3__phase2_auth_task_group.sql
+        V4__app_settings_time_format_24h.sql
       static/admin-test.html
     Dockerfile
     build.gradle
@@ -153,6 +154,8 @@ Server push event types include:
 - `event.feed.append`
 - `device.status.updated`
 - `admin.groups.updated`
+- `settings.updated`
+- `ws.ping`
 - `error.notification`
 
 ## Admin Test Page

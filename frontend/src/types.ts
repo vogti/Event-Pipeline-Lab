@@ -12,6 +12,7 @@ export type EventCategory =
   | 'ACK';
 
 export type DeviceCommandType = 'LED_GREEN' | 'LED_ORANGE' | 'COUNTER_RESET';
+export type TimestampValue = string | number | null;
 
 export interface AuthMe {
   sessionToken: string;
@@ -44,14 +45,14 @@ export interface GroupConfig {
   groupKey: string;
   config: Record<string, unknown>;
   revision: number;
-  updatedAt: string;
+  updatedAt: TimestampValue;
   updatedBy: string;
 }
 
 export interface PresenceUser {
   username: string;
   displayName: string;
-  lastSeen: string;
+  lastSeen: TimestampValue;
 }
 
 export interface CanonicalEvent {
@@ -61,8 +62,8 @@ export interface CanonicalEvent {
   eventType: string;
   category: EventCategory;
   payloadJson: string;
-  deviceTs: string | null;
-  ingestTs: string;
+  deviceTs: TimestampValue;
+  ingestTs: TimestampValue;
   valid: boolean;
   validationErrors: string | null;
   isInternal: boolean;
@@ -74,10 +75,10 @@ export interface CanonicalEvent {
 export interface DeviceStatus {
   deviceId: string;
   online: boolean;
-  lastSeen: string | null;
+  lastSeen: TimestampValue;
   rssi: number | null;
   wifiPayloadJson: string | null;
-  updatedAt: string;
+  updatedAt: TimestampValue;
 }
 
 export interface GroupOverview {
@@ -89,7 +90,8 @@ export interface GroupOverview {
 
 export interface AppSettings {
   defaultLanguageMode: LanguageMode;
-  updatedAt: string;
+  timeFormat24h: boolean;
+  updatedAt: TimestampValue;
   updatedBy: string;
 }
 
@@ -106,7 +108,7 @@ export interface StudentBootstrap {
 export interface WsEnvelope<T = unknown> {
   type: string;
   payload: T;
-  ts: string;
+  ts: TimestampValue;
 }
 
 export interface TaskDefinitionPayload {
