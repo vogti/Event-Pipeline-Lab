@@ -47,7 +47,6 @@ Event-Pipeline-Lab/
         V6__virtual_device_brightness_voltage.sql
         V7__reconcile_groups_and_virtual_devices_to_physical_devices.sql
         V8__cleanup_virtual_rows_from_device_status.sql
-      static/admin-test.html
     Dockerfile
     build.gradle
     settings.gradle
@@ -224,14 +223,6 @@ Server push event types include:
 - `settings.updated`
 - `ws.ping`
 - `error.notification`
-
-## Admin Test Page
-
-A lightweight authenticated test client is served by backend:
-
-- [http://localhost:8080/admin-test.html](http://localhost:8080/admin-test.html)
-
-Use the login form on the page (defaults: `admin/admin123`) before loading feeds.
 
 ## Logging
 
