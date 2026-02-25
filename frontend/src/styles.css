@@ -468,8 +468,14 @@ textarea {
 }
 
 .device-link {
-  color: #1e6488;
-  text-decoration: underline;
+  color: inherit;
+  text-decoration: none;
+}
+
+.device-link:hover,
+.device-link:focus-visible {
+  color: inherit;
+  text-decoration: none;
 }
 
 .rssi-row {
@@ -567,6 +573,23 @@ textarea {
   min-width: 0;
 }
 
+.counter-metric-trigger {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  appearance: none;
+}
+
+.counter-metric-trigger:hover {
+  border-color: rgba(23, 98, 133, 0.35);
+  background: rgba(231, 246, 252, 0.9);
+}
+
+.counter-metric-trigger:focus-visible {
+  outline: 2px solid rgba(15, 122, 143, 0.45);
+  outline-offset: 1px;
+}
+
 .device-metric.full {
   grid-column: 1 / -1;
 }
@@ -597,6 +620,43 @@ textarea {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.metric-state-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.metric-label {
+  font-weight: 700;
+}
+
+.state-label {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.05rem 0.35rem;
+  font-size: 0.68rem;
+  border: 1px solid transparent;
+}
+
+.state-label.state-pressed {
+  background: rgba(166, 42, 42, 0.15);
+  border-color: rgba(166, 42, 42, 0.3);
+  color: #8e2a2a;
+}
+
+.state-label.state-released {
+  background: rgba(30, 132, 84, 0.13);
+  border-color: rgba(30, 132, 84, 0.28);
+  color: #1b6f48;
+}
+
+.state-label.state-unknown {
+  background: rgba(66, 90, 109, 0.14);
+  border-color: rgba(66, 90, 109, 0.24);
+  color: #36556b;
 }
 
 .button-grid {
@@ -751,6 +811,10 @@ textarea {
 }
 
 .pin-editor-modal {
+  width: min(460px, 100%);
+}
+
+.counter-reset-modal {
   width: min(460px, 100%);
 }
 

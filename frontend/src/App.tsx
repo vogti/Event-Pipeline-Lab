@@ -1233,6 +1233,7 @@ export default function App() {
   const [eventDetailsViewMode, setEventDetailsViewMode] = useState<EventDetailsViewMode>('rendered');
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [nowEpochMs, setNowEpochMs] = useState<number>(() => Date.now());
+  const [counterResetDeviceId, setCounterResetDeviceId] = useState<string | null>(null);
   const [pinEditorDeviceId, setPinEditorDeviceId] = useState<string | null>(null);
   const [pinEditorValue, setPinEditorValue] = useState('');
   const [pinEditorLoading, setPinEditorLoading] = useState(false);
@@ -1300,6 +1301,7 @@ export default function App() {
     setAdminSettingsDraftTimeFormat24h(true);
     setAdminDeviceSnapshots({});
     setAdminDeviceIpById({});
+    setCounterResetDeviceId(null);
     setPinEditorDeviceId(null);
     setPinEditorValue('');
     setPinEditorLoading(false);
@@ -1470,6 +1472,21 @@ export default function App() {
       window.removeEventListener('keydown', onKeyDown);
     };
   }, [userMenuOpen]);
+
+  useEffect(() => {
+    if (!counterResetDeviceId) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeCounterResetModal();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [counterResetDeviceId]);
 
   useEffect(() => {
     if (!pinEditorDeviceId) {
@@ -2059,9 +2076,9 @@ export default function App() {
     deviceId: string,
     command: DeviceCommandType,
     on?: boolean
-  ) => {
+  ): Promise<boolean> => {
     if (!token) {
-      return;
+      return false;
     }
 
     setBusyKey(`admin-command-${deviceId}-${command}-${String(on)}`);
@@ -2069,10 +2086,30 @@ export default function App() {
 
     try {
       await api.adminDeviceCommand(token, deviceId, command, on);
+      return true;
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
+      return false;
     } finally {
       setBusyKey(null);
+    }
+  };
+
+  const closeCounterResetModal = () => {
+    setCounterResetDeviceId(null);
+  };
+
+  const openCounterResetModal = (deviceId: string) => {
+    setCounterResetDeviceId(deviceId);
+  };
+
+  const confirmCounterReset = async () => {
+    if (!counterResetDeviceId) {
+      return;
+    }
+    const ok = await sendAdminDeviceCommand(counterResetDeviceId, 'COUNTER_RESET');
+    if (ok) {
+      closeCounterResetModal();
     }
   };
 
@@ -2244,6 +2281,9 @@ export default function App() {
   }, [session]);
 
   const settingsSectionId = session?.role === 'ADMIN' ? 'admin-settings-panel' : 'student-settings-panel';
+  const counterResetBusy = counterResetDeviceId
+    ? busyKey === `admin-command-${counterResetDeviceId}-COUNTER_RESET-undefined`
+    : false;
 
   const openSettingsSection = useCallback(() => {
     const element = document.getElementById(settingsSectionId);
@@ -2856,6 +2896,7 @@ export default function App() {
                   const humidityPct = snapshot?.humidityPct ?? null;
                   const brightnessRaw = snapshot?.brightness ?? null;
                   const counterRaw = snapshot?.counterValue ?? null;
+                  const isDeviceOnline = device.online;
                   const redButton =
                     redPressed === null
                       ? t('stateUnknown')
@@ -2896,7 +2937,14 @@ export default function App() {
                   const ipAddressHref = ipAddressToHref(ipAddress);
                   const lastEventRelative = formatRelativeFromNow(device.lastSeen, nowEpochMs, language);
                   const bars = rssiBars(device.rssi);
-                  const rssiHint = device.rssi === null ? t('rssiNoData') : `${device.rssi} dBm`;
+                  const rssiHint =
+                    !isDeviceOnline ? '-' : device.rssi === null ? t('rssiNoData') : `${device.rssi} dBm`;
+                  const uptimeLabel =
+                    !isDeviceOnline || uptimeNow === null ? '-' : formatRoundedDuration(uptimeNow, language);
+                  const redButtonClass =
+                    redPressed === null ? 'state-unknown' : redPressed ? 'state-pressed' : 'state-released';
+                  const blackButtonClass =
+                    blackPressed === null ? 'state-unknown' : blackPressed ? 'state-pressed' : 'state-released';
                   const nextGreenState = greenOn === null ? true : !greenOn;
                   const nextOrangeState = orangeOn === null ? true : !orangeOn;
                   const greenBusy =
@@ -2944,25 +2992,29 @@ export default function App() {
                         )}
                       </p>
                       <p>
-                        {t('uptime')}: {uptimeNow === null ? '-' : formatRoundedDuration(uptimeNow, language)}
+                        {t('uptime')}: {uptimeLabel}
                       </p>
                       <div className="rssi-row">
                         <span>{t('rssi')}:</span>
-                        <div className="rssi-tooltip-host">
-                          <div
-                            className={`rssi-bars ${rssiClassName(device.rssi)}`}
-                            aria-label={rssiHint}
-                            aria-describedby={rssiTooltipId}
-                          >
-                            <span className={`bar ${bars >= 1 ? 'active' : ''}`} />
-                            <span className={`bar ${bars >= 2 ? 'active' : ''}`} />
-                            <span className={`bar ${bars >= 3 ? 'active' : ''}`} />
-                            <span className={`bar ${bars >= 4 ? 'active' : ''}`} />
+                        {isDeviceOnline ? (
+                          <div className="rssi-tooltip-host">
+                            <div
+                              className={`rssi-bars ${rssiClassName(device.rssi)}`}
+                              aria-label={rssiHint}
+                              aria-describedby={rssiTooltipId}
+                            >
+                              <span className={`bar ${bars >= 1 ? 'active' : ''}`} />
+                              <span className={`bar ${bars >= 2 ? 'active' : ''}`} />
+                              <span className={`bar ${bars >= 3 ? 'active' : ''}`} />
+                              <span className={`bar ${bars >= 4 ? 'active' : ''}`} />
+                            </div>
+                            <span className="rssi-tooltip" id={rssiTooltipId}>
+                              {rssiHint}
+                            </span>
                           </div>
-                          <span className="rssi-tooltip" id={rssiTooltipId}>
-                            {rssiHint}
-                          </span>
-                        </div>
+                        ) : (
+                          <span className="muted">-</span>
+                        )}
                       </div>
                       <div className="device-metrics-grid">
                         <div className="device-metric">
@@ -2983,23 +3035,34 @@ export default function App() {
                           </span>
                           <span className="metric-text" title={t('metricBrightness')}>{brightness}</span>
                         </div>
-                        <div className="device-metric">
+                        <button
+                          className="device-metric counter-metric-trigger"
+                          type="button"
+                          onClick={() => openCounterResetModal(device.deviceId)}
+                          title={t('commandCounterReset')}
+                        >
                           <span className="metric-icon">
                             <MetricIcon kind="counter" />
                           </span>
-                          <span className="metric-text">{t('metricCounter')}: {counterValue}</span>
+                          <span className="metric-text">{counterValue}</span>
+                        </button>
+                        <div className="device-metric">
+                          <span className="metric-icon">
+                            <MetricIcon kind="buttons" />
+                          </span>
+                          <span className="metric-text metric-state-row">
+                            <span className="metric-label">Red:</span>
+                            <span className={`state-label ${redButtonClass}`}>{redButton}</span>
+                          </span>
                         </div>
                         <div className="device-metric">
                           <span className="metric-icon">
                             <MetricIcon kind="buttons" />
                           </span>
-                          <span className="metric-text">{t('metricButtonRed')}: {redButton}</span>
-                        </div>
-                        <div className="device-metric">
-                          <span className="metric-icon">
-                            <MetricIcon kind="buttons" />
+                          <span className="metric-text metric-state-row">
+                            <span className="metric-label">Black:</span>
+                            <span className={`state-label ${blackButtonClass}`}>{blackButton}</span>
                           </span>
-                          <span className="metric-text">{t('metricButtonBlack')}: {blackButton}</span>
                         </div>
                         <div className="device-metric full">
                           <span className="metric-icon">
@@ -3016,7 +3079,7 @@ export default function App() {
                           onClick={() => sendAdminDeviceCommand(device.deviceId, 'LED_GREEN', nextGreenState)}
                           disabled={greenBusy}
                         >
-                          {t('commandGreenToggle')} ({greenLed})
+                          {t('commandGreenLed')}
                         </button>
                         <button
                           className={`button ${orangeOn ? 'active' : 'secondary'}`}
@@ -3024,15 +3087,7 @@ export default function App() {
                           onClick={() => sendAdminDeviceCommand(device.deviceId, 'LED_ORANGE', nextOrangeState)}
                           disabled={orangeBusy}
                         >
-                          {t('commandOrangeToggle')} ({orangeLed})
-                        </button>
-                        <button
-                          className="button ghost"
-                          type="button"
-                          onClick={() => sendAdminDeviceCommand(device.deviceId, 'COUNTER_RESET')}
-                          disabled={busyKey === `admin-command-${device.deviceId}-COUNTER_RESET-undefined`}
-                        >
-                          {t('commandCounterReset')}
+                          {t('commandOrangeLed')}
                         </button>
                       </div>
                     </article>
@@ -3217,6 +3272,35 @@ export default function App() {
             ) : (
               <pre className="event-modal-pre">{selectedEventRawJson}</pre>
             )}
+          </div>
+        </div>
+      ) : null}
+
+      {counterResetDeviceId ? (
+        <div className="event-modal-backdrop" onClick={closeCounterResetModal}>
+          <div className="event-modal counter-reset-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="panel-header">
+              <h2>{t('counterResetDialogTitle')}</h2>
+              <button className="button secondary" type="button" onClick={closeCounterResetModal}>
+                {t('close')}
+              </button>
+            </div>
+            <p>
+              {t('counterResetDialogBody')} <strong>{counterResetDeviceId}</strong>?
+            </p>
+            <div className="event-modal-actions">
+              <button
+                className="button danger"
+                type="button"
+                onClick={confirmCounterReset}
+                disabled={counterResetBusy}
+              >
+                {t('commandCounterReset')}
+              </button>
+              <button className="button secondary" type="button" onClick={closeCounterResetModal}>
+                {t('close')}
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
