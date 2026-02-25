@@ -78,7 +78,8 @@ public class CanonicalEventNormalizer {
         if (segments.length >= 2 && "epld".equals(segments[0])) {
             return segments[1];
         }
-        if (segments.length >= 1 && segments[0].startsWith("epld")) {
+        if (segments.length >= 1
+                && (segments[0].startsWith("epld") || segments[0].startsWith("eplvd"))) {
             return segments[0];
         }
 
@@ -88,7 +89,8 @@ public class CanonicalEventNormalizer {
         }
 
         String payloadDeviceName = text(payloadNode.at("/device/name"));
-        if (payloadDeviceName != null && payloadDeviceName.startsWith("epld")) {
+        if (payloadDeviceName != null
+                && (payloadDeviceName.startsWith("epld") || payloadDeviceName.startsWith("eplvd"))) {
             return payloadDeviceName;
         }
 

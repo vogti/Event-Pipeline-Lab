@@ -3349,9 +3349,6 @@ export default function App() {
       return null;
     }
     return adminData.virtualDevices.map((device) => {
-      const bars = rssiBars(device.rssi);
-      const rssiHint = `${device.rssi} dBm`;
-      const rssiTooltipId = `virtual-rssi-${device.deviceId}`;
       const ipAddressHref = ipAddressToHref(device.ipAddress);
       const redButtonClass = device.buttonRedPressed ? 'state-pressed' : 'state-released';
       const blackButtonClass = device.buttonBlackPressed ? 'state-pressed' : 'state-released';
@@ -3368,9 +3365,6 @@ export default function App() {
               >
                 {t('openControls')}
               </button>
-              <span className={`chip ${device.online ? 'ok' : 'warn'}`}>
-                {statusLabel(device.online, language)}
-              </span>
             </div>
           </header>
 
@@ -3393,24 +3387,6 @@ export default function App() {
               device.ipAddress
             )}
           </p>
-          <div className="rssi-row">
-            <span>{t('rssi')}:</span>
-            <div className="rssi-tooltip-host">
-              <div
-                className={`rssi-bars ${rssiClassName(device.rssi)}`}
-                aria-label={rssiHint}
-                aria-describedby={rssiTooltipId}
-              >
-                <span className={`bar ${bars >= 1 ? 'active' : ''}`} />
-                <span className={`bar ${bars >= 2 ? 'active' : ''}`} />
-                <span className={`bar ${bars >= 3 ? 'active' : ''}`} />
-                <span className={`bar ${bars >= 4 ? 'active' : ''}`} />
-              </div>
-              <span className="rssi-tooltip" id={rssiTooltipId}>
-                {rssiHint}
-              </span>
-            </div>
-          </div>
 
           <div className="device-metrics-grid">
             <div className="device-metric">

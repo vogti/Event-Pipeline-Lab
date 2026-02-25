@@ -118,82 +118,55 @@ public class VirtualDeviceService {
 
     private void publishChanges(VirtualDeviceState state, ChangeSet changes) {
         Instant now = Instant.now(clock);
-        String canonicalPrefix = "epld/" + state.getDeviceId();
 
         if (changes.buttonRed) {
-            mqttGatewayClient.publish(
-                    canonicalPrefix + "/event/button",
-                    toJson(Map.of(
-                            "deviceId", state.getDeviceId(),
-                            "groupKey", state.getGroupKey(),
-                            "button", "red",
-                            "action", state.isButtonRedPressed() ? "press" : "release",
-                            "pressed", state.isButtonRedPressed(),
-                            "ts", now.toEpochMilli() / 1000.0
-                    )),
-                    1,
-                    false
+            publishNotifyStatus(
+                    state,
+                    Map.of("input:0", Map.of("state", state.isButtonRedPressed())),
+                    now
             );
         }
 
         if (changes.buttonBlack) {
-            mqttGatewayClient.publish(
-                    canonicalPrefix + "/event/button",
-                    toJson(Map.of(
-                            "deviceId", state.getDeviceId(),
-                            "groupKey", state.getGroupKey(),
-                            "button", "black",
-                            "action", state.isButtonBlackPressed() ? "press" : "release",
-                            "pressed", state.isButtonBlackPressed(),
-                            "ts", now.toEpochMilli() / 1000.0
-                    )),
-                    1,
-                    false
+            publishNotifyStatus(
+                    state,
+                    Map.of("input:1", Map.of("state", state.isButtonBlackPressed())),
+                    now
             );
         }
 
         if (changes.temperature || changes.humidity) {
-            mqttGatewayClient.publish(
-                    canonicalPrefix + "/event/sensor/dht22",
-                    toJson(Map.of(
-                            "deviceId", state.getDeviceId(),
-                            "groupKey", state.getGroupKey(),
-                            "temperature", state.getTemperatureC(),
-                            "humidity", state.getHumidityPct(),
-                            "ts", now.toEpochMilli() / 1000.0
-                    )),
-                    1,
-                    false
+            publishNotifyStatus(
+                    state,
+                    Map.of(
+                            "temperature:100",
+                            Map.of("tC", state.getTemperatureC(), "value", state.getTemperatureC()),
+                            "humidity:100",
+                            Map.of("rh", state.getHumidityPct(), "value", state.getHumidityPct())
+                    ),
+                    now
             );
         }
 
         if (changes.brightness) {
-            mqttGatewayClient.publish(
-                    canonicalPrefix + "/event/sensor/ldr",
-                    toJson(Map.of(
-                            "deviceId", state.getDeviceId(),
-                            "groupKey", state.getGroupKey(),
-                            "brightness", state.getBrightness(),
-                            "lux", state.getBrightness(),
-                            "ts", now.toEpochMilli() / 1000.0
-                    )),
-                    1,
-                    false
+            publishNotifyStatus(
+                    state,
+                    Map.of(
+                            "voltmeter:100",
+                            Map.of("voltage", state.getBrightness(), "value", state.getBrightness())
+                    ),
+                    now
             );
         }
 
         if (changes.counter) {
-            mqttGatewayClient.publish(
-                    canonicalPrefix + "/event/counter",
-                    toJson(Map.of(
-                            "deviceId", state.getDeviceId(),
-                            "groupKey", state.getGroupKey(),
-                            "counter", state.getCounterValue(),
-                            "value", state.getCounterValue(),
-                            "ts", now.toEpochMilli() / 1000.0
-                    )),
-                    1,
-                    false
+            publishNotifyStatus(
+                    state,
+                    Map.of(
+                            "input:2", Map.of("state", true),
+                            "counter:0", Map.of("value", state.getCounterValue())
+                    ),
+                    now
             );
         }
 
@@ -204,36 +177,6 @@ public class VirtualDeviceService {
         if (changes.ledOrange) {
             publishNotifyStatus(state, Map.of("switch:1", Map.of("output", state.isLedOrangeOn())), now);
         }
-
-        Map<String, Object> wifiPayload = new HashMap<>();
-        wifiPayload.put("deviceId", state.getDeviceId());
-        wifiPayload.put("groupKey", state.getGroupKey());
-        wifiPayload.put("rssi", state.getRssi());
-        wifiPayload.put("ip", state.getIpAddress());
-        wifiPayload.put("wifi", Map.of(
-                "rssi", state.getRssi(),
-                "ip", state.getIpAddress(),
-                "ssid", "EPL-VIRTUAL"
-        ));
-
-        mqttGatewayClient.publish(
-                canonicalPrefix + "/status/wifi",
-                toJson(wifiPayload),
-                1,
-                false
-        );
-
-        mqttGatewayClient.publish(
-                canonicalPrefix + "/status/heartbeat",
-                toJson(Map.of(
-                        "deviceId", state.getDeviceId(),
-                        "groupKey", state.getGroupKey(),
-                        "online", true,
-                        "ts", now.toEpochMilli() / 1000.0
-                )),
-                1,
-                false
-        );
     }
 
     private void publishNotifyStatus(VirtualDeviceState state, Map<String, Object> statusFragment, Instant now) {
