@@ -772,6 +772,10 @@ function isTelemetryEvent(event: CanonicalEvent): boolean {
   return topic.includes('/telemetry') || eventType.includes('telemetry');
 }
 
+function isVirtualDeviceId(deviceId: string): boolean {
+  return /^eplvd[0-9]+$/i.test(deviceId.trim());
+}
+
 function formatScalar(value: unknown): string | null {
   if (typeof value === 'string') {
     return value;
@@ -2151,6 +2155,9 @@ export default function App() {
     };
 
     const queueAdminDeviceStatus = (deviceStatus: DeviceStatus) => {
+      if (isVirtualDeviceId(deviceStatus.deviceId)) {
+        return;
+      }
       adminDeviceStatusQueue.set(deviceStatus.deviceId, deviceStatus);
       if (adminDeviceStatusFlushTimer !== null) {
         return;

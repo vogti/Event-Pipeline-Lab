@@ -55,6 +55,9 @@ public class DeviceStatusService {
         if (deviceId == null || deviceId.isBlank() || "unknown".equals(deviceId)) {
             return null;
         }
+        if (DeviceIdMapping.isVirtualDeviceId(deviceId)) {
+            return null;
+        }
 
         deviceDiscoveryProvisioningService.ensureProvisionedForPhysicalDevice(deviceId);
 

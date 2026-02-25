@@ -46,6 +46,7 @@ Event-Pipeline-Lab/
         V5__virtual_devices.sql
         V6__virtual_device_brightness_voltage.sql
         V7__reconcile_groups_and_virtual_devices_to_physical_devices.sql
+        V8__cleanup_virtual_rows_from_device_status.sql
       static/admin-test.html
     Dockerfile
     build.gradle
