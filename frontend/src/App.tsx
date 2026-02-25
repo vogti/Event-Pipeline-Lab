@@ -15,6 +15,7 @@ import {
   type TaskCapabilities,
   type TaskDefinitionPayload,
   type TaskInfo,
+  type VirtualDeviceState,
   type WsEnvelope
 } from './types';
 import { type I18nKey, type Language, resolveLanguageFromMode, taskDescription, taskTitle, tr } from './i18n';
@@ -29,12 +30,14 @@ interface StudentViewData {
   groupConfig: GroupConfig;
   groupPresence: PresenceUser[];
   feed: CanonicalEvent[];
+  virtualDevice: VirtualDeviceState | null;
   settings: AppSettings;
 }
 
 interface AdminViewData {
   tasks: TaskInfo[];
   devices: DeviceStatus[];
+  virtualDevices: VirtualDeviceState[];
   groups: GroupOverview[];
   events: CanonicalEvent[];
   settings: AppSettings;
@@ -43,7 +46,18 @@ interface AdminViewData {
 type WsConnectionState = 'connecting' | 'connected' | 'disconnected';
 type FeedViewMode = 'rendered' | 'raw';
 type EventDetailsViewMode = 'rendered' | 'raw';
-type AdminPage = 'dashboard' | 'devices' | 'feed' | 'groupsTasks' | 'settings';
+type AdminPage = 'dashboard' | 'devices' | 'virtualDevices' | 'feed' | 'groupsTasks' | 'settings';
+
+interface VirtualDevicePatch {
+  buttonRedPressed?: boolean;
+  buttonBlackPressed?: boolean;
+  ledGreenOn?: boolean;
+  ledOrangeOn?: boolean;
+  temperatureC?: number;
+  humidityPct?: number;
+  brightness?: number;
+  counterValue?: number;
+}
 
 function isAdminFeedHotPage(page: AdminPage): boolean {
   return page === 'feed' || page === 'dashboard';
@@ -432,6 +446,138 @@ function sameDeviceStatus(a: DeviceStatus, b: DeviceStatus): boolean {
     a.rssi === b.rssi &&
     a.wifiPayloadJson === b.wifiPayloadJson &&
     a.updatedAt === b.updatedAt
+  );
+}
+
+function sameStringArray(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  for (let index = 0; index < a.length; index += 1) {
+    if (a[index] !== b[index]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function sameTaskCapabilities(a: TaskCapabilities, b: TaskCapabilities): boolean {
+  return (
+    a.canViewRoomEvents === b.canViewRoomEvents &&
+    a.canSendDeviceCommands === b.canSendDeviceCommands &&
+    a.canFilterByTopic === b.canFilterByTopic &&
+    a.showInternalEventsToggle === b.showInternalEventsToggle &&
+    sameStringArray(a.allowedConfigOptions, b.allowedConfigOptions) &&
+    sameStringArray(a.studentCommandWhitelist, b.studentCommandWhitelist)
+  );
+}
+
+function sameTaskInfo(a: TaskInfo, b: TaskInfo): boolean {
+  return (
+    a.id === b.id &&
+    a.titleDe === b.titleDe &&
+    a.titleEn === b.titleEn &&
+    a.descriptionDe === b.descriptionDe &&
+    a.descriptionEn === b.descriptionEn &&
+    a.active === b.active
+  );
+}
+
+function sameGroupConfigMeta(a: GroupConfig, b: GroupConfig): boolean {
+  return (
+    a.groupKey === b.groupKey &&
+    a.revision === b.revision &&
+    a.updatedAt === b.updatedAt &&
+    a.updatedBy === b.updatedBy
+  );
+}
+
+function samePresenceUser(a: PresenceUser, b: PresenceUser): boolean {
+  return (
+    a.username === b.username &&
+    a.displayName === b.displayName &&
+    a.lastSeen === b.lastSeen
+  );
+}
+
+function samePresenceList(a: PresenceUser[], b: PresenceUser[]): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  for (let index = 0; index < a.length; index += 1) {
+    if (!samePresenceUser(a[index], b[index])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function sameGroupOverview(a: GroupOverview, b: GroupOverview): boolean {
+  return (
+    a.groupKey === b.groupKey &&
+    a.onlineCount === b.onlineCount &&
+    samePresenceList(a.presence, b.presence) &&
+    sameGroupConfigMeta(a.config, b.config)
+  );
+}
+
+function sameGroupOverviewList(a: GroupOverview[], b: GroupOverview[]): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  for (let index = 0; index < a.length; index += 1) {
+    if (!sameGroupOverview(a[index], b[index])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function sameAppSettings(a: AppSettings, b: AppSettings): boolean {
+  return (
+    a.defaultLanguageMode === b.defaultLanguageMode &&
+    a.timeFormat24h === b.timeFormat24h &&
+    a.studentVirtualDeviceVisible === b.studentVirtualDeviceVisible &&
+    a.updatedAt === b.updatedAt &&
+    a.updatedBy === b.updatedBy
+  );
+}
+
+function sameVirtualDeviceState(a: VirtualDeviceState, b: VirtualDeviceState): boolean {
+  return (
+    a.deviceId === b.deviceId &&
+    a.groupKey === b.groupKey &&
+    a.online === b.online &&
+    a.rssi === b.rssi &&
+    a.ipAddress === b.ipAddress &&
+    a.temperatureC === b.temperatureC &&
+    a.humidityPct === b.humidityPct &&
+    a.brightness === b.brightness &&
+    a.counterValue === b.counterValue &&
+    a.buttonRedPressed === b.buttonRedPressed &&
+    a.buttonBlackPressed === b.buttonBlackPressed &&
+    a.ledGreenOn === b.ledGreenOn &&
+    a.ledOrangeOn === b.ledOrangeOn &&
+    a.updatedAt === b.updatedAt
+  );
+}
+
+function sameVirtualDevicePatch(a: VirtualDevicePatch | null, b: VirtualDevicePatch | null): boolean {
+  if (a === b) {
+    return true;
+  }
+  if (!a || !b) {
+    return false;
+  }
+  return (
+    a.buttonRedPressed === b.buttonRedPressed &&
+    a.buttonBlackPressed === b.buttonBlackPressed &&
+    a.ledGreenOn === b.ledGreenOn &&
+    a.ledOrangeOn === b.ledOrangeOn &&
+    a.temperatureC === b.temperatureC &&
+    a.humidityPct === b.humidityPct &&
+    a.brightness === b.brightness &&
+    a.counterValue === b.counterValue
   );
 }
 
@@ -1284,6 +1430,19 @@ function rssiClassName(rssi: number | null): string {
   return 'bad';
 }
 
+function patchFromVirtualDevice(state: VirtualDeviceState): VirtualDevicePatch {
+  return {
+    buttonRedPressed: state.buttonRedPressed,
+    buttonBlackPressed: state.buttonBlackPressed,
+    ledGreenOn: state.ledGreenOn,
+    ledOrangeOn: state.ledOrangeOn,
+    temperatureC: state.temperatureC,
+    humidityPct: state.humidityPct,
+    brightness: state.brightness,
+    counterValue: state.counterValue
+  };
+}
+
 export default function App() {
   const [token, setToken] = useState<string | null>(() => getStoredToken());
   const [session, setSession] = useState<AuthMe | null>(null);
@@ -1307,8 +1466,12 @@ export default function App() {
   const [adminFeedPaused, setAdminFeedPaused] = useState(false);
   const [adminSettingsDraftMode, setAdminSettingsDraftMode] = useState<LanguageMode>('BROWSER_EN_FALLBACK');
   const [adminSettingsDraftTimeFormat24h, setAdminSettingsDraftTimeFormat24h] = useState(true);
+  const [adminSettingsDraftVirtualVisible, setAdminSettingsDraftVirtualVisible] = useState(true);
   const [adminDeviceSnapshots, setAdminDeviceSnapshots] = useState<Record<string, DeviceTelemetrySnapshot>>({});
   const [adminDeviceIpById, setAdminDeviceIpById] = useState<Record<string, string>>({});
+  const [studentVirtualPatch, setStudentVirtualPatch] = useState<VirtualDevicePatch | null>(null);
+  const [virtualControlDeviceId, setVirtualControlDeviceId] = useState<string | null>(null);
+  const [virtualControlPatch, setVirtualControlPatch] = useState<VirtualDevicePatch | null>(null);
 
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -1356,11 +1519,16 @@ export default function App() {
       return;
     }
     setRecentFeedEventIds((previous) => {
+      let changed = false;
       const next = { ...previous };
       for (const event of events) {
+        if (next[event.id]) {
+          continue;
+        }
         next[event.id] = true;
+        changed = true;
       }
-      return next;
+      return changed ? next : previous;
     });
     if (recentFeedClearTimerRef.current !== null) {
       window.clearTimeout(recentFeedClearTimerRef.current);
@@ -1511,8 +1679,12 @@ export default function App() {
     setAdminFeedPaused(false);
     setAdminSettingsDraftMode('BROWSER_EN_FALLBACK');
     setAdminSettingsDraftTimeFormat24h(true);
+    setAdminSettingsDraftVirtualVisible(true);
     setAdminDeviceSnapshots({});
     setAdminDeviceIpById({});
+    setStudentVirtualPatch(null);
+    setVirtualControlDeviceId(null);
+    setVirtualControlPatch(null);
     setCounterResetDeviceId(null);
     setPinEditorDeviceId(null);
     setPinEditorValue('');
@@ -1540,6 +1712,9 @@ export default function App() {
       if (!previous) {
         return previous;
       }
+      if (sameGroupOverviewList(previous.groups, groups)) {
+        return previous;
+      }
       return { ...previous, groups };
     });
   }, []);
@@ -1548,6 +1723,12 @@ export default function App() {
     const tasks = await api.adminTasks(activeToken);
     setAdminData((previous) => {
       if (!previous) {
+        return previous;
+      }
+      if (
+        previous.tasks.length === tasks.length &&
+        previous.tasks.every((task, index) => sameTaskInfo(task, tasks[index]))
+      ) {
         return previous;
       }
       return { ...previous, tasks };
@@ -1563,18 +1744,21 @@ export default function App() {
         groupConfig: bootstrap.groupConfig,
         groupPresence: bootstrap.groupPresence,
         feed: clampFeed(bootstrap.recentFeed),
+        virtualDevice: bootstrap.virtualDevice,
         settings: bootstrap.settings
       });
       setStudentConfigDraft(safeConfigMap(bootstrap.groupConfig.config));
       setDisplayNameDraft(bootstrap.me.displayName);
+      setStudentVirtualPatch(bootstrap.virtualDevice ? patchFromVirtualDevice(bootstrap.virtualDevice) : null);
       setDefaultLanguageMode(bootstrap.settings.defaultLanguageMode);
       setTimeFormat24h(bootstrap.settings.timeFormat24h);
       return;
     }
 
-    const [tasks, devices, groups, settings, events] = await Promise.all([
+    const [tasks, devices, virtualDevices, groups, settings, events] = await Promise.all([
       api.adminTasks(activeToken),
       api.adminDevices(activeToken),
+      api.adminVirtualDevices(activeToken),
       api.adminGroups(activeToken),
       api.adminSettings(activeToken),
       api.eventsFeed(activeToken, { limit: MAX_FEED_EVENTS, includeInternal: true })
@@ -1583,6 +1767,7 @@ export default function App() {
     setAdminData({
       tasks,
       devices,
+      virtualDevices,
       groups,
       settings,
       events: clampFeed(events)
@@ -1590,6 +1775,7 @@ export default function App() {
     deferredAdminFeedRef.current = [];
     setAdminSettingsDraftMode(settings.defaultLanguageMode);
     setAdminSettingsDraftTimeFormat24h(settings.timeFormat24h);
+    setAdminSettingsDraftVirtualVisible(settings.studentVirtualDeviceVisible);
     setDefaultLanguageMode(settings.defaultLanguageMode);
     setTimeFormat24h(settings.timeFormat24h);
     setAdminPage('dashboard');
@@ -1649,6 +1835,20 @@ export default function App() {
     }
     setStudentShowInternal(false);
   }, [studentData]);
+
+  useEffect(() => {
+    const virtualDevice = studentData?.virtualDevice;
+    if (!virtualDevice) {
+      setStudentVirtualPatch(null);
+      return;
+    }
+    setStudentVirtualPatch((previous) => {
+      if (!previous) {
+        return patchFromVirtualDevice(virtualDevice);
+      }
+      return previous;
+    });
+  }, [studentData?.virtualDevice]);
 
   useEffect(() => {
     if (!selectedEvent) {
@@ -1720,6 +1920,21 @@ export default function App() {
       window.removeEventListener('keydown', onKeyDown);
     };
   }, [pinEditorDeviceId]);
+
+  useEffect(() => {
+    if (!virtualControlDeviceId) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeVirtualControlModal();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [virtualControlDeviceId]);
 
   useEffect(() => {
     const timerId = window.setInterval(() => {
@@ -1960,6 +2175,9 @@ export default function App() {
             if (!previous) {
               return previous;
             }
+            if (samePresenceList(previous.groupPresence, presence)) {
+              return previous;
+            }
             return {
               ...previous,
               groupPresence: presence
@@ -1970,16 +2188,23 @@ export default function App() {
 
         if (envelope.type === 'group.config.updated') {
           const nextConfig = envelope.payload as GroupConfig;
+          let changed = false;
           setStudentData((previous) => {
             if (!previous) {
               return previous;
             }
+            if (sameGroupConfigMeta(previous.groupConfig, nextConfig)) {
+              return previous;
+            }
+            changed = true;
             return {
               ...previous,
               groupConfig: nextConfig
             };
           });
-          setStudentConfigDraft(safeConfigMap(nextConfig.config));
+          if (changed) {
+            setStudentConfigDraft(safeConfigMap(nextConfig.config));
+          }
           return;
         }
 
@@ -1987,6 +2212,9 @@ export default function App() {
           const nextCapabilities = envelope.payload as TaskCapabilities;
           setStudentData((previous) => {
             if (!previous) {
+              return previous;
+            }
+            if (sameTaskCapabilities(previous.capabilities, nextCapabilities)) {
               return previous;
             }
             return {
@@ -2010,11 +2238,15 @@ export default function App() {
             if (!previous) {
               return previous;
             }
+            const nextCapabilities =
+              (taskLike as TaskDefinitionPayload).studentCapabilities ?? previous.capabilities;
+            if (sameTaskInfo(previous.activeTask, task) && sameTaskCapabilities(previous.capabilities, nextCapabilities)) {
+              return previous;
+            }
             return {
               ...previous,
               activeTask: task,
-              capabilities:
-                (taskLike as TaskDefinitionPayload).studentCapabilities ?? previous.capabilities
+              capabilities: nextCapabilities
             };
           });
           return;
@@ -2025,19 +2257,73 @@ export default function App() {
           return;
         }
 
+        if (envelope.type === 'virtual.device.updated') {
+          const virtualDevice = envelope.payload as VirtualDeviceState;
+          let changed = false;
+          setStudentData((previous) => {
+            if (!previous || !previous.settings.studentVirtualDeviceVisible) {
+              return previous;
+            }
+            if (previous.virtualDevice && sameVirtualDeviceState(previous.virtualDevice, virtualDevice)) {
+              return previous;
+            }
+            changed = true;
+            return {
+              ...previous,
+              virtualDevice
+            };
+          });
+          if (changed) {
+            const nextPatch = patchFromVirtualDevice(virtualDevice);
+            setStudentVirtualPatch((previous) => (sameVirtualDevicePatch(previous, nextPatch) ? previous : nextPatch));
+          }
+          return;
+        }
+
         if (envelope.type === 'settings.updated') {
           const settings = envelope.payload as AppSettings;
+          let becameVisible = false;
+          let becameHidden = false;
           setStudentData((previous) => {
             if (!previous) {
               return previous;
             }
+            becameVisible = !previous.settings.studentVirtualDeviceVisible && settings.studentVirtualDeviceVisible;
+            becameHidden = previous.settings.studentVirtualDeviceVisible && !settings.studentVirtualDeviceVisible;
+            const nextVirtualDevice = settings.studentVirtualDeviceVisible ? previous.virtualDevice : null;
+            if (sameAppSettings(previous.settings, settings) && nextVirtualDevice === previous.virtualDevice) {
+              return previous;
+            }
             return {
               ...previous,
+              virtualDevice: nextVirtualDevice,
               settings
             };
           });
           setDefaultLanguageMode(settings.defaultLanguageMode);
           setTimeFormat24h(settings.timeFormat24h);
+          if (becameHidden) {
+            setStudentVirtualPatch((previous) => (previous === null ? previous : null));
+          } else if (becameVisible) {
+            api.studentVirtualDevice(token)
+              .then((virtualDevice) => {
+                setStudentData((previous) => {
+                  if (!previous || !previous.settings.studentVirtualDeviceVisible) {
+                    return previous;
+                  }
+                  if (previous.virtualDevice && sameVirtualDeviceState(previous.virtualDevice, virtualDevice)) {
+                    return previous;
+                  }
+                  return {
+                    ...previous,
+                    virtualDevice
+                  };
+                });
+                const nextPatch = patchFromVirtualDevice(virtualDevice);
+                setStudentVirtualPatch((previous) => (sameVirtualDevicePatch(previous, nextPatch) ? previous : nextPatch));
+              })
+              .catch((error) => reportBackgroundError('studentVirtualDevice', error));
+          }
         }
         return;
       }
@@ -2071,6 +2357,9 @@ export default function App() {
           if (!previous) {
             return previous;
           }
+          if (sameAppSettings(previous.settings, settings)) {
+            return previous;
+          }
           return {
             ...previous,
             settings
@@ -2078,8 +2367,36 @@ export default function App() {
         });
         setAdminSettingsDraftMode(settings.defaultLanguageMode);
         setAdminSettingsDraftTimeFormat24h(settings.timeFormat24h);
+        setAdminSettingsDraftVirtualVisible(settings.studentVirtualDeviceVisible);
         setDefaultLanguageMode(settings.defaultLanguageMode);
         setTimeFormat24h(settings.timeFormat24h);
+        return;
+      }
+
+      if (envelope.type === 'virtual.device.updated') {
+        const updatedVirtual = envelope.payload as VirtualDeviceState;
+        setAdminData((previous) => {
+          if (!previous) {
+            return previous;
+          }
+          const existing = previous.virtualDevices.find(
+            (entry) => entry.deviceId === updatedVirtual.deviceId
+          );
+          if (existing && sameVirtualDeviceState(existing, updatedVirtual)) {
+            return previous;
+          }
+          const hasExisting = Boolean(existing);
+          return {
+            ...previous,
+            virtualDevices: hasExisting
+              ? previous.virtualDevices.map((entry) =>
+                  entry.deviceId === updatedVirtual.deviceId ? updatedVirtual : entry
+                )
+              : [...previous.virtualDevices, updatedVirtual].sort((a, b) =>
+                  a.deviceId.localeCompare(b.deviceId)
+                )
+          };
+        });
         return;
       }
 
@@ -2324,7 +2641,8 @@ export default function App() {
       const updated = await api.updateAdminSettings(
         token,
         adminSettingsDraftMode,
-        adminSettingsDraftTimeFormat24h
+        adminSettingsDraftTimeFormat24h,
+        adminSettingsDraftVirtualVisible
       );
       setAdminData((previous) => {
         if (!previous) {
@@ -2338,6 +2656,7 @@ export default function App() {
       setDefaultLanguageMode(updated.defaultLanguageMode);
       setTimeFormat24h(updated.timeFormat24h);
       setAdminSettingsDraftTimeFormat24h(updated.timeFormat24h);
+      setAdminSettingsDraftVirtualVisible(updated.studentVirtualDeviceVisible);
       setInfoMessage(t('settingsUpdated'));
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
@@ -2346,36 +2665,146 @@ export default function App() {
     }
   };
 
-  const sendAdminDeviceCommand = async (
-    deviceId: string,
-    command: DeviceCommandType,
-    on?: boolean
-  ): Promise<boolean> => {
-    if (!token) {
-      return false;
+  const sendAdminDeviceCommand = useCallback(
+    async (
+      deviceId: string,
+      command: DeviceCommandType,
+      on?: boolean
+    ): Promise<boolean> => {
+      if (!token) {
+        return false;
+      }
+
+      setBusyKey(`admin-command-${deviceId}-${command}-${String(on)}`);
+      setErrorMessage(null);
+
+      try {
+        await api.adminDeviceCommand(token, deviceId, command, on);
+        return true;
+      } catch (error) {
+        setErrorMessage(toErrorMessage(error));
+        return false;
+      } finally {
+        setBusyKey(null);
+      }
+    },
+    [token]
+  );
+
+  const setStudentVirtualField = useCallback(<K extends keyof VirtualDevicePatch>(key: K, value: VirtualDevicePatch[K]) => {
+    setStudentVirtualPatch((previous) => {
+      if (previous && previous[key] === value) {
+        return previous;
+      }
+      const base = previous ?? {};
+      return {
+        ...base,
+        [key]: value
+      };
+    });
+  }, []);
+
+  const setModalVirtualField = useCallback(<K extends keyof VirtualDevicePatch>(key: K, value: VirtualDevicePatch[K]) => {
+    setVirtualControlPatch((previous) => {
+      if (previous && previous[key] === value) {
+        return previous;
+      }
+      const base = previous ?? {};
+      return {
+        ...base,
+        [key]: value
+      };
+    });
+  }, []);
+
+  const saveStudentVirtualDevice = async () => {
+    if (!token || !studentVirtualPatch || !studentData?.virtualDevice) {
+      return;
     }
 
-    setBusyKey(`admin-command-${deviceId}-${command}-${String(on)}`);
+    setBusyKey('student-virtual-control');
     setErrorMessage(null);
 
     try {
-      await api.adminDeviceCommand(token, deviceId, command, on);
-      return true;
+      const updated = await api.studentVirtualDeviceControl(token, studentVirtualPatch);
+      setStudentData((previous) => {
+        if (!previous) {
+          return previous;
+        }
+        if (previous.virtualDevice && sameVirtualDeviceState(previous.virtualDevice, updated)) {
+          return previous;
+        }
+        return {
+          ...previous,
+          virtualDevice: updated
+        };
+      });
+      const nextPatch = patchFromVirtualDevice(updated);
+      setStudentVirtualPatch((previous) => (sameVirtualDevicePatch(previous, nextPatch) ? previous : nextPatch));
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
-      return false;
     } finally {
       setBusyKey(null);
     }
   };
 
-  const closeCounterResetModal = () => {
-    setCounterResetDeviceId(null);
+  const openVirtualControlModal = useCallback((deviceId: string) => {
+    setVirtualControlDeviceId(deviceId);
+    const state = adminDataRef.current?.virtualDevices.find((entry) => entry.deviceId === deviceId) ?? null;
+    setVirtualControlPatch(state ? patchFromVirtualDevice(state) : null);
+  }, []);
+
+  const closeVirtualControlModal = useCallback(() => {
+    setVirtualControlDeviceId(null);
+    setVirtualControlPatch(null);
+  }, []);
+
+  const saveAdminVirtualDevice = async () => {
+    if (!token || !virtualControlDeviceId || !virtualControlPatch) {
+      return;
+    }
+
+    const busyId = `admin-virtual-control-${virtualControlDeviceId}`;
+    setBusyKey(busyId);
+    setErrorMessage(null);
+
+    try {
+      const updated = await api.adminVirtualDeviceControl(token, virtualControlDeviceId, virtualControlPatch);
+      setAdminData((previous) => {
+        if (!previous) {
+          return previous;
+        }
+        const existing = previous.virtualDevices.find((entry) => entry.deviceId === updated.deviceId);
+        if (existing && sameVirtualDeviceState(existing, updated)) {
+          return previous;
+        }
+        const hasExisting = Boolean(existing);
+        const nextVirtualDevices = hasExisting
+          ? previous.virtualDevices.map((entry) =>
+              entry.deviceId === updated.deviceId ? updated : entry
+            )
+          : [...previous.virtualDevices, updated].sort((a, b) => a.deviceId.localeCompare(b.deviceId));
+        return {
+          ...previous,
+          virtualDevices: nextVirtualDevices
+        };
+      });
+      const nextPatch = patchFromVirtualDevice(updated);
+      setVirtualControlPatch((previous) => (sameVirtualDevicePatch(previous, nextPatch) ? previous : nextPatch));
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error));
+    } finally {
+      setBusyKey(null);
+    }
   };
 
-  const openCounterResetModal = (deviceId: string) => {
+  const closeCounterResetModal = useCallback(() => {
+    setCounterResetDeviceId(null);
+  }, []);
+
+  const openCounterResetModal = useCallback((deviceId: string) => {
     setCounterResetDeviceId(deviceId);
-  };
+  }, []);
 
   const confirmCounterReset = async () => {
     if (!counterResetDeviceId) {
@@ -2387,13 +2816,13 @@ export default function App() {
     }
   };
 
-  const closePinEditor = () => {
+  const closePinEditor = useCallback(() => {
     setPinEditorDeviceId(null);
     setPinEditorValue('');
     setPinEditorLoading(false);
-  };
+  }, []);
 
-  const openPinEditor = async (deviceId: string) => {
+  const openPinEditor = useCallback(async (deviceId: string) => {
     if (!token) {
       return;
     }
@@ -2412,7 +2841,7 @@ export default function App() {
     } finally {
       setPinEditorLoading(false);
     }
-  };
+  }, [token]);
 
   const savePinEditor = async () => {
     if (!token || !pinEditorDeviceId) {
@@ -2447,9 +2876,10 @@ export default function App() {
     setErrorMessage(null);
 
     try {
-      const [tasks, devices, groups, events, settings] = await Promise.all([
+      const [tasks, devices, virtualDevices, groups, events, settings] = await Promise.all([
         api.adminTasks(token),
         api.adminDevices(token),
+        api.adminVirtualDevices(token),
         api.adminGroups(token),
         api.eventsFeed(token, { limit: MAX_FEED_EVENTS, includeInternal: true }),
         api.adminSettings(token)
@@ -2463,6 +2893,7 @@ export default function App() {
           ...previous,
           tasks,
           devices,
+          virtualDevices,
           groups,
           events: clampFeed(events),
           settings
@@ -2471,6 +2902,7 @@ export default function App() {
       deferredAdminFeedRef.current = [];
       setAdminSettingsDraftMode(settings.defaultLanguageMode);
       setAdminSettingsDraftTimeFormat24h(settings.timeFormat24h);
+      setAdminSettingsDraftVirtualVisible(settings.studentVirtualDeviceVisible);
       setDefaultLanguageMode(settings.defaultLanguageMode);
       setTimeFormat24h(settings.timeFormat24h);
     } catch (error) {
@@ -2586,6 +3018,16 @@ export default function App() {
   const counterResetBusy = counterResetDeviceId
     ? busyKey === `admin-command-${counterResetDeviceId}-COUNTER_RESET-undefined`
     : false;
+  const studentVirtualBusy = busyKey === 'student-virtual-control';
+  const virtualControlBusy = virtualControlDeviceId
+    ? busyKey === `admin-virtual-control-${virtualControlDeviceId}`
+    : false;
+  const selectedAdminVirtualDevice = useMemo(() => {
+    if (!adminData || !virtualControlDeviceId) {
+      return null;
+    }
+    return adminData.virtualDevices.find((entry) => entry.deviceId === virtualControlDeviceId) ?? null;
+  }, [adminData, virtualControlDeviceId]);
 
   const openSettingsSection = useCallback(() => {
     if (session?.role === 'ADMIN') {
@@ -2648,6 +3090,416 @@ export default function App() {
       2
     );
   }, [selectedEvent]);
+
+  const studentFeedRows = useMemo(() => {
+    if (studentVisibleFeed.length === 0) {
+      return null;
+    }
+    return studentVisibleFeed.map((eventItem) => (
+      <tr
+        key={eventItem.id}
+        className={`feed-row-clickable ${recentFeedEventIds[eventItem.id] ? 'feed-row-new' : ''}`}
+        role="button"
+        tabIndex={0}
+        onClick={() => {
+          setSelectedEvent(eventItem);
+          setEventDetailsViewMode('rendered');
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            setSelectedEvent(eventItem);
+            setEventDetailsViewMode('rendered');
+          }
+        }}
+      >
+        <td>{formatTs(eventItem.ingestTs)}</td>
+        <td>{eventItem.deviceId}</td>
+        <td>{eventItem.eventType}</td>
+        <td className="mono raw-cell">
+          {feedViewMode === 'rendered'
+            ? (studentFeedValues.get(eventItem.id) ?? '')
+            : eventItem.payloadJson}
+        </td>
+        <td className="mono">{eventItem.topic}</td>
+      </tr>
+    ));
+  }, [feedViewMode, formatTs, recentFeedEventIds, studentFeedValues, studentVisibleFeed]);
+
+  const adminDeviceCards = useMemo(() => {
+    if (!adminData) {
+      return null;
+    }
+    return adminData.devices.map((device) => {
+      const snapshot = adminDeviceSnapshots[device.deviceId];
+      const uptimeNow = estimateUptimeNow(snapshot, nowEpochMs);
+      const redPressed = snapshot?.buttonRedPressed ?? null;
+      const blackPressed = snapshot?.buttonBlackPressed ?? null;
+      const greenOn = snapshot?.ledGreenOn ?? null;
+      const orangeOn = snapshot?.ledOrangeOn ?? null;
+      const temperatureC = snapshot?.temperatureC ?? null;
+      const humidityPct = snapshot?.humidityPct ?? null;
+      const brightnessRaw = snapshot?.brightness ?? null;
+      const counterRaw = snapshot?.counterValue ?? null;
+      const isDeviceOnline = device.online;
+      const redButton =
+        !isDeviceOnline || redPressed === null
+          ? t('stateUnknown')
+          : redPressed
+            ? t('statePressed')
+            : t('stateReleased');
+      const blackButton =
+        !isDeviceOnline || blackPressed === null
+          ? t('stateUnknown')
+          : blackPressed
+            ? t('statePressed')
+            : t('stateReleased');
+      const temperature =
+        !isDeviceOnline || temperatureC === null ? '-' : `${temperatureC.toFixed(1)} °C`;
+      const humidity =
+        !isDeviceOnline || humidityPct === null ? '-' : `${Math.round(humidityPct)} %`;
+      const brightness =
+        !isDeviceOnline || brightnessRaw === null ? '-' : formatBrightnessMeasurement(brightnessRaw);
+      const counterValue =
+        counterRaw === null
+          ? '-'
+          : Number.isInteger(counterRaw)
+            ? String(counterRaw)
+            : counterRaw.toFixed(2);
+      const ipAddress = adminDeviceIpById[device.deviceId] ?? '-';
+      const ipAddressHref = ipAddressToHref(ipAddress);
+      const lastEventRelative = formatRelativeFromNow(device.lastSeen, nowEpochMs, language);
+      const bars = rssiBars(device.rssi);
+      const rssiHint =
+        !isDeviceOnline ? '-' : device.rssi === null ? t('rssiNoData') : `${device.rssi} dBm`;
+      const uptimeLabel =
+        !isDeviceOnline || uptimeNow === null ? '-' : formatRoundedDuration(uptimeNow, language);
+      const redButtonClass =
+        !isDeviceOnline || redPressed === null
+          ? 'state-unknown'
+          : redPressed
+            ? 'state-pressed'
+            : 'state-released';
+      const blackButtonClass =
+        !isDeviceOnline || blackPressed === null
+          ? 'state-unknown'
+          : blackPressed
+            ? 'state-pressed'
+            : 'state-released';
+      const nextGreenState = greenOn === null ? true : !greenOn;
+      const nextOrangeState = orangeOn === null ? true : !orangeOn;
+      const greenBusy =
+        busyKey?.startsWith(`admin-command-${device.deviceId}-LED_GREEN-`) ?? false;
+      const orangeBusy =
+        busyKey?.startsWith(`admin-command-${device.deviceId}-LED_ORANGE-`) ?? false;
+      const counterBusy = busyKey === `admin-command-${device.deviceId}-COUNTER_RESET-undefined`;
+      const rssiTooltipId = `rssi-tooltip-${device.deviceId}`;
+
+      return (
+        <article className="device-card" key={device.deviceId}>
+          <header>
+            <strong>{device.deviceId}</strong>
+            <div className="device-header-actions">
+              <button
+                className="icon-button"
+                type="button"
+                title={t('pinSettings')}
+                aria-label={`${t('pinSettings')} ${device.deviceId}`}
+                onClick={() => openPinEditor(device.deviceId)}
+              >
+                <SettingsIcon />
+              </button>
+              <span className={`chip ${device.online ? 'ok' : 'warn'}`}>
+                {statusLabel(device.online, language)}
+              </span>
+            </div>
+          </header>
+
+          <p title={formatTs(device.lastSeen)}>
+            {t('lastEvent')}: {lastEventRelative}
+          </p>
+          <p>
+            {t('ipAddress')}:{' '}
+            {ipAddressHref ? (
+              <a
+                className="device-link"
+                href={ipAddressHref}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {ipAddress}
+              </a>
+            ) : (
+              ipAddress
+            )}
+          </p>
+          <p>
+            {t('uptime')}: {uptimeLabel}
+          </p>
+          <div className="rssi-row">
+            <span>{t('rssi')}:</span>
+            {isDeviceOnline ? (
+              <div className="rssi-tooltip-host">
+                <div
+                  className={`rssi-bars ${rssiClassName(device.rssi)}`}
+                  aria-label={rssiHint}
+                  aria-describedby={rssiTooltipId}
+                >
+                  <span className={`bar ${bars >= 1 ? 'active' : ''}`} />
+                  <span className={`bar ${bars >= 2 ? 'active' : ''}`} />
+                  <span className={`bar ${bars >= 3 ? 'active' : ''}`} />
+                  <span className={`bar ${bars >= 4 ? 'active' : ''}`} />
+                </div>
+                <span className="rssi-tooltip" id={rssiTooltipId}>
+                  {rssiHint}
+                </span>
+              </div>
+            ) : (
+              <span className="muted">-</span>
+            )}
+          </div>
+          <div className="device-metrics-grid">
+            <div className="device-metric">
+              <span className="metric-icon">
+                <MetricIcon kind="temperature" />
+              </span>
+              <span className="metric-text" title={t('metricTemp')}>{temperature}</span>
+            </div>
+            <div className="device-metric">
+              <span className="metric-icon">
+                <MetricIcon kind="humidity" />
+              </span>
+              <span className="metric-text" title={t('metricHumidity')}>{humidity}</span>
+            </div>
+            <div className="device-metric">
+              <span className="metric-icon">
+                <MetricIcon kind="brightness" />
+              </span>
+              <span className="metric-text" title={t('metricBrightness')}>{brightness}</span>
+            </div>
+            <button
+              className="device-metric counter-metric-trigger"
+              type="button"
+              onClick={() => openCounterResetModal(device.deviceId)}
+              title={t('commandCounterReset')}
+              disabled={!isDeviceOnline || counterBusy}
+            >
+              <span className="metric-icon">
+                <MetricIcon kind="counter" />
+              </span>
+              <span className="metric-text">{counterValue}</span>
+            </button>
+            <div className="device-metric full">
+              <span className="metric-icon">
+                <MetricIcon kind="buttons" />
+              </span>
+              <span className="metric-text metric-state-row">
+                <span className="metric-label">Red:</span>
+                <span className={`state-label ${redButtonClass}`}>{redButton}</span>
+              </span>
+            </div>
+            <div className="device-metric full">
+              <span className="metric-icon">
+                <MetricIcon kind="buttons" />
+              </span>
+              <span className="metric-text metric-state-row">
+                <span className="metric-label">Black:</span>
+                <span className={`state-label ${blackButtonClass}`}>{blackButton}</span>
+              </span>
+            </div>
+          </div>
+
+          <div className="button-grid">
+            <button
+              className={`button ${greenOn ? 'active' : 'secondary'}`}
+              type="button"
+              onClick={() => sendAdminDeviceCommand(device.deviceId, 'LED_GREEN', nextGreenState)}
+              disabled={greenBusy || !isDeviceOnline}
+            >
+              {t('commandGreenLed')}
+            </button>
+            <button
+              className={`button ${orangeOn ? 'active' : 'secondary'}`}
+              type="button"
+              onClick={() => sendAdminDeviceCommand(device.deviceId, 'LED_ORANGE', nextOrangeState)}
+              disabled={orangeBusy || !isDeviceOnline}
+            >
+              {t('commandOrangeLed')}
+            </button>
+          </div>
+        </article>
+      );
+    });
+  }, [
+    adminData?.devices,
+    adminDeviceIpById,
+    adminDeviceSnapshots,
+    busyKey,
+    formatTs,
+    language,
+    nowEpochMs,
+    openCounterResetModal,
+    openPinEditor,
+    sendAdminDeviceCommand,
+    t
+  ]);
+
+  const adminVirtualDeviceCards = useMemo(() => {
+    if (!adminData) {
+      return null;
+    }
+    return adminData.virtualDevices.map((device) => {
+      const bars = rssiBars(device.rssi);
+      const rssiHint = `${device.rssi} dBm`;
+      const rssiTooltipId = `virtual-rssi-${device.deviceId}`;
+      const ipAddressHref = ipAddressToHref(device.ipAddress);
+      const redButtonClass = device.buttonRedPressed ? 'state-pressed' : 'state-released';
+      const blackButtonClass = device.buttonBlackPressed ? 'state-pressed' : 'state-released';
+
+      return (
+        <article className="device-card" key={device.deviceId}>
+          <header>
+            <strong>{device.deviceId}</strong>
+            <div className="device-header-actions">
+              <button
+                className="button tiny secondary"
+                type="button"
+                onClick={() => openVirtualControlModal(device.deviceId)}
+              >
+                {t('openControls')}
+              </button>
+              <span className={`chip ${device.online ? 'ok' : 'warn'}`}>
+                {statusLabel(device.online, language)}
+              </span>
+            </div>
+          </header>
+
+          <p>{t('groupConfig')}: {device.groupKey}</p>
+          <p title={formatTs(device.updatedAt)}>
+            {t('lastEvent')}: {formatRelativeFromNow(device.updatedAt, nowEpochMs, language)}
+          </p>
+          <p>
+            {t('ipAddress')}:{' '}
+            {ipAddressHref ? (
+              <a
+                className="device-link"
+                href={ipAddressHref}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {device.ipAddress}
+              </a>
+            ) : (
+              device.ipAddress
+            )}
+          </p>
+          <div className="rssi-row">
+            <span>{t('rssi')}:</span>
+            <div className="rssi-tooltip-host">
+              <div
+                className={`rssi-bars ${rssiClassName(device.rssi)}`}
+                aria-label={rssiHint}
+                aria-describedby={rssiTooltipId}
+              >
+                <span className={`bar ${bars >= 1 ? 'active' : ''}`} />
+                <span className={`bar ${bars >= 2 ? 'active' : ''}`} />
+                <span className={`bar ${bars >= 3 ? 'active' : ''}`} />
+                <span className={`bar ${bars >= 4 ? 'active' : ''}`} />
+              </div>
+              <span className="rssi-tooltip" id={rssiTooltipId}>
+                {rssiHint}
+              </span>
+            </div>
+          </div>
+
+          <div className="device-metrics-grid">
+            <div className="device-metric">
+              <span className="metric-icon">
+                <MetricIcon kind="temperature" />
+              </span>
+              <span className="metric-text">{device.temperatureC.toFixed(1)} °C</span>
+            </div>
+            <div className="device-metric">
+              <span className="metric-icon">
+                <MetricIcon kind="humidity" />
+              </span>
+              <span className="metric-text">{Math.round(device.humidityPct)} %</span>
+            </div>
+            <div className="device-metric">
+              <span className="metric-icon">
+                <MetricIcon kind="brightness" />
+              </span>
+              <span className="metric-text">{formatBrightnessMeasurement(device.brightness)}</span>
+            </div>
+            <div className="device-metric">
+              <span className="metric-icon">
+                <MetricIcon kind="counter" />
+              </span>
+              <span className="metric-text">{device.counterValue}</span>
+            </div>
+            <div className="device-metric full">
+              <span className="metric-icon">
+                <MetricIcon kind="buttons" />
+              </span>
+              <span className="metric-text metric-state-row">
+                <span className="metric-label">Red:</span>
+                <span className={`state-label ${redButtonClass}`}>
+                  {device.buttonRedPressed ? t('statePressed') : t('stateReleased')}
+                </span>
+              </span>
+            </div>
+            <div className="device-metric full">
+              <span className="metric-icon">
+                <MetricIcon kind="buttons" />
+              </span>
+              <span className="metric-text metric-state-row">
+                <span className="metric-label">Black:</span>
+                <span className={`state-label ${blackButtonClass}`}>
+                  {device.buttonBlackPressed ? t('statePressed') : t('stateReleased')}
+                </span>
+              </span>
+            </div>
+          </div>
+        </article>
+      );
+    });
+  }, [adminData?.virtualDevices, formatTs, language, nowEpochMs, openVirtualControlModal, t]);
+
+  const adminFeedRows = useMemo(() => {
+    if (adminVisibleFeed.length === 0) {
+      return null;
+    }
+    return adminVisibleFeed.map((eventItem) => (
+      <tr
+        key={eventItem.id}
+        className={`feed-row-clickable ${recentFeedEventIds[eventItem.id] ? 'feed-row-new' : ''}`}
+        role="button"
+        tabIndex={0}
+        onClick={() => {
+          setSelectedEvent(eventItem);
+          setEventDetailsViewMode('rendered');
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            setSelectedEvent(eventItem);
+            setEventDetailsViewMode('rendered');
+          }
+        }}
+      >
+        <td>{formatTs(eventItem.ingestTs)}</td>
+        <td>{eventItem.deviceId}</td>
+        <td>{eventItem.eventType}</td>
+        <td className="mono raw-cell">
+          {feedViewMode === 'rendered'
+            ? (adminFeedValues.get(eventItem.id) ?? '')
+            : eventItem.payloadJson}
+        </td>
+        <td>{eventItem.category}</td>
+        <td className="mono">{eventItem.topic}</td>
+      </tr>
+    ));
+  }, [adminFeedValues, adminVisibleFeed, feedViewMode, formatTs, recentFeedEventIds]);
 
   const renderConfigInput = (
     option: string,
@@ -2985,6 +3837,117 @@ export default function App() {
               </section>
             ) : null}
 
+            {studentData.settings.studentVirtualDeviceVisible && studentData.virtualDevice && studentVirtualPatch ? (
+              <section className="panel panel-animate">
+                <h2>{t('virtualDevice')}</h2>
+                <p className="muted">{studentData.virtualDevice.deviceId}</p>
+                <div className="virtual-controls-grid">
+                  <label className="checkbox-inline">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(studentVirtualPatch.buttonRedPressed)}
+                      onChange={(event) => setStudentVirtualField('buttonRedPressed', event.target.checked)}
+                    />
+                    <span>Red</span>
+                  </label>
+                  <label className="checkbox-inline">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(studentVirtualPatch.buttonBlackPressed)}
+                      onChange={(event) => setStudentVirtualField('buttonBlackPressed', event.target.checked)}
+                    />
+                    <span>Black</span>
+                  </label>
+                  <label className="checkbox-inline">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(studentVirtualPatch.ledGreenOn)}
+                      onChange={(event) => setStudentVirtualField('ledGreenOn', event.target.checked)}
+                    />
+                    <span>{t('commandGreenLed')}</span>
+                  </label>
+                  <label className="checkbox-inline">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(studentVirtualPatch.ledOrangeOn)}
+                      onChange={(event) => setStudentVirtualField('ledOrangeOn', event.target.checked)}
+                    />
+                    <span>{t('commandOrangeLed')}</span>
+                  </label>
+                  <label>
+                    <span>{t('metricTemp')}</span>
+                    <input
+                      className="input"
+                      type="number"
+                      step="0.1"
+                      value={studentVirtualPatch.temperatureC ?? 0}
+                      onChange={(event) => {
+                        const next = Number.isFinite(event.target.valueAsNumber)
+                          ? event.target.valueAsNumber
+                          : (studentVirtualPatch.temperatureC ?? 0);
+                        setStudentVirtualField('temperatureC', next);
+                      }}
+                    />
+                  </label>
+                  <label>
+                    <span>{t('metricHumidity')}</span>
+                    <input
+                      className="input"
+                      type="number"
+                      step="0.1"
+                      value={studentVirtualPatch.humidityPct ?? 0}
+                      onChange={(event) => {
+                        const next = Number.isFinite(event.target.valueAsNumber)
+                          ? event.target.valueAsNumber
+                          : (studentVirtualPatch.humidityPct ?? 0);
+                        setStudentVirtualField('humidityPct', next);
+                      }}
+                    />
+                  </label>
+                  <label>
+                    <span>{t('metricBrightness')}</span>
+                    <input
+                      className="input"
+                      type="number"
+                      step="0.1"
+                      value={studentVirtualPatch.brightness ?? 0}
+                      onChange={(event) => {
+                        const next = Number.isFinite(event.target.valueAsNumber)
+                          ? event.target.valueAsNumber
+                          : (studentVirtualPatch.brightness ?? 0);
+                        setStudentVirtualField('brightness', next);
+                      }}
+                    />
+                  </label>
+                  <label>
+                    <span>{t('metricCounter')}</span>
+                    <input
+                      className="input"
+                      type="number"
+                      step="1"
+                      min="0"
+                      value={studentVirtualPatch.counterValue ?? 0}
+                      onChange={(event) => {
+                        const raw = Number.isFinite(event.target.valueAsNumber)
+                          ? event.target.valueAsNumber
+                          : (studentVirtualPatch.counterValue ?? 0);
+                        setStudentVirtualField('counterValue', Math.max(0, Math.round(raw)));
+                      }}
+                    />
+                  </label>
+                </div>
+
+                <button
+                  className="button"
+                  type="button"
+                  onClick={saveStudentVirtualDevice}
+                  disabled={studentVirtualBusy}
+                >
+                  {t('applyVirtualState')}
+                </button>
+              </section>
+            ) : null}
+
             <section className="panel panel-animate feed-panel full-width">
               <h2>{t('liveFeed')}</h2>
               <div className="toolbar">
@@ -3058,35 +4021,7 @@ export default function App() {
                         </td>
                       </tr>
                     ) : (
-                      studentVisibleFeed.map((eventItem) => (
-                          <tr
-                            key={eventItem.id}
-                            className={`feed-row-clickable ${recentFeedEventIds[eventItem.id] ? 'feed-row-new' : ''}`}
-                            role="button"
-                            tabIndex={0}
-                            onClick={() => {
-                              setSelectedEvent(eventItem);
-                              setEventDetailsViewMode('rendered');
-                            }}
-                            onKeyDown={(event) => {
-                              if (event.key === 'Enter' || event.key === ' ') {
-                                event.preventDefault();
-                                setSelectedEvent(eventItem);
-                                setEventDetailsViewMode('rendered');
-                              }
-                            }}
-                          >
-                            <td>{formatTs(eventItem.ingestTs)}</td>
-                            <td>{eventItem.deviceId}</td>
-                            <td>{eventItem.eventType}</td>
-                            <td className="mono raw-cell">
-                              {feedViewMode === 'rendered'
-                                ? (studentFeedValues.get(eventItem.id) ?? '')
-                                : eventItem.payloadJson}
-                            </td>
-                            <td className="mono">{eventItem.topic}</td>
-                          </tr>
-                        ))
+                      studentFeedRows
                     )}
                   </tbody>
                 </table>
@@ -3111,6 +4046,13 @@ export default function App() {
                 onClick={() => setAdminPage('devices')}
               >
                 {t('devices')}
+              </button>
+              <button
+                className={`button tiny ${adminPage === 'virtualDevices' ? 'active' : 'secondary'}`}
+                type="button"
+                onClick={() => setAdminPage('virtualDevices')}
+              >
+                {t('virtualDevices')}
               </button>
               <button
                 className={`button tiny ${adminPage === 'feed' ? 'active' : 'secondary'}`}
@@ -3160,6 +4102,9 @@ export default function App() {
                     <div className="admin-dashboard-actions">
                       <button className="button secondary" type="button" onClick={() => setAdminPage('devices')}>
                         {t('devices')}
+                      </button>
+                      <button className="button secondary" type="button" onClick={() => setAdminPage('virtualDevices')}>
+                        {t('virtualDevices')}
                       </button>
                       <button className="button secondary" type="button" onClick={() => setAdminPage('feed')}>
                         {t('liveFeed')}
@@ -3240,6 +4185,14 @@ export default function App() {
                       <option value="12">{t('timeFormat12h')}</option>
                     </select>
                   </label>
+                  <label className="checkbox-inline">
+                    <input
+                      type="checkbox"
+                      checked={adminSettingsDraftVirtualVisible}
+                      onChange={(event) => setAdminSettingsDraftVirtualVisible(event.target.checked)}
+                    />
+                    <span>{t('virtualVisibleToStudents')}</span>
+                  </label>
                   <button
                     className="button"
                     type="button"
@@ -3290,206 +4243,27 @@ export default function App() {
                   </div>
 
                   <div className="devices-grid">
-                    {adminData.devices.map((device) => {
-                  const snapshot = adminDeviceSnapshots[device.deviceId];
-                  const uptimeNow = estimateUptimeNow(snapshot, nowEpochMs);
-                  const redPressed = snapshot?.buttonRedPressed ?? null;
-                  const blackPressed = snapshot?.buttonBlackPressed ?? null;
-                  const greenOn = snapshot?.ledGreenOn ?? null;
-                  const orangeOn = snapshot?.ledOrangeOn ?? null;
-                  const temperatureC = snapshot?.temperatureC ?? null;
-                  const humidityPct = snapshot?.humidityPct ?? null;
-                  const brightnessRaw = snapshot?.brightness ?? null;
-                  const counterRaw = snapshot?.counterValue ?? null;
-                  const isDeviceOnline = device.online;
-                  const redButton =
-                    !isDeviceOnline || redPressed === null
-                      ? t('stateUnknown')
-                      : redPressed
-                        ? t('statePressed')
-                        : t('stateReleased');
-                  const blackButton =
-                    !isDeviceOnline || blackPressed === null
-                      ? t('stateUnknown')
-                      : blackPressed
-                        ? t('statePressed')
-                        : t('stateReleased');
-                  const temperature =
-                    !isDeviceOnline || temperatureC === null ? '-' : `${temperatureC.toFixed(1)} °C`;
-                  const humidity =
-                    !isDeviceOnline || humidityPct === null ? '-' : `${Math.round(humidityPct)} %`;
-                  const brightness =
-                    !isDeviceOnline || brightnessRaw === null ? '-' : formatBrightnessMeasurement(brightnessRaw);
-                  const counterValue =
-                    counterRaw === null
-                      ? '-'
-                      : Number.isInteger(counterRaw)
-                        ? String(counterRaw)
-                        : counterRaw.toFixed(2);
-                  const ipAddress = adminDeviceIpById[device.deviceId] ?? '-';
-                  const ipAddressHref = ipAddressToHref(ipAddress);
-                  const lastEventRelative = formatRelativeFromNow(device.lastSeen, nowEpochMs, language);
-                  const bars = rssiBars(device.rssi);
-                  const rssiHint =
-                    !isDeviceOnline ? '-' : device.rssi === null ? t('rssiNoData') : `${device.rssi} dBm`;
-                  const uptimeLabel =
-                    !isDeviceOnline || uptimeNow === null ? '-' : formatRoundedDuration(uptimeNow, language);
-                  const redButtonClass =
-                    !isDeviceOnline || redPressed === null
-                      ? 'state-unknown'
-                      : redPressed
-                        ? 'state-pressed'
-                        : 'state-released';
-                  const blackButtonClass =
-                    !isDeviceOnline || blackPressed === null
-                      ? 'state-unknown'
-                      : blackPressed
-                        ? 'state-pressed'
-                        : 'state-released';
-                  const nextGreenState = greenOn === null ? true : !greenOn;
-                  const nextOrangeState = orangeOn === null ? true : !orangeOn;
-                  const greenBusy =
-                    busyKey?.startsWith(`admin-command-${device.deviceId}-LED_GREEN-`) ?? false;
-                  const orangeBusy =
-                    busyKey?.startsWith(`admin-command-${device.deviceId}-LED_ORANGE-`) ?? false;
-                  const counterBusy = busyKey === `admin-command-${device.deviceId}-COUNTER_RESET-undefined`;
-                  const rssiTooltipId = `rssi-tooltip-${device.deviceId}`;
+                    {adminDeviceCards}
+                  </div>
+                </section>
+              ) : null}
 
-                  return (
-                    <article className="device-card" key={device.deviceId}>
-                      <header>
-                        <strong>{device.deviceId}</strong>
-                        <div className="device-header-actions">
-                          <button
-                            className="icon-button"
-                            type="button"
-                            title={t('pinSettings')}
-                            aria-label={`${t('pinSettings')} ${device.deviceId}`}
-                            onClick={() => openPinEditor(device.deviceId)}
-                          >
-                            <SettingsIcon />
-                          </button>
-                          <span className={`chip ${device.online ? 'ok' : 'warn'}`}>
-                            {statusLabel(device.online, language)}
-                          </span>
-                        </div>
-                      </header>
+              {adminPage === 'virtualDevices' ? (
+                <section className="panel panel-animate full-width">
+                  <div className="panel-header">
+                    <h2>{t('virtualDevices')}</h2>
+                    <button
+                      className="button secondary"
+                      type="button"
+                      onClick={refreshAdminData}
+                      disabled={busyKey === 'admin-refresh'}
+                    >
+                      {t('refresh')}
+                    </button>
+                  </div>
 
-                      <p title={formatTs(device.lastSeen)}>
-                        {t('lastEvent')}: {lastEventRelative}
-                      </p>
-                      <p>
-                        {t('ipAddress')}:{' '}
-                        {ipAddressHref ? (
-                          <a
-                            className="device-link"
-                            href={ipAddressHref}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            {ipAddress}
-                          </a>
-                        ) : (
-                          ipAddress
-                        )}
-                      </p>
-                      <p>
-                        {t('uptime')}: {uptimeLabel}
-                      </p>
-                      <div className="rssi-row">
-                        <span>{t('rssi')}:</span>
-                        {isDeviceOnline ? (
-                          <div className="rssi-tooltip-host">
-                            <div
-                              className={`rssi-bars ${rssiClassName(device.rssi)}`}
-                              aria-label={rssiHint}
-                              aria-describedby={rssiTooltipId}
-                            >
-                              <span className={`bar ${bars >= 1 ? 'active' : ''}`} />
-                              <span className={`bar ${bars >= 2 ? 'active' : ''}`} />
-                              <span className={`bar ${bars >= 3 ? 'active' : ''}`} />
-                              <span className={`bar ${bars >= 4 ? 'active' : ''}`} />
-                            </div>
-                            <span className="rssi-tooltip" id={rssiTooltipId}>
-                              {rssiHint}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="muted">-</span>
-                        )}
-                      </div>
-                      <div className="device-metrics-grid">
-                        <div className="device-metric">
-                          <span className="metric-icon">
-                            <MetricIcon kind="temperature" />
-                          </span>
-                          <span className="metric-text" title={t('metricTemp')}>{temperature}</span>
-                        </div>
-                        <div className="device-metric">
-                          <span className="metric-icon">
-                            <MetricIcon kind="humidity" />
-                          </span>
-                          <span className="metric-text" title={t('metricHumidity')}>{humidity}</span>
-                        </div>
-                        <div className="device-metric">
-                          <span className="metric-icon">
-                            <MetricIcon kind="brightness" />
-                          </span>
-                          <span className="metric-text" title={t('metricBrightness')}>{brightness}</span>
-                        </div>
-                        <button
-                          className="device-metric counter-metric-trigger"
-                          type="button"
-                          onClick={() => openCounterResetModal(device.deviceId)}
-                          title={t('commandCounterReset')}
-                          disabled={!isDeviceOnline || counterBusy}
-                        >
-                          <span className="metric-icon">
-                            <MetricIcon kind="counter" />
-                          </span>
-                          <span className="metric-text">{counterValue}</span>
-                        </button>
-                        <div className="device-metric full">
-                          <span className="metric-icon">
-                            <MetricIcon kind="buttons" />
-                          </span>
-                          <span className="metric-text metric-state-row">
-                            <span className="metric-label">Red:</span>
-                            <span className={`state-label ${redButtonClass}`}>{redButton}</span>
-                          </span>
-                        </div>
-                        <div className="device-metric full">
-                          <span className="metric-icon">
-                            <MetricIcon kind="buttons" />
-                          </span>
-                          <span className="metric-text metric-state-row">
-                            <span className="metric-label">Black:</span>
-                            <span className={`state-label ${blackButtonClass}`}>{blackButton}</span>
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="button-grid">
-                        <button
-                          className={`button ${greenOn ? 'active' : 'secondary'}`}
-                          type="button"
-                          onClick={() => sendAdminDeviceCommand(device.deviceId, 'LED_GREEN', nextGreenState)}
-                          disabled={greenBusy || !isDeviceOnline}
-                        >
-                          {t('commandGreenLed')}
-                        </button>
-                        <button
-                          className={`button ${orangeOn ? 'active' : 'secondary'}`}
-                          type="button"
-                          onClick={() => sendAdminDeviceCommand(device.deviceId, 'LED_ORANGE', nextOrangeState)}
-                          disabled={orangeBusy || !isDeviceOnline}
-                        >
-                          {t('commandOrangeLed')}
-                        </button>
-                      </div>
-                    </article>
-                  );
-                    })}
+                  <div className="devices-grid">
+                    {adminVirtualDeviceCards}
                   </div>
                 </section>
               ) : null}
@@ -3587,36 +4361,7 @@ export default function App() {
                             </td>
                           </tr>
                         ) : (
-                          adminVisibleFeed.map((eventItem) => (
-                              <tr
-                                key={eventItem.id}
-                                className={`feed-row-clickable ${recentFeedEventIds[eventItem.id] ? 'feed-row-new' : ''}`}
-                                role="button"
-                                tabIndex={0}
-                                onClick={() => {
-                                  setSelectedEvent(eventItem);
-                                  setEventDetailsViewMode('rendered');
-                                }}
-                                onKeyDown={(event) => {
-                                  if (event.key === 'Enter' || event.key === ' ') {
-                                    event.preventDefault();
-                                    setSelectedEvent(eventItem);
-                                    setEventDetailsViewMode('rendered');
-                                  }
-                                }}
-                              >
-                                <td>{formatTs(eventItem.ingestTs)}</td>
-                                <td>{eventItem.deviceId}</td>
-                                <td>{eventItem.eventType}</td>
-                                <td className="mono raw-cell">
-                                  {feedViewMode === 'rendered'
-                                    ? (adminFeedValues.get(eventItem.id) ?? '')
-                                    : eventItem.payloadJson}
-                                </td>
-                                <td>{eventItem.category}</td>
-                                <td className="mono">{eventItem.topic}</td>
-                              </tr>
-                            ))
+                          adminFeedRows
                         )}
                       </tbody>
                     </table>
@@ -3673,6 +4418,130 @@ export default function App() {
             ) : (
               <pre className="event-modal-pre event-modal-pre-raw">{selectedEventRawJson}</pre>
             )}
+          </div>
+        </div>
+      ) : null}
+
+      {virtualControlDeviceId && selectedAdminVirtualDevice && virtualControlPatch ? (
+        <div className="event-modal-backdrop" onClick={closeVirtualControlModal}>
+          <div className="event-modal virtual-device-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="panel-header">
+              <h2>
+                {t('virtualDeviceControls')}: {virtualControlDeviceId}
+              </h2>
+              <button className="button secondary" type="button" onClick={closeVirtualControlModal}>
+                {t('close')}
+              </button>
+            </div>
+
+            <p className="muted">
+              {t('groupConfig')}: {selectedAdminVirtualDevice.groupKey}
+            </p>
+
+            <div className="virtual-controls-grid">
+              <label className="checkbox-inline">
+                <input
+                  type="checkbox"
+                  checked={Boolean(virtualControlPatch.buttonRedPressed)}
+                  onChange={(event) => setModalVirtualField('buttonRedPressed', event.target.checked)}
+                />
+                <span>Red</span>
+              </label>
+              <label className="checkbox-inline">
+                <input
+                  type="checkbox"
+                  checked={Boolean(virtualControlPatch.buttonBlackPressed)}
+                  onChange={(event) => setModalVirtualField('buttonBlackPressed', event.target.checked)}
+                />
+                <span>Black</span>
+              </label>
+              <label className="checkbox-inline">
+                <input
+                  type="checkbox"
+                  checked={Boolean(virtualControlPatch.ledGreenOn)}
+                  onChange={(event) => setModalVirtualField('ledGreenOn', event.target.checked)}
+                />
+                <span>{t('commandGreenLed')}</span>
+              </label>
+              <label className="checkbox-inline">
+                <input
+                  type="checkbox"
+                  checked={Boolean(virtualControlPatch.ledOrangeOn)}
+                  onChange={(event) => setModalVirtualField('ledOrangeOn', event.target.checked)}
+                />
+                <span>{t('commandOrangeLed')}</span>
+              </label>
+              <label>
+                <span>{t('metricTemp')}</span>
+                <input
+                  className="input"
+                  type="number"
+                  step="0.1"
+                  value={virtualControlPatch.temperatureC ?? 0}
+                  onChange={(event) => {
+                    const next = Number.isFinite(event.target.valueAsNumber)
+                      ? event.target.valueAsNumber
+                      : (virtualControlPatch.temperatureC ?? 0);
+                    setModalVirtualField('temperatureC', next);
+                  }}
+                />
+              </label>
+              <label>
+                <span>{t('metricHumidity')}</span>
+                <input
+                  className="input"
+                  type="number"
+                  step="0.1"
+                  value={virtualControlPatch.humidityPct ?? 0}
+                  onChange={(event) => {
+                    const next = Number.isFinite(event.target.valueAsNumber)
+                      ? event.target.valueAsNumber
+                      : (virtualControlPatch.humidityPct ?? 0);
+                    setModalVirtualField('humidityPct', next);
+                  }}
+                />
+              </label>
+              <label>
+                <span>{t('metricBrightness')}</span>
+                <input
+                  className="input"
+                  type="number"
+                  step="0.1"
+                  value={virtualControlPatch.brightness ?? 0}
+                  onChange={(event) => {
+                    const next = Number.isFinite(event.target.valueAsNumber)
+                      ? event.target.valueAsNumber
+                      : (virtualControlPatch.brightness ?? 0);
+                    setModalVirtualField('brightness', next);
+                  }}
+                />
+              </label>
+              <label>
+                <span>{t('metricCounter')}</span>
+                <input
+                  className="input"
+                  type="number"
+                  step="1"
+                  min="0"
+                  value={virtualControlPatch.counterValue ?? 0}
+                  onChange={(event) => {
+                    const raw = Number.isFinite(event.target.valueAsNumber)
+                      ? event.target.valueAsNumber
+                      : (virtualControlPatch.counterValue ?? 0);
+                    setModalVirtualField('counterValue', Math.max(0, Math.round(raw)));
+                  }}
+                />
+              </label>
+            </div>
+
+            <div className="event-modal-actions">
+              <button className="button" type="button" onClick={saveAdminVirtualDevice} disabled={virtualControlBusy}>
+                {t('applyVirtualState')}
+              </button>
+              <button className="button secondary" type="button" onClick={closeVirtualControlModal}>
+                {t('close')}
+              </button>
+            </div>
           </div>
         </div>
       ) : null}

@@ -5,6 +5,7 @@ import java.time.Instant;
 public record AppSettingsDto(
         LanguageMode defaultLanguageMode,
         boolean timeFormat24h,
+        boolean studentVirtualDeviceVisible,
         Instant updatedAt,
         String updatedBy
 ) {
@@ -12,6 +13,7 @@ public record AppSettingsDto(
         return new AppSettingsDto(
                 settings.getDefaultLanguageMode(),
                 settings.isTimeFormat24h(),
+                settings.isStudentVirtualDeviceVisible(),
                 settings.getUpdatedAt(),
                 settings.getUpdatedBy()
         );

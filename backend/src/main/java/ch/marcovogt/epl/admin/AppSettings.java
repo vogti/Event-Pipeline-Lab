@@ -22,6 +22,9 @@ public class AppSettings {
     @Column(name = "time_format_24h", nullable = false)
     private boolean timeFormat24h;
 
+    @Column(name = "student_virtual_device_visible", nullable = false)
+    private boolean studentVirtualDeviceVisible;
+
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
@@ -50,6 +53,14 @@ public class AppSettings {
 
     public void setTimeFormat24h(boolean timeFormat24h) {
         this.timeFormat24h = timeFormat24h;
+    }
+
+    public boolean isStudentVirtualDeviceVisible() {
+        return studentVirtualDeviceVisible;
+    }
+
+    public void setStudentVirtualDeviceVisible(boolean studentVirtualDeviceVisible) {
+        this.studentVirtualDeviceVisible = studentVirtualDeviceVisible;
     }
 
     public Instant getUpdatedAt() {

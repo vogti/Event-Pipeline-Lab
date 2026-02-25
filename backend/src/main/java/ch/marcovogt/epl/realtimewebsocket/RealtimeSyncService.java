@@ -1,14 +1,17 @@
 package ch.marcovogt.epl.realtimewebsocket;
 
 import ch.marcovogt.epl.admin.AppSettingsDto;
+import ch.marcovogt.epl.admin.AppSettingsService;
 import ch.marcovogt.epl.authsession.AuthService;
 import ch.marcovogt.epl.authsession.PresenceUserDto;
+import ch.marcovogt.epl.common.DeviceIdMapping;
 import ch.marcovogt.epl.deviceregistryhealth.DeviceStatusDto;
 import ch.marcovogt.epl.eventingestionnormalization.CanonicalEventDto;
 import ch.marcovogt.epl.groupcollaborationsync.GroupConfigDto;
 import ch.marcovogt.epl.taskscenarioengine.TaskCapabilities;
 import ch.marcovogt.epl.taskscenarioengine.TaskDefinition;
 import ch.marcovogt.epl.taskscenarioengine.TaskStateService;
+import ch.marcovogt.epl.virtualdevice.VirtualDeviceStateDto;
 import java.util.List;
 import org.springframework.stereotype.Service;
 
@@ -19,20 +22,28 @@ public class RealtimeSyncService {
     private final AdminWebSocketBroadcaster adminBroadcaster;
     private final TaskStateService taskStateService;
     private final AuthService authService;
+    private final AppSettingsService appSettingsService;
 
     public RealtimeSyncService(
             StudentWebSocketBroadcaster studentBroadcaster,
             AdminWebSocketBroadcaster adminBroadcaster,
             TaskStateService taskStateService,
-            AuthService authService
+            AuthService authService,
+            AppSettingsService appSettingsService
     ) {
         this.studentBroadcaster = studentBroadcaster;
         this.adminBroadcaster = adminBroadcaster;
         this.taskStateService = taskStateService;
         this.authService = authService;
+        this.appSettingsService = appSettingsService;
     }
 
     public void broadcastEventToStudents(CanonicalEventDto eventDto) {
+        if (!appSettingsService.isStudentVirtualDeviceVisible()
+                && DeviceIdMapping.isVirtualDeviceId(eventDto.deviceId())) {
+            return;
+        }
+
         TaskCapabilities capabilities = taskStateService.currentStudentCapabilities();
         if (capabilities.canViewRoomEvents()) {
             studentBroadcaster.broadcastToAll("event.feed.append", eventDto);
@@ -46,13 +57,19 @@ public class RealtimeSyncService {
     }
 
     public void broadcastDeviceStatusToStudents(DeviceStatusDto statusDto) {
+        boolean isVirtualDevice = DeviceIdMapping.isVirtualDeviceId(statusDto.deviceId());
+        if (isVirtualDevice && !appSettingsService.isStudentVirtualDeviceVisible()) {
+            return;
+        }
+
         TaskCapabilities capabilities = taskStateService.currentStudentCapabilities();
         if (capabilities.canViewRoomEvents()) {
             studentBroadcaster.broadcastToAll("device.status.updated", statusDto);
             return;
         }
 
-        studentBroadcaster.broadcastToGroup(statusDto.deviceId(), "device.status.updated", statusDto);
+        String targetGroupKey = DeviceIdMapping.groupKeyForDevice(statusDto.deviceId()).orElse(statusDto.deviceId());
+        studentBroadcaster.broadcastToGroup(targetGroupKey, "device.status.updated", statusDto);
     }
 
     public void broadcastGroupConfig(GroupConfigDto configDto) {
@@ -81,5 +98,13 @@ public class RealtimeSyncService {
     public void broadcastSettingsUpdated(AppSettingsDto settingsDto) {
         studentBroadcaster.broadcastToAll("settings.updated", settingsDto);
         adminBroadcaster.broadcast("settings.updated", settingsDto);
+    }
+
+    public void broadcastVirtualDeviceUpdated(VirtualDeviceStateDto deviceDto) {
+        adminBroadcaster.broadcast("virtual.device.updated", deviceDto);
+        if (!appSettingsService.isStudentVirtualDeviceVisible()) {
+            return;
+        }
+        studentBroadcaster.broadcastToGroup(deviceDto.groupKey(), "virtual.device.updated", deviceDto);
     }
 }

@@ -6,6 +6,7 @@ import ch.marcovogt.epl.authsession.PresenceUserDto;
 import ch.marcovogt.epl.eventingestionnormalization.CanonicalEventDto;
 import ch.marcovogt.epl.taskscenarioengine.TaskCapabilities;
 import ch.marcovogt.epl.taskscenarioengine.TaskInfoDto;
+import ch.marcovogt.epl.virtualdevice.VirtualDeviceStateDto;
 import java.util.List;
 
 public record StudentBootstrapResponse(
@@ -15,6 +16,7 @@ public record StudentBootstrapResponse(
         GroupConfigDto groupConfig,
         List<PresenceUserDto> groupPresence,
         List<CanonicalEventDto> recentFeed,
+        VirtualDeviceStateDto virtualDevice,
         AppSettingsDto settings
 ) {
 }

@@ -3,6 +3,7 @@ package ch.marcovogt.epl.deviceregistryhealth;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import ch.marcovogt.epl.common.DeviceIdMapping;
 import ch.marcovogt.epl.eventingestionnormalization.CanonicalEvent;
 import ch.marcovogt.epl.realtimewebsocket.AdminWebSocketBroadcaster;
 import ch.marcovogt.epl.realtimewebsocket.RealtimeSyncService;
@@ -70,6 +71,7 @@ public class DeviceStatusService {
     public List<DeviceStatusDto> listAll() {
         return deviceStatusRepository.findAllByOrderByDeviceIdAsc()
                 .stream()
+                .filter(status -> !DeviceIdMapping.isVirtualDeviceId(status.getDeviceId()))
                 .map(DeviceStatusDto::from)
                 .toList();
     }
@@ -83,14 +85,21 @@ public class DeviceStatusService {
             return;
         }
 
-        staleOnlineDevices.forEach(status -> status.setOnline(false));
-        List<DeviceStatus> saved = deviceStatusRepository.saveAll(staleOnlineDevices);
+        List<DeviceStatus> stalePhysicalDevices = staleOnlineDevices.stream()
+                .filter(status -> !DeviceIdMapping.isVirtualDeviceId(status.getDeviceId()))
+                .toList();
+        if (stalePhysicalDevices.isEmpty()) {
+            return;
+        }
+
+        stalePhysicalDevices.forEach(status -> status.setOnline(false));
+        List<DeviceStatus> saved = deviceStatusRepository.saveAll(stalePhysicalDevices);
         for (DeviceStatus status : saved) {
             DeviceStatusDto dto = DeviceStatusDto.from(status);
             adminWebSocketBroadcaster.broadcastDeviceStatus(dto);
             realtimeSyncService.broadcastDeviceStatusToStudents(dto);
         }
-        log.info("Marked {} stale devices offline (cutoff={})", staleOnlineDevices.size(), cutoff);
+        log.info("Marked {} stale devices offline (cutoff={})", stalePhysicalDevices.size(), cutoff);
     }
 
     private Optional<Integer> extractRssi(JsonNode payloadNode) {

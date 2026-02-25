@@ -1,4 +1,4 @@
-package ch.marcovogt.epl.admin;
+package ch.marcovogt.epl.virtualdevice;
 
 import ch.marcovogt.epl.auditlogging.AdminAuditLogger;
 import ch.marcovogt.epl.authsession.AppRole;
@@ -7,65 +7,61 @@ import ch.marcovogt.epl.authsession.SessionPrincipal;
 import ch.marcovogt.epl.realtimewebsocket.RealtimeSyncService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import java.util.List;
 import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/admin/settings")
-public class AdminSettingsController {
+@RequestMapping("/api/admin/virtual-devices")
+public class AdminVirtualDeviceController {
 
     private final RequestAuth requestAuth;
-    private final AppSettingsService appSettingsService;
+    private final VirtualDeviceService virtualDeviceService;
     private final AdminAuditLogger adminAuditLogger;
     private final RealtimeSyncService realtimeSyncService;
 
-    public AdminSettingsController(
+    public AdminVirtualDeviceController(
             RequestAuth requestAuth,
-            AppSettingsService appSettingsService,
+            VirtualDeviceService virtualDeviceService,
             AdminAuditLogger adminAuditLogger,
             RealtimeSyncService realtimeSyncService
     ) {
         this.requestAuth = requestAuth;
-        this.appSettingsService = appSettingsService;
+        this.virtualDeviceService = virtualDeviceService;
         this.adminAuditLogger = adminAuditLogger;
         this.realtimeSyncService = realtimeSyncService;
     }
 
     @GetMapping
-    public AppSettingsDto getSettings(HttpServletRequest request) {
+    public List<VirtualDeviceStateDto> list(HttpServletRequest request) {
         requestAuth.requireRole(request, AppRole.ADMIN);
-        return AppSettingsDto.from(appSettingsService.getOrCreate());
+        return virtualDeviceService.listAll();
     }
 
-    @PostMapping
-    public AppSettingsDto updateSettings(
+    @PostMapping("/{deviceId}/control")
+    public VirtualDeviceStateDto control(
             HttpServletRequest request,
-            @Valid @RequestBody UpdateSettingsRequest body
+            @PathVariable String deviceId,
+            @Valid @RequestBody VirtualDeviceControlRequest body
     ) {
         SessionPrincipal principal = requestAuth.requireRole(request, AppRole.ADMIN);
-        AppSettings settings = appSettingsService.update(
-                body.defaultLanguageMode(),
-                body.timeFormat24h(),
-                body.studentVirtualDeviceVisible(),
-                principal.username()
-        );
+        VirtualDeviceStateDto updated = virtualDeviceService.applyPatch(deviceId, body);
 
         adminAuditLogger.logAction(
-                "admin.settings.update",
+                "admin.virtual_device.control",
                 principal.username(),
                 Map.of(
-                        "defaultLanguageMode", settings.getDefaultLanguageMode().name(),
-                        "timeFormat24h", settings.isTimeFormat24h(),
-                        "studentVirtualDeviceVisible", settings.isStudentVirtualDeviceVisible()
+                        "deviceId", deviceId,
+                        "groupKey", updated.groupKey()
                 )
         );
 
-        AppSettingsDto dto = AppSettingsDto.from(settings);
-        realtimeSyncService.broadcastSettingsUpdated(dto);
-        return dto;
+        realtimeSyncService.broadcastVirtualDeviceUpdated(updated);
+        return updated;
     }
 }

@@ -12,6 +12,7 @@ public class AppSettingsService {
 
     private final AppSettingsRepository appSettingsRepository;
     private final Clock clock;
+    private volatile Boolean studentVirtualVisibleCache;
 
     public AppSettingsService(AppSettingsRepository appSettingsRepository) {
         this.appSettingsRepository = appSettingsRepository;
@@ -20,27 +21,48 @@ public class AppSettingsService {
 
     @Transactional
     public AppSettings getOrCreate() {
-        return appSettingsRepository.findById(SETTINGS_ROW_ID)
+        AppSettings settings = appSettingsRepository.findById(SETTINGS_ROW_ID)
                 .orElseGet(() -> {
-                    AppSettings settings = new AppSettings();
-                    settings.setId(SETTINGS_ROW_ID);
-                    settings.setDefaultLanguageMode(LanguageMode.BROWSER_EN_FALLBACK);
-                    settings.setTimeFormat24h(true);
-                    settings.setUpdatedAt(Instant.now(clock));
-                    settings.setUpdatedBy("system");
-                    return appSettingsRepository.save(settings);
+                    AppSettings created = new AppSettings();
+                    created.setId(SETTINGS_ROW_ID);
+                    created.setDefaultLanguageMode(LanguageMode.BROWSER_EN_FALLBACK);
+                    created.setTimeFormat24h(true);
+                    created.setStudentVirtualDeviceVisible(true);
+                    created.setUpdatedAt(Instant.now(clock));
+                    created.setUpdatedBy("system");
+                    return appSettingsRepository.save(created);
                 });
+        studentVirtualVisibleCache = settings.isStudentVirtualDeviceVisible();
+        return settings;
     }
 
     @Transactional
-    public AppSettings update(LanguageMode mode, Boolean timeFormat24h, String actor) {
+    public AppSettings update(
+            LanguageMode mode,
+            Boolean timeFormat24h,
+            Boolean studentVirtualDeviceVisible,
+            String actor
+    ) {
         AppSettings settings = getOrCreate();
         settings.setDefaultLanguageMode(mode);
         if (timeFormat24h != null) {
             settings.setTimeFormat24h(timeFormat24h);
         }
+        if (studentVirtualDeviceVisible != null) {
+            settings.setStudentVirtualDeviceVisible(studentVirtualDeviceVisible);
+        }
         settings.setUpdatedAt(Instant.now(clock));
         settings.setUpdatedBy(actor);
-        return appSettingsRepository.save(settings);
+        AppSettings saved = appSettingsRepository.save(settings);
+        studentVirtualVisibleCache = saved.isStudentVirtualDeviceVisible();
+        return saved;
+    }
+
+    public boolean isStudentVirtualDeviceVisible() {
+        Boolean cached = studentVirtualVisibleCache;
+        if (cached != null) {
+            return cached;
+        }
+        return getOrCreate().isStudentVirtualDeviceVisible();
     }
 }

@@ -1,7 +1,9 @@
 package ch.marcovogt.epl.eventfeedquery;
 
+import ch.marcovogt.epl.admin.AppSettingsService;
 import ch.marcovogt.epl.authsession.AppRole;
 import ch.marcovogt.epl.authsession.SessionPrincipal;
+import ch.marcovogt.epl.common.DeviceIdMapping;
 import ch.marcovogt.epl.common.EventCategory;
 import ch.marcovogt.epl.eventingestionnormalization.CanonicalEventDto;
 import ch.marcovogt.epl.eventingestionnormalization.CanonicalEventRepository;
@@ -16,10 +18,16 @@ public class EventFeedService {
 
     private final CanonicalEventRepository canonicalEventRepository;
     private final LiveEventBuffer liveEventBuffer;
+    private final AppSettingsService appSettingsService;
 
-    public EventFeedService(CanonicalEventRepository canonicalEventRepository, LiveEventBuffer liveEventBuffer) {
+    public EventFeedService(
+            CanonicalEventRepository canonicalEventRepository,
+            LiveEventBuffer liveEventBuffer,
+            AppSettingsService appSettingsService
+    ) {
         this.canonicalEventRepository = canonicalEventRepository;
         this.liveEventBuffer = liveEventBuffer;
+        this.appSettingsService = appSettingsService;
     }
 
     @Transactional(readOnly = true)
@@ -79,11 +87,14 @@ public class EventFeedService {
         final String finalTopicFilter = topicFilter;
         final String finalRequestedDeviceId = requestedDeviceId;
         final boolean finalIncludeInternal = includeInternalEffective;
+        final boolean studentVirtualVisible = principal.role() == AppRole.ADMIN
+                || appSettingsService.isStudentVirtualDeviceVisible();
 
         return canonicalEventRepository.findRecent(null, category, PageRequest.of(0, prefetch))
                 .stream()
                 .map(CanonicalEventDto::from)
                 .filter(event -> finalIncludeInternal || !event.isInternal())
+                .filter(event -> studentVirtualVisible || !DeviceIdMapping.isVirtualDeviceId(event.deviceId()))
                 .filter(event -> {
                     if (finalTopicFilter == null) {
                         return true;

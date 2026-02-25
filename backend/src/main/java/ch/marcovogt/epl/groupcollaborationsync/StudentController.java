@@ -15,6 +15,7 @@ import ch.marcovogt.epl.realtimewebsocket.RealtimeSyncService;
 import ch.marcovogt.epl.taskscenarioengine.TaskCapabilities;
 import ch.marcovogt.epl.taskscenarioengine.TaskInfoDto;
 import ch.marcovogt.epl.taskscenarioengine.TaskStateService;
+import ch.marcovogt.epl.virtualdevice.VirtualDeviceService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.Map;
@@ -39,6 +40,7 @@ public class StudentController {
     private final AppSettingsService appSettingsService;
     private final MqttCommandPublisher mqttCommandPublisher;
     private final RealtimeSyncService realtimeSyncService;
+    private final VirtualDeviceService virtualDeviceService;
 
     public StudentController(
             RequestAuth requestAuth,
@@ -48,7 +50,8 @@ public class StudentController {
             AuthService authService,
             AppSettingsService appSettingsService,
             MqttCommandPublisher mqttCommandPublisher,
-            RealtimeSyncService realtimeSyncService
+            RealtimeSyncService realtimeSyncService,
+            VirtualDeviceService virtualDeviceService
     ) {
         this.requestAuth = requestAuth;
         this.taskStateService = taskStateService;
@@ -58,6 +61,7 @@ public class StudentController {
         this.appSettingsService = appSettingsService;
         this.mqttCommandPublisher = mqttCommandPublisher;
         this.realtimeSyncService = realtimeSyncService;
+        this.virtualDeviceService = virtualDeviceService;
     }
 
     @GetMapping("/bootstrap")
@@ -82,6 +86,11 @@ public class StudentController {
 
         realtimeSyncService.broadcastPresence(principal.groupKey());
 
+        AppSettingsDto settings = AppSettingsDto.from(appSettingsService.getOrCreate());
+        var virtualDevice = settings.studentVirtualDeviceVisible()
+                ? virtualDeviceService.findByGroupKey(principal.groupKey()).orElse(null)
+                : null;
+
         return new StudentBootstrapResponse(
                 AuthMeResponse.from(principal),
                 activeTask,
@@ -89,7 +98,8 @@ public class StudentController {
                 config,
                 presence,
                 feed,
-                AppSettingsDto.from(appSettingsService.getOrCreate())
+                virtualDevice,
+                settings
         );
     }
 

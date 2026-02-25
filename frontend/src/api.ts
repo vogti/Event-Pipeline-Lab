@@ -9,7 +9,8 @@ import type {
   GroupOverview,
   LanguageMode,
   StudentBootstrap,
-  TaskInfo
+  TaskInfo,
+  VirtualDeviceState
 } from './types';
 
 export class ApiError extends Error {
@@ -232,16 +233,54 @@ export const api = {
   updateAdminSettings(
     token: string,
     defaultLanguageMode: LanguageMode,
-    timeFormat24h: boolean
+    timeFormat24h: boolean,
+    studentVirtualDeviceVisible: boolean
   ): Promise<AppSettings> {
     return request<AppSettings>(
       '/api/admin/settings',
       {
         method: 'POST',
-        body: JSON.stringify({ defaultLanguageMode, timeFormat24h })
+        body: JSON.stringify({ defaultLanguageMode, timeFormat24h, studentVirtualDeviceVisible })
       },
       token
     );
+  },
+
+  adminVirtualDevices(token: string): Promise<VirtualDeviceState[]> {
+    return request<VirtualDeviceState[]>('/api/admin/virtual-devices', undefined, token);
+  },
+
+  adminVirtualDeviceControl(
+    token: string,
+    deviceId: string,
+    patch: Partial<VirtualDeviceState>
+  ): Promise<VirtualDeviceState> {
+    return request<VirtualDeviceState>(
+      `/api/admin/virtual-devices/${encodeURIComponent(deviceId)}/control`,
+      {
+        method: 'POST',
+        body: JSON.stringify(patch)
+      },
+      token
+    );
+  },
+
+  studentVirtualDeviceControl(
+    token: string,
+    patch: Partial<VirtualDeviceState>
+  ): Promise<VirtualDeviceState> {
+    return request<VirtualDeviceState>(
+      '/api/student/virtual-device/control',
+      {
+        method: 'POST',
+        body: JSON.stringify(patch)
+      },
+      token
+    );
+  },
+
+  studentVirtualDevice(token: string): Promise<VirtualDeviceState> {
+    return request<VirtualDeviceState>('/api/student/virtual-device', undefined, token);
   },
 
   eventsFeed(

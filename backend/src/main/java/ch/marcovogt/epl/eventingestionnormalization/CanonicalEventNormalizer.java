@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import ch.marcovogt.epl.common.DeviceIdMapping;
 import ch.marcovogt.epl.common.EventCategory;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -66,7 +67,7 @@ public class CanonicalEventNormalizer {
         event.setValidationErrors(errors.isEmpty() ? null : String.join(";", errors));
         event.setInternal(isInternal);
         event.setScenarioFlags(EMPTY_JSON);
-        event.setGroupKey(deviceId);
+        event.setGroupKey(extractGroupKey(deviceId, payloadNode));
         event.setSequenceNo(sequenceNo);
 
         return new NormalizedEvent(event, payloadNode, extractExplicitOnline(topic, payloadNode));
@@ -154,6 +155,14 @@ public class CanonicalEventNormalizer {
         }
 
         return "internal.raw";
+    }
+
+    private String extractGroupKey(String deviceId, JsonNode payloadNode) {
+        String payloadGroupKey = text(payloadNode, "groupKey");
+        if (payloadGroupKey != null && !payloadGroupKey.isBlank()) {
+            return payloadGroupKey;
+        }
+        return DeviceIdMapping.groupKeyForDevice(deviceId).orElse(deviceId);
     }
 
     private String normalizeButtonEvent(JsonNode payloadNode) {

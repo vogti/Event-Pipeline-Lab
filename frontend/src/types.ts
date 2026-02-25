@@ -86,6 +86,23 @@ export interface DevicePinInfo {
   pin: string;
 }
 
+export interface VirtualDeviceState {
+  deviceId: string;
+  groupKey: string;
+  online: boolean;
+  rssi: number;
+  ipAddress: string;
+  temperatureC: number;
+  humidityPct: number;
+  brightness: number;
+  counterValue: number;
+  buttonRedPressed: boolean;
+  buttonBlackPressed: boolean;
+  ledGreenOn: boolean;
+  ledOrangeOn: boolean;
+  updatedAt: TimestampValue;
+}
+
 export interface GroupOverview {
   groupKey: string;
   onlineCount: number;
@@ -96,6 +113,7 @@ export interface GroupOverview {
 export interface AppSettings {
   defaultLanguageMode: LanguageMode;
   timeFormat24h: boolean;
+  studentVirtualDeviceVisible: boolean;
   updatedAt: TimestampValue;
   updatedBy: string;
 }
@@ -107,6 +125,7 @@ export interface StudentBootstrap {
   groupConfig: GroupConfig;
   groupPresence: PresenceUser[];
   recentFeed: CanonicalEvent[];
+  virtualDevice: VirtualDeviceState | null;
   settings: AppSettings;
 }
 
