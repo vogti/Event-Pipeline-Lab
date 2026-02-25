@@ -1,0 +1,12 @@
+package ch.marcovogt.epl.authsession;
+
+import java.util.List;
+import java.util.Optional;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface AuthAccountRepository extends JpaRepository<AuthAccount, String> {
+
+    Optional<AuthAccount> findByUsernameAndEnabledTrue(String username);
+
+    List<AuthAccount> findByRoleOrderByUsernameAsc(AppRole role);
+}

@@ -37,15 +37,19 @@ public class AdminWebSocketBroadcaster {
     }
 
     public void broadcastEvent(CanonicalEventDto eventDto) {
-        broadcast(new WsEnvelope("event.feed.append", eventDto, Instant.now()));
+        broadcast("event.feed.append", eventDto);
     }
 
     public void broadcastDeviceStatus(DeviceStatusDto statusDto) {
-        broadcast(new WsEnvelope("device.status.updated", statusDto, Instant.now()));
+        broadcast("device.status.updated", statusDto);
     }
 
     public void broadcastError(String message) {
-        broadcast(new WsEnvelope("error.notification", message, Instant.now()));
+        broadcast("error.notification", message);
+    }
+
+    public void broadcast(String type, Object payload) {
+        broadcast(new WsEnvelope(type, payload, Instant.now()));
     }
 
     private void broadcast(WsEnvelope envelope) {

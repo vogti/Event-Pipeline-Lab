@@ -5,6 +5,7 @@ import ch.marcovogt.epl.deviceregistryhealth.DeviceStatusDto;
 import ch.marcovogt.epl.deviceregistryhealth.DeviceStatusService;
 import ch.marcovogt.epl.eventfeedquery.EventFeedService;
 import ch.marcovogt.epl.realtimewebsocket.AdminWebSocketBroadcaster;
+import ch.marcovogt.epl.realtimewebsocket.RealtimeSyncService;
 import java.time.Clock;
 import java.time.Instant;
 import org.slf4j.Logger;
@@ -22,6 +23,7 @@ public class EventIngestionService {
     private final DeviceStatusService deviceStatusService;
     private final EventFeedService eventFeedService;
     private final AdminWebSocketBroadcaster adminWebSocketBroadcaster;
+    private final RealtimeSyncService realtimeSyncService;
     private final Clock clock;
 
     public EventIngestionService(
@@ -29,13 +31,15 @@ public class EventIngestionService {
             CanonicalEventRepository canonicalEventRepository,
             DeviceStatusService deviceStatusService,
             EventFeedService eventFeedService,
-            AdminWebSocketBroadcaster adminWebSocketBroadcaster
+            AdminWebSocketBroadcaster adminWebSocketBroadcaster,
+            RealtimeSyncService realtimeSyncService
     ) {
         this.canonicalEventNormalizer = canonicalEventNormalizer;
         this.canonicalEventRepository = canonicalEventRepository;
         this.deviceStatusService = deviceStatusService;
         this.eventFeedService = eventFeedService;
         this.adminWebSocketBroadcaster = adminWebSocketBroadcaster;
+        this.realtimeSyncService = realtimeSyncService;
         this.clock = Clock.systemUTC();
     }
 
@@ -49,6 +53,7 @@ public class EventIngestionService {
 
         eventFeedService.appendToLiveBuffer(eventDto);
         adminWebSocketBroadcaster.broadcastEvent(eventDto);
+        realtimeSyncService.broadcastEventToStudents(eventDto);
 
         DeviceStatus status = deviceStatusService.upsertFromInbound(
                 saved,
@@ -56,7 +61,9 @@ public class EventIngestionService {
                 normalizedEvent.explicitOnline()
         );
         if (status != null) {
-            adminWebSocketBroadcaster.broadcastDeviceStatus(DeviceStatusDto.from(status));
+            DeviceStatusDto statusDto = DeviceStatusDto.from(status);
+            adminWebSocketBroadcaster.broadcastDeviceStatus(statusDto);
+            realtimeSyncService.broadcastDeviceStatusToStudents(statusDto);
         }
 
         log.debug(

@@ -4,6 +4,9 @@ server:
 spring:
   application:
     name: epl-backend
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/epl}
     username: ${DB_USERNAME:epl}
@@ -38,7 +41,7 @@ logging:
   level:
     ch.marcovogt.epl: INFO
 
-# Phase 1 operational defaults
+# Operational defaults
 # Topic filters include both canonical EPL topics (epld/{deviceId}/...) and observed Shelly capture topics (epld01/...)
 epl:
   feed:
@@ -63,3 +66,7 @@ epl:
       - +/telemetry
       - +/online
       - +/status/#
+  auth:
+    session-ttl: PT8H
+    presence-window: PT45S
+    cleanup-delay-ms: 60000

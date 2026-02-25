@@ -36,6 +36,8 @@
             display: flex;
             gap: 0.5rem;
             margin-bottom: 0.75rem;
+            flex-wrap: wrap;
+            align-items: center;
         }
 
         button {
@@ -49,6 +51,14 @@
 
         button.secondary {
             background: #30363d;
+        }
+
+        input {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            color: #e6edf3;
+            border-radius: 6px;
+            padding: 0.45rem 0.6rem;
         }
 
         pre {
@@ -72,8 +82,14 @@
     </style>
 </head>
 <body>
-<h1>EPL Phase 1 Admin Test</h1>
-<div class="status" id="status">WS: connecting...</div>
+<h1>EPL Phase 2 Admin Test</h1>
+<div class="toolbar">
+    <input id="username" value="admin" placeholder="Username">
+    <input id="pin" type="password" value="admin123" placeholder="PIN">
+    <button id="loginBtn">Login</button>
+    <button id="logoutBtn" class="secondary">Logout</button>
+</div>
+<div class="status" id="status">WS: disconnected</div>
 <div class="toolbar">
     <button id="pauseBtn" class="secondary">Pause</button>
     <button id="clearBtn" class="secondary">Clear</button>
@@ -92,10 +108,64 @@
 <script>
     const maxLines = 200;
     let paused = false;
+    let sessionToken = localStorage.getItem('eplAdminSessionToken') || '';
+    let ws = null;
+
     const eventsEl = document.getElementById('events');
     const devicesEl = document.getElementById('devices');
     const statusEl = document.getElementById('status');
     const deviceMap = new Map();
+
+    function authHeaders() {
+        if (!sessionToken) {
+            return {};
+        }
+        return {'X-EPL-Session': sessionToken};
+    }
+
+    async function login() {
+        const username = document.getElementById('username').value.trim();
+        const pin = document.getElementById('pin').value.trim();
+
+        const response = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({username, pin})
+        });
+
+        if (!response.ok) {
+            throw new Error(`Login failed (${response.status})`);
+        }
+
+        const me = await response.json();
+        sessionToken = me.sessionToken;
+        localStorage.setItem('eplAdminSessionToken', sessionToken);
+
+        statusEl.textContent = `Logged in as ${me.username}; WS reconnecting...`;
+        connectWs();
+        await loadRecent();
+    }
+
+    async function logout() {
+        if (!sessionToken) {
+            return;
+        }
+
+        await fetch('/api/auth/logout', {
+            method: 'POST',
+            headers: authHeaders()
+        });
+
+        sessionToken = '';
+        localStorage.removeItem('eplAdminSessionToken');
+
+        if (ws) {
+            ws.close();
+            ws = null;
+        }
+
+        statusEl.textContent = 'Logged out';
+    }
 
     function appendLine(el, text) {
         const lines = el.textContent ? el.textContent.split('\n') : [];
@@ -107,14 +177,30 @@
     }
 
     async function loadRecent() {
-        const response = await fetch('/api/admin/events?limit=50');
+        if (!sessionToken) {
+            throw new Error('Login required');
+        }
+
+        const response = await fetch('/api/admin/events?limit=50', {
+            headers: authHeaders()
+        });
+        if (!response.ok) {
+            throw new Error(`Load events failed (${response.status})`);
+        }
+
         const data = await response.json();
         eventsEl.textContent = '';
         data.reverse().forEach(event => {
             appendLine(eventsEl, `${event.ingestTs} ${event.deviceId} ${event.eventType} ${event.topic}`);
         });
 
-        const devicesRes = await fetch('/api/admin/devices');
+        const devicesRes = await fetch('/api/admin/devices', {
+            headers: authHeaders()
+        });
+        if (!devicesRes.ok) {
+            throw new Error(`Load devices failed (${devicesRes.status})`);
+        }
+
         const devices = await devicesRes.json();
         deviceMap.clear();
         devices.forEach(device => deviceMap.set(device.deviceId, device));
@@ -129,8 +215,17 @@
     }
 
     function connectWs() {
+        if (!sessionToken) {
+            statusEl.textContent = 'WS: login required';
+            return;
+        }
+
+        if (ws) {
+            ws.close();
+        }
+
         const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const ws = new WebSocket(`${protocol}//${location.host}/ws/admin`);
+        ws = new WebSocket(`${protocol}//${location.host}/ws/admin?token=${encodeURIComponent(sessionToken)}`);
 
         ws.onopen = () => {
             statusEl.textContent = 'WS: connected';
@@ -138,7 +233,11 @@
 
         ws.onclose = () => {
             statusEl.textContent = 'WS: disconnected, retrying...';
-            setTimeout(connectWs, 1500);
+            setTimeout(() => {
+                if (sessionToken) {
+                    connectWs();
+                }
+            }, 1500);
         };
 
         ws.onerror = () => {
@@ -172,11 +271,31 @@
     });
 
     document.getElementById('reloadBtn').addEventListener('click', () => {
-        loadRecent().catch(console.error);
+        loadRecent().catch(error => {
+            statusEl.textContent = String(error);
+        });
     });
 
-    loadRecent().catch(console.error);
-    connectWs();
+    document.getElementById('loginBtn').addEventListener('click', () => {
+        login().catch(error => {
+            statusEl.textContent = String(error);
+        });
+    });
+
+    document.getElementById('logoutBtn').addEventListener('click', () => {
+        logout().catch(error => {
+            statusEl.textContent = String(error);
+        });
+    });
+
+    if (sessionToken) {
+        loadRecent().catch(error => {
+            statusEl.textContent = String(error);
+        });
+        connectWs();
+    } else {
+        statusEl.textContent = 'Login required';
+    }
 </script>
 </body>
 </html>

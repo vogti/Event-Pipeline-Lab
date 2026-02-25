@@ -1,16 +1,25 @@
-# Event Pipeline Lab (EPL) - Phase 1 Foundation
+# Event Pipeline Lab (EPL) - Phase 1 + Phase 2 Backend Foundation
 
-Phase 1 delivers a reliable ingestion and live-streaming baseline for the EPL lecture demo:
+This repository currently delivers:
 
-- Docker Compose stack (`postgres`, `mosquitto`, `backend`, optional `cloudflared`)
-- Spring Boot modular monolith foundation (Java 25, Spring Boot 4.x)
-- MQTT ingestion + canonical event normalization + PostgreSQL persistence
-- Device health tracking (online/offline, last seen, RSSI when available)
-- Admin REST endpoints + WebSocket push
-- Bounded in-memory live feed buffer
-- Classical rolling log files (`logs/epl-backend.log`)
+- **Phase 1**: reliable MQTT ingestion, canonical normalization, persistence, bounded live feeds, device health
+- **Phase 2**: auth/session, task activation + capability gating, group shared config + presence sync, admin/student REST APIs, authenticated WebSocket channels
 
-## Project structure
+Backend package namespace: `ch.marcovogt.epl`.
+Build system: **Gradle**.
+Configuration style: classical config files and Docker Compose service env values (no `.env` files required).
+
+## Stack
+
+- Java 25
+- Spring Boot 4.x
+- Spring Web, WebSocket, Security, Data JPA, Validation, Actuator
+- Eclipse Paho MQTT client
+- PostgreSQL + Flyway
+- React + Vite + TypeScript scaffold (`frontend/`)
+- Docker Compose with `postgres`, `mosquitto`, `backend`, optional `cloudflared`
+
+## Project Structure
 
 ```text
 Event-Pipeline-Lab/
@@ -29,153 +38,131 @@ Event-Pipeline-Lab/
       config/
     src/main/resources/
       application.yml
-      db/migration/V1__init_phase1_schema.sql
-      db/migration/V2__json_columns_to_text.sql
+      db/migration/
+        V1__init_phase1_schema.sql
+        V2__json_columns_to_text.sql
+        V3__phase2_auth_task_group.sql
       static/admin-test.html
     Dockerfile
     build.gradle
     settings.gradle
   frontend/
-    src/
-    package.json
-    vite.config.ts
   infra/
     mosquitto/mosquitto.conf
     cloudflared/config.yml.example
   docker-compose.yml
 ```
 
-## Frontend framework confirmation
-
-Chosen frontend framework: **React + Vite + TypeScript** (`/frontend` scaffolded for Phase 2).
-
-Phase 1 live test UI is served by backend at:
-
-- [http://localhost:8080/admin-test.html](http://localhost:8080/admin-test.html)
-
-## Docker Compose services (exact)
+## Docker Compose Services
 
 1. `postgres`
 2. `mosquitto`
 3. `backend`
-4. `cloudflared` (optional, `public` profile)
+4. `cloudflared` (optional, profile: `public`)
 
-## Compose and infra config files
-
-- `/docker-compose.yml`
-- `/infra/mosquitto/mosquitto.conf`
-- `/infra/cloudflared/config.yml.example`
-- `/backend/Dockerfile`
-- `/backend/build.gradle`
-- `/backend/settings.gradle`
-- `/backend/src/main/resources/application.yml`
-- `/backend/src/main/resources/db/migration/V1__init_phase1_schema.sql`
-- `/backend/src/main/resources/db/migration/V2__json_columns_to_text.sql`
-
-## Run locally
-
-1. Start stack:
+## Run Locally
 
 ```bash
 docker compose up --build -d
 ```
 
-2. Check backend health:
+Health check:
 
 ```bash
-docker compose exec -T backend sh -lc 'echo OK'
 docker run --rm --network epl_default curlimages/curl:8.12.1 -sS http://backend:8080/actuator/health
 ```
 
-Expected: `{"status":"UP"...}`
+Expected: `{"status":"UP",...}`
 
-## Classical log files
+## Default Phase 2 Credentials (dev seed)
 
-Backend logs are written to a classical rolling log file:
+- Admin: `admin` / `admin123`
+- Student groups: `epld01..epld12` / `1234`
 
-- container path: `/app/logs/epl-backend.log`
-- compose volume: `backend_logs`
+Seed data is created by Flyway migration `V3__phase2_auth_task_group.sql`.
 
-Live log stream is still available via:
+## MQTT Ingestion Test
 
-```bash
-docker compose logs -f backend
-```
-
-## Test MQTT ingestion locally
-
-### A) Canonical EPL topic schema (`epld/{deviceId}/...`)
-
-Publish a button event:
+Publish canonical EPL event:
 
 ```bash
 docker compose exec -T mosquitto mosquitto_pub -h localhost -t epld/epld01/event/button -m '{"button":"black","action":"press"}'
 ```
 
-Publish Wi-Fi status update:
+Check admin events feed (auth required):
 
 ```bash
-docker compose exec -T mosquitto mosquitto_pub -h localhost -t epld/epld01/status/wifi -m '{"rssi":-61,"ssid":"lab-wifi"}'
+ADMIN_TOKEN=$(docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST http://backend:8080/api/auth/login -H 'Content-Type: application/json' -d '{"username":"admin","pin":"admin123"}' | sed -n 's/.*"sessionToken":"\([^"]*\)".*/\1/p')
+docker run --rm --network epl_default curlimages/curl:8.12.1 -sS "http://backend:8080/api/admin/events?limit=20" -H "X-EPL-Session: ${ADMIN_TOKEN}"
 ```
 
-### B) Shelly capture-compatible topics (supported in Phase 1 normalizer)
-
-Publish online transition:
+## Phase 2 API Smoke Test
 
 ```bash
-docker compose exec -T mosquitto mosquitto_pub -h localhost -t epld01/online -m 'true'
+# Admin login
+ADMIN_TOKEN=$(docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST http://backend:8080/api/auth/login -H 'Content-Type: application/json' -d '{"username":"admin","pin":"admin123"}' | sed -n 's/.*"sessionToken":"\([^"]*\)".*/\1/p')
+
+# Admin task list + activate
+
+docker run --rm --network epl_default curlimages/curl:8.12.1 -sS http://backend:8080/api/admin/tasks -H "X-EPL-Session: ${ADMIN_TOKEN}"
+docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST http://backend:8080/api/admin/task/activate -H "X-EPL-Session: ${ADMIN_TOKEN}" -H 'Content-Type: application/json' -d '{"taskId":"task_commands"}'
+
+# Student login + bootstrap
+STUDENT_TOKEN=$(docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST http://backend:8080/api/auth/login -H 'Content-Type: application/json' -d '{"username":"epld01","pin":"1234"}' | sed -n 's/.*"sessionToken":"\([^"]*\)".*/\1/p')
+docker run --rm --network epl_default curlimages/curl:8.12.1 -sS http://backend:8080/api/student/bootstrap -H "X-EPL-Session: ${STUDENT_TOKEN}"
+
+# Student config update (capability-gated)
+docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST http://backend:8080/api/student/config -H "X-EPL-Session: ${STUDENT_TOKEN}" -H 'Content-Type: application/json' -d '{"config":{"displayMode":"compact","commandPanel":true}}'
+
+# Student command (allowed for own group device)
+docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST http://backend:8080/api/student/command -H "X-EPL-Session: ${STUDENT_TOKEN}" -H 'Content-Type: application/json' -d '{"deviceId":"epld01","command":"LED_GREEN","on":true}'
 ```
 
-Publish `NotifyStatus` button press:
+## WebSocket Channels
+
+- Admin: `ws://localhost:8080/ws/admin?token=<adminSessionToken>`
+- Student: `ws://localhost:8080/ws/student?token=<studentSessionToken>`
+
+Server push event types include:
+
+- `task.updated`
+- `capabilities.updated`
+- `group.presence.updated`
+- `group.config.updated`
+- `event.feed.append`
+- `device.status.updated`
+- `admin.groups.updated`
+- `error.notification`
+
+## Admin Test Page
+
+A lightweight authenticated test client is served by backend:
+
+- [http://localhost:8080/admin-test.html](http://localhost:8080/admin-test.html)
+
+Use the login form on the page (defaults: `admin/admin123`) before loading feeds.
+
+## Logging
+
+Backend writes rolling file logs to:
+
+- container path: `/app/logs/epl-backend.log`
+- compose volume: `backend_logs`
+
+Also available via:
 
 ```bash
-docker compose exec -T mosquitto mosquitto_pub -h localhost -t epld01/events/rpc -m '{"method":"NotifyStatus","params":{"ts":1772015093.26,"input:0":{"state":true}}}'
+docker compose logs -f backend
 ```
 
-Publish telemetry payload:
-
-```bash
-docker compose exec -T mosquitto mosquitto_pub -h localhost -t epld01/telemetry -m '{"kind":"epl_shelly_telemetry_v1","wifi":{"rssi":-58},"mqtt":{"connected":true}}'
-```
-
-## Verify ingestion + live feed
-
-Recent canonical events:
-
-```bash
-docker run --rm --network epl_default curlimages/curl:8.12.1 -sS "http://backend:8080/api/admin/events?limit=20"
-```
-
-Bounded live buffer snapshot:
-
-```bash
-docker run --rm --network epl_default curlimages/curl:8.12.1 -sS "http://backend:8080/api/admin/events/live?limit=20"
-```
-
-Device status:
-
-```bash
-docker run --rm --network epl_default curlimages/curl:8.12.1 -sS "http://backend:8080/api/admin/devices"
-```
-
-Live WebSocket stream:
-
-- URL: `ws://localhost:8080/ws/admin`
-- Browser test page: [http://localhost:8080/admin-test.html](http://localhost:8080/admin-test.html)
-
-## Cloudflare tunnel (optional)
-
-The `cloudflared` service now uses file-based config (`infra/cloudflared/config.yml.example`) instead of token environment variables.
-
-Run with public profile:
+## Cloudflare Tunnel (optional)
 
 ```bash
 docker compose --profile public up -d cloudflared
 ```
 
-Local fallback remains available at `http://localhost:8080`.
+Config file:
 
-## Phase 1 scope note
+- `infra/cloudflared/config.yml.example`
 
-Auth/session, task/scenario engine, group collaboration sync, and full React student/admin UIs are intentionally deferred to Phase 2+.
-The backend package structure for these modules is scaffolded to keep expansion clean.
+Local fallback remains `http://localhost:8080`.

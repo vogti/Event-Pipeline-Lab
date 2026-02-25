@@ -13,16 +13,16 @@ import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 @Component
-public class AdminWebSocketHandler extends TextWebSocketHandler {
+public class StudentWebSocketHandler extends TextWebSocketHandler {
 
-    private static final Logger log = LoggerFactory.getLogger(AdminWebSocketHandler.class);
+    private static final Logger log = LoggerFactory.getLogger(StudentWebSocketHandler.class);
 
-    private final AdminWebSocketBroadcaster broadcaster;
+    private final StudentWebSocketBroadcaster broadcaster;
     private final AuthService authService;
     private final WebSocketTokenExtractor tokenExtractor;
 
-    public AdminWebSocketHandler(
-            AdminWebSocketBroadcaster broadcaster,
+    public StudentWebSocketHandler(
+            StudentWebSocketBroadcaster broadcaster,
             AuthService authService,
             WebSocketTokenExtractor tokenExtractor
     ) {
@@ -35,17 +35,18 @@ public class AdminWebSocketHandler extends TextWebSocketHandler {
     public void afterConnectionEstablished(WebSocketSession session) throws IOException {
         String token = tokenExtractor.extract(session);
         SessionPrincipal principal = authService.resolveAndTouch(token).orElse(null);
-        if (principal == null || principal.role() != AppRole.ADMIN) {
-            session.close(CloseStatus.POLICY_VIOLATION.withReason("admin session required"));
+        if (principal == null || principal.role() != AppRole.STUDENT) {
+            session.close(CloseStatus.POLICY_VIOLATION.withReason("invalid session"));
             return;
         }
 
-        broadcaster.register(session);
+        session.getAttributes().put("groupKey", principal.groupKey());
+        broadcaster.register(session, principal);
     }
 
     @Override
-    public void handleTextMessage(WebSocketSession session, TextMessage message) {
-        log.debug("Ignoring incoming admin WS message on session {}: {}", session.getId(), message.getPayload());
+    protected void handleTextMessage(WebSocketSession session, TextMessage message) {
+        log.debug("Ignoring incoming student WS message on session {}", session.getId());
     }
 
     @Override
@@ -55,7 +56,7 @@ public class AdminWebSocketHandler extends TextWebSocketHandler {
 
     @Override
     public void handleTransportError(WebSocketSession session, Throwable exception) {
-        log.warn("Admin WS transport error on session {}: {}", session.getId(), exception.getMessage());
+        log.warn("Student WS transport error on session {}: {}", session.getId(), exception.getMessage());
         broadcaster.unregister(session);
     }
 }
