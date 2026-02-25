@@ -731,6 +731,10 @@ textarea {
   cursor: pointer;
 }
 
+.feed-row-new {
+  animation: feed-row-highlight 1s ease-out;
+}
+
 .feed-row-clickable:hover {
   background: rgba(228, 241, 247, 0.65);
 }
@@ -748,6 +752,15 @@ textarea {
   color: #2a4a61;
   font-size: 0.71rem;
   text-transform: uppercase;
+}
+
+@keyframes feed-row-highlight {
+  0% {
+    background: rgba(255, 223, 153, 0.75);
+  }
+  100% {
+    background: transparent;
+  }
 }
 
 .raw-cell {

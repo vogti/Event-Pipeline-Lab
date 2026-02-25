@@ -545,11 +545,39 @@ function feedMatchesTopic(event: CanonicalEvent, topicFilter: string): boolean {
 }
 
 function tryParsePayload(payloadJson: string): unknown | null {
-  try {
-    return JSON.parse(payloadJson);
-  } catch {
+  const initial = payloadJson.trim();
+  if (!initial) {
     return null;
   }
+
+  let current = initial;
+  for (let depth = 0; depth < 4; depth += 1) {
+    try {
+      const parsed = JSON.parse(current);
+      if (typeof parsed === 'string') {
+        const next = parsed.trim();
+        if (!next || next === current) {
+          return null;
+        }
+        current = next;
+        continue;
+      }
+      return parsed;
+    } catch {
+      const unescaped = current
+        .replace(/\\"/g, '"')
+        .replace(/\\\\/g, '\\')
+        .replace(/\\n/g, '\n')
+        .replace(/\\r/g, '\r')
+        .replace(/\\t/g, '\t')
+        .trim();
+      if (!unescaped || unescaped === current) {
+        return null;
+      }
+      current = unescaped;
+    }
+  }
+  return null;
 }
 
 function isTelemetryEvent(event: CanonicalEvent): boolean {
@@ -1261,19 +1289,65 @@ export default function App() {
   const [pinEditorValue, setPinEditorValue] = useState('');
   const [pinEditorLoading, setPinEditorLoading] = useState(false);
   const [adminPage, setAdminPage] = useState<AdminPage>('dashboard');
+  const [recentFeedEventIds, setRecentFeedEventIds] = useState<Record<string, true>>({});
 
   const studentPauseRef = useRef(studentFeedPaused);
   const adminPauseRef = useRef(adminFeedPaused);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
+  const recentFeedTimersRef = useRef<Record<string, number>>({});
 
   const reportBackgroundError = useCallback((context: string, error: unknown) => {
     const message = toErrorMessage(error);
     console.warn(`[EPL UI background] ${context}: ${message}`);
   }, []);
 
+  const clearRecentFeedHighlights = useCallback(() => {
+    for (const timerId of Object.values(recentFeedTimersRef.current)) {
+      window.clearTimeout(timerId);
+    }
+    recentFeedTimersRef.current = {};
+    setRecentFeedEventIds({});
+  }, []);
+
+  const markFeedEventsRecent = useCallback((events: CanonicalEvent[]) => {
+    if (events.length === 0) {
+      return;
+    }
+    setRecentFeedEventIds((previous) => {
+      const next = { ...previous };
+      for (const event of events) {
+        next[event.id] = true;
+      }
+      return next;
+    });
+    for (const event of events) {
+      const existingTimer = recentFeedTimersRef.current[event.id];
+      if (existingTimer !== undefined) {
+        window.clearTimeout(existingTimer);
+      }
+      recentFeedTimersRef.current[event.id] = window.setTimeout(() => {
+        setRecentFeedEventIds((previous) => {
+          if (!(event.id in previous)) {
+            return previous;
+          }
+          const next = { ...previous };
+          delete next[event.id];
+          return next;
+        });
+        delete recentFeedTimersRef.current[event.id];
+      }, 1000);
+    }
+  }, []);
+
   useEffect(() => {
     studentPauseRef.current = studentFeedPaused;
   }, [studentFeedPaused]);
+
+  useEffect(() => {
+    return () => {
+      clearRecentFeedHighlights();
+    };
+  }, [clearRecentFeedHighlights]);
 
   useEffect(() => {
     adminPauseRef.current = adminFeedPaused;
@@ -1330,7 +1404,8 @@ export default function App() {
     setPinEditorValue('');
     setPinEditorLoading(false);
     setAdminPage('dashboard');
-  }, []);
+    clearRecentFeedHighlights();
+  }, [clearRecentFeedHighlights]);
 
   const clearAuth = useCallback(() => {
     if (typeof window !== 'undefined') {
@@ -1544,6 +1619,9 @@ export default function App() {
       setAdminDeviceIpById({});
       return;
     }
+    if (adminPage !== 'devices') {
+      return;
+    }
 
     const latestSnapshots = buildDeviceTelemetrySnapshots(adminData.events);
     setAdminDeviceSnapshots((previous) => mergeTelemetrySnapshotCache(previous, latestSnapshots));
@@ -1562,7 +1640,7 @@ export default function App() {
         adminData.devices.map((device) => device.deviceId)
       )
     );
-  }, [adminData]);
+  }, [adminData, adminPage]);
 
   useEffect(() => {
     if (!session || !token) {
@@ -1610,6 +1688,7 @@ export default function App() {
       }
       const queued = studentFeedQueue;
       studentFeedQueue = [];
+      markFeedEventsRecent(queued);
       setStudentData((previous) => {
         if (!previous) {
           return previous;
@@ -1640,6 +1719,7 @@ export default function App() {
       }
       const queued = adminFeedQueue;
       adminFeedQueue = [];
+      markFeedEventsRecent(queued);
       setAdminData((previous) => {
         if (!previous) {
           return previous;
@@ -1922,7 +2002,7 @@ export default function App() {
         socket.close();
       }
     };
-  }, [refreshAdminGroups, refreshAdminTasks, reportBackgroundError, session, token]);
+  }, [markFeedEventsRecent, refreshAdminGroups, refreshAdminTasks, reportBackgroundError, session, token]);
 
   const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -2812,7 +2892,7 @@ export default function App() {
                       studentVisibleFeed.map((eventItem) => (
                           <tr
                             key={eventItem.id}
-                            className="feed-row-clickable"
+                            className={`feed-row-clickable ${recentFeedEventIds[eventItem.id] ? 'feed-row-new' : ''}`}
                             role="button"
                             tabIndex={0}
                             onClick={() => {
@@ -3341,7 +3421,7 @@ export default function App() {
                           adminVisibleFeed.map((eventItem) => (
                               <tr
                                 key={eventItem.id}
-                                className="feed-row-clickable"
+                                className={`feed-row-clickable ${recentFeedEventIds[eventItem.id] ? 'feed-row-new' : ''}`}
                                 role="button"
                                 tabIndex={0}
                                 onClick={() => {
