@@ -70,6 +70,42 @@ Event-Pipeline-Lab/
 docker compose up --build -d
 ```
 
+## Update Running Deployment
+
+Run these commands from the repository root on the target VM.
+
+### Standard update (recommended)
+
+```bash
+git pull
+docker compose build backend frontend
+docker compose up -d backend frontend
+```
+
+### One-command update
+
+```bash
+docker compose up -d --build
+```
+
+### Verify after update
+
+```bash
+docker compose ps
+docker run --rm --network epl_default curlimages/curl:8.12.1 -sS http://backend:8080/actuator/health
+docker compose logs backend --tail=80
+```
+
+Notes:
+
+- Flyway migrations run automatically when backend starts.
+- Existing Postgres data is kept (no volume deletion in the commands above).
+- If you use the optional public tunnel, also update/restart it with:
+
+```bash
+docker compose --profile public up -d cloudflared
+```
+
 Frontend UI:
 
 - [http://localhost:5173](http://localhost:5173)

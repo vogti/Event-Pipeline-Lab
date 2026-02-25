@@ -277,6 +277,11 @@ export default function App() {
   const studentPauseRef = useRef(studentFeedPaused);
   const adminPauseRef = useRef(adminFeedPaused);
 
+  const reportBackgroundError = useCallback((context: string, error: unknown) => {
+    const message = toErrorMessage(error);
+    console.warn(`[EPL UI background] ${context}: ${message}`);
+  }, []);
+
   useEffect(() => {
     studentPauseRef.current = studentFeedPaused;
   }, [studentFeedPaused]);
@@ -284,6 +289,18 @@ export default function App() {
   useEffect(() => {
     adminPauseRef.current = adminFeedPaused;
   }, [adminFeedPaused]);
+
+  useEffect(() => {
+    if (!errorMessage) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setErrorMessage(null);
+    }, 6000);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [errorMessage]);
 
   const language = useMemo<Language>(() => {
     if (languageOverride) {
@@ -462,7 +479,7 @@ export default function App() {
       }
       groupRefreshTimer = window.setTimeout(() => {
         groupRefreshTimer = null;
-        refreshAdminGroups(token).catch((error) => setErrorMessage(toErrorMessage(error)));
+        refreshAdminGroups(token).catch((error) => reportBackgroundError('refreshAdminGroups', error));
       }, 350);
     };
 
@@ -560,7 +577,6 @@ export default function App() {
                 (taskLike as TaskDefinitionPayload).studentCapabilities ?? previous.capabilities
             };
           });
-          setInfoMessage(t('taskUpdated'));
           return;
         }
 
@@ -636,7 +652,7 @@ export default function App() {
       }
 
       if (envelope.type === 'task.updated') {
-        refreshAdminTasks(token).catch((error) => setErrorMessage(toErrorMessage(error)));
+        refreshAdminTasks(token).catch((error) => reportBackgroundError('refreshAdminTasks', error));
         return;
       }
 
@@ -725,7 +741,7 @@ export default function App() {
         socket.close();
       }
     };
-  }, [refreshAdminGroups, refreshAdminTasks, session, t, token]);
+  }, [refreshAdminGroups, refreshAdminTasks, reportBackgroundError, session, token]);
 
   const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -767,11 +783,6 @@ export default function App() {
   const setManualLanguage = (nextLanguage: Language) => {
     setLanguageOverride(nextLanguage);
     setStoredLanguageOverride(nextLanguage);
-  };
-
-  const resetLanguageToDefaultMode = () => {
-    setLanguageOverride(null);
-    setStoredLanguageOverride(null);
   };
 
   const saveDisplayName = async () => {
@@ -1118,9 +1129,6 @@ export default function App() {
               onClick={() => setManualLanguage('en')}
             >
               EN
-            </button>
-            <button className="button tiny ghost" type="button" onClick={resetLanguageToDefaultMode}>
-              {t('useDefaultLanguage')}
             </button>
           </div>
 
