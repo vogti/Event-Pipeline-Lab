@@ -204,6 +204,12 @@ docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST http://
 
 # Student command (allowed for own group device)
 docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST http://backend:8080/api/student/command -H "X-EPL-Session: ${STUDENT_TOKEN}" -H 'Content-Type: application/json' -d '{"deviceId":"epld01","command":"LED_GREEN","on":true}'
+
+# System status (admin)
+docker run --rm --network epl_default curlimages/curl:8.12.1 -sS http://backend:8080/api/admin/system-status -H "X-EPL-Session: ${ADMIN_TOKEN}"
+
+# Reset stored events (admin, destructive)
+docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST http://backend:8080/api/admin/system-status/events/reset -H "X-EPL-Session: ${ADMIN_TOKEN}" -H 'Content-Type: application/json' -d '{"confirm":true}'
 ```
 
 ## WebSocket Channels

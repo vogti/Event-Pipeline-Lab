@@ -1,9 +1,11 @@
 import type {
+  AdminSystemStatus,
   AppSettings,
   AuthMe,
   CanonicalEvent,
   DeviceCommandType,
   DevicePinInfo,
+  ResetEventsResponse,
   DeviceStatus,
   GroupConfig,
   GroupOverview,
@@ -228,6 +230,21 @@ export const api = {
 
   adminSettings(token: string): Promise<AppSettings> {
     return request<AppSettings>('/api/admin/settings', undefined, token);
+  },
+
+  adminSystemStatus(token: string): Promise<AdminSystemStatus> {
+    return request<AdminSystemStatus>('/api/admin/system-status', undefined, token);
+  },
+
+  adminResetEvents(token: string): Promise<ResetEventsResponse> {
+    return request<ResetEventsResponse>(
+      '/api/admin/system-status/events/reset',
+      {
+        method: 'POST',
+        body: JSON.stringify({ confirm: true })
+      },
+      token
+    );
   },
 
   updateAdminSettings(

@@ -39,4 +39,8 @@ public class LiveEventBuffer {
         }
         return result;
     }
+
+    public synchronized void clear() {
+        buffer.clear();
+    }
 }

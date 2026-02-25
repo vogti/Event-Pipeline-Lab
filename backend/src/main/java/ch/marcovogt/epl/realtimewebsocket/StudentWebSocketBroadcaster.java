@@ -81,6 +81,10 @@ public class StudentWebSocketBroadcaster {
         return new ArrayList<>(groupSessions.keySet());
     }
 
+    public int activeSessionCount() {
+        return allSessions.size();
+    }
+
     private void send(WebSocketSession session, WsEnvelope envelope) {
         if (!session.isOpen()) {
             unregister(session);

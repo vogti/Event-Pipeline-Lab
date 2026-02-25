@@ -36,6 +36,10 @@ public class AdminWebSocketBroadcaster {
         log.info("Admin WS disconnected: sessionId={} activeSessions={}", session.getId(), sessions.size());
     }
 
+    public int activeSessionCount() {
+        return sessions.size();
+    }
+
     public void broadcastEvent(CanonicalEventDto eventDto) {
         broadcast("event.feed.append", eventDto);
     }

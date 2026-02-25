@@ -52,6 +52,10 @@ public class EventFeedService {
         liveEventBuffer.append(eventDto);
     }
 
+    public void clearLiveBuffer() {
+        liveEventBuffer.clear();
+    }
+
     @Transactional(readOnly = true)
     public List<CanonicalEventDto> getFeedForPrincipal(
             SessionPrincipal principal,

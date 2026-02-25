@@ -118,6 +118,32 @@ export interface AppSettings {
   updatedBy: string;
 }
 
+export interface SystemStatusEventRatePoint {
+  minuteTs: TimestampValue;
+  eventCount: number;
+}
+
+export interface WebSocketSessionStats {
+  admin: number;
+  student: number;
+  total: number;
+}
+
+export interface AdminSystemStatus {
+  generatedAt: TimestampValue;
+  eventsLast10Minutes: SystemStatusEventRatePoint[];
+  cpuLoadPct: number | null;
+  ramUsedBytes: number | null;
+  ramTotalBytes: number | null;
+  postgresSizeBytes: number;
+  websocketSessions: WebSocketSessionStats;
+}
+
+export interface ResetEventsResponse {
+  deletedEvents: number;
+  resetAt: TimestampValue;
+}
+
 export interface StudentBootstrap {
   me: AuthMe;
   activeTask: TaskInfo;

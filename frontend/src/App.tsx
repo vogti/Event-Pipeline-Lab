@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, api } from './api';
 import {
+  type AdminSystemStatus,
   type AppSettings,
   type AuthMe,
   type CanonicalEvent,
@@ -11,6 +12,7 @@ import {
   type GroupOverview,
   type LanguageMode,
   type PresenceUser,
+  type SystemStatusEventRatePoint,
   type TimestampValue,
   type TaskCapabilities,
   type TaskDefinitionPayload,
@@ -46,7 +48,7 @@ interface AdminViewData {
 type WsConnectionState = 'connecting' | 'connected' | 'disconnected';
 type FeedViewMode = 'rendered' | 'raw';
 type EventDetailsViewMode = 'rendered' | 'raw';
-type AdminPage = 'dashboard' | 'devices' | 'virtualDevices' | 'feed' | 'groupsTasks' | 'settings';
+type AdminPage = 'dashboard' | 'devices' | 'virtualDevices' | 'feed' | 'groupsTasks' | 'systemStatus' | 'settings';
 type CounterResetTarget = { deviceId: string; isVirtual: boolean };
 
 interface VirtualDevicePatch {
@@ -544,6 +546,41 @@ function sameAppSettings(a: AppSettings, b: AppSettings): boolean {
   );
 }
 
+function sameEventRateSeries(
+  a: SystemStatusEventRatePoint[],
+  b: SystemStatusEventRatePoint[]
+): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  for (let index = 0; index < a.length; index += 1) {
+    if (a[index].minuteTs !== b[index].minuteTs || a[index].eventCount !== b[index].eventCount) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function sameAdminSystemStatus(
+  a: AdminSystemStatus | null,
+  b: AdminSystemStatus
+): boolean {
+  if (!a) {
+    return false;
+  }
+  return (
+    a.generatedAt === b.generatedAt &&
+    sameEventRateSeries(a.eventsLast10Minutes, b.eventsLast10Minutes) &&
+    a.cpuLoadPct === b.cpuLoadPct &&
+    a.ramUsedBytes === b.ramUsedBytes &&
+    a.ramTotalBytes === b.ramTotalBytes &&
+    a.postgresSizeBytes === b.postgresSizeBytes &&
+    a.websocketSessions.admin === b.websocketSessions.admin &&
+    a.websocketSessions.student === b.websocketSessions.student &&
+    a.websocketSessions.total === b.websocketSessions.total
+  );
+}
+
 function sameVirtualDeviceState(a: VirtualDeviceState, b: VirtualDeviceState): boolean {
   return (
     a.deviceId === b.deviceId &&
@@ -644,6 +681,35 @@ function formatTimestamp(value: TimestampValue, language: Language, use24HourTim
     second: '2-digit',
     hour12: !use24HourTime
   });
+}
+
+function formatMinuteTimestamp(value: TimestampValue, language: Language, use24HourTime: boolean): string {
+  const epochMillis = timestampToEpochMillis(value);
+  if (epochMillis === null) {
+    return '-';
+  }
+  const locale = language === 'de' ? 'de-CH' : 'en-US';
+  return new Date(epochMillis).toLocaleTimeString(locale, {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: !use24HourTime
+  });
+}
+
+function formatBytes(value: number | null, language: Language): string {
+  if (value === null || !Number.isFinite(value) || value < 0) {
+    return '-';
+  }
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let size = value;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  const fractionDigits = size >= 100 || unitIndex === 0 ? 0 : 1;
+  const locale = language === 'de' ? 'de-CH' : 'en-US';
+  return `${size.toLocaleString(locale, { maximumFractionDigits: fractionDigits, minimumFractionDigits: fractionDigits })} ${units[unitIndex]}`;
 }
 
 function safeConfigMap(value: unknown): Record<string, unknown> {
@@ -1464,6 +1530,7 @@ export default function App() {
   const [studentFeedPaused, setStudentFeedPaused] = useState(false);
 
   const [adminData, setAdminData] = useState<AdminViewData | null>(null);
+  const [adminSystemStatus, setAdminSystemStatus] = useState<AdminSystemStatus | null>(null);
   const [adminTopicFilter, setAdminTopicFilter] = useState('');
   const [adminCategoryFilter, setAdminCategoryFilter] = useState<EventCategory | 'ALL'>('ALL');
   const [adminDeviceFilter, setAdminDeviceFilter] = useState('');
@@ -1492,6 +1559,7 @@ export default function App() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [nowEpochMs, setNowEpochMs] = useState<number>(() => Date.now());
   const [counterResetTarget, setCounterResetTarget] = useState<CounterResetTarget | null>(null);
+  const [resetEventsModalOpen, setResetEventsModalOpen] = useState(false);
   const [pinEditorDeviceId, setPinEditorDeviceId] = useState<string | null>(null);
   const [pinEditorValue, setPinEditorValue] = useState('');
   const [pinEditorLoading, setPinEditorLoading] = useState(false);
@@ -1677,6 +1745,7 @@ export default function App() {
     setStudentFeedPaused(false);
 
     setAdminData(null);
+    setAdminSystemStatus(null);
     setAdminTopicFilter('');
     setAdminCategoryFilter('ALL');
     setAdminDeviceFilter('');
@@ -1691,6 +1760,7 @@ export default function App() {
     setVirtualControlDeviceId(null);
     setVirtualControlPatch(null);
     setCounterResetTarget(null);
+    setResetEventsModalOpen(false);
     setPinEditorDeviceId(null);
     setPinEditorValue('');
     setPinEditorLoading(false);
@@ -1760,13 +1830,14 @@ export default function App() {
       return;
     }
 
-    const [tasks, devices, virtualDevices, groups, settings, events] = await Promise.all([
+    const [tasks, devices, virtualDevices, groups, settings, events, systemStatus] = await Promise.all([
       api.adminTasks(activeToken),
       api.adminDevices(activeToken),
       api.adminVirtualDevices(activeToken),
       api.adminGroups(activeToken),
       api.adminSettings(activeToken),
-      api.eventsFeed(activeToken, { limit: MAX_FEED_EVENTS, includeInternal: true })
+      api.eventsFeed(activeToken, { limit: MAX_FEED_EVENTS, includeInternal: true }),
+      api.adminSystemStatus(activeToken)
     ]);
 
     setAdminData({
@@ -1783,6 +1854,7 @@ export default function App() {
     setAdminSettingsDraftVirtualVisible(settings.studentVirtualDeviceVisible);
     setDefaultLanguageMode(settings.defaultLanguageMode);
     setTimeFormat24h(settings.timeFormat24h);
+    setAdminSystemStatus(systemStatus);
     setAdminPage('dashboard');
   }, []);
 
@@ -1912,6 +1984,21 @@ export default function App() {
   }, [counterResetTarget]);
 
   useEffect(() => {
+    if (!resetEventsModalOpen) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setResetEventsModalOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [resetEventsModalOpen]);
+
+  useEffect(() => {
     if (!pinEditorDeviceId) {
       return;
     }
@@ -2009,6 +2096,41 @@ export default function App() {
       )
     );
   }, [adminData?.devices, adminPage]);
+
+  useEffect(() => {
+    if (!token || session?.role !== 'ADMIN' || adminPage !== 'systemStatus') {
+      return;
+    }
+
+    let cancelled = false;
+    let intervalId: number | null = null;
+
+    const loadStatus = async () => {
+      try {
+        const latest = await api.adminSystemStatus(token);
+        if (cancelled) {
+          return;
+        }
+        setAdminSystemStatus((previous) => (sameAdminSystemStatus(previous, latest) ? previous : latest));
+      } catch (error) {
+        if (!cancelled) {
+          reportBackgroundError('adminSystemStatus', error);
+        }
+      }
+    };
+
+    loadStatus().catch((error) => reportBackgroundError('adminSystemStatus', error));
+    intervalId = window.setInterval(() => {
+      loadStatus().catch((error) => reportBackgroundError('adminSystemStatus', error));
+    }, 5000);
+
+    return () => {
+      cancelled = true;
+      if (intervalId !== null) {
+        window.clearInterval(intervalId);
+      }
+    };
+  }, [adminPage, reportBackgroundError, session?.role, token]);
 
   useEffect(() => {
     if (!session || !token) {
@@ -2913,13 +3035,14 @@ export default function App() {
     setErrorMessage(null);
 
     try {
-      const [tasks, devices, virtualDevices, groups, events, settings] = await Promise.all([
+      const [tasks, devices, virtualDevices, groups, events, settings, systemStatus] = await Promise.all([
         api.adminTasks(token),
         api.adminDevices(token),
         api.adminVirtualDevices(token),
         api.adminGroups(token),
         api.eventsFeed(token, { limit: MAX_FEED_EVENTS, includeInternal: true }),
-        api.adminSettings(token)
+        api.adminSettings(token),
+        api.adminSystemStatus(token)
       ]);
       setAdminData((previous) => {
         if (!previous) {
@@ -2942,6 +3065,40 @@ export default function App() {
       setAdminSettingsDraftVirtualVisible(settings.studentVirtualDeviceVisible);
       setDefaultLanguageMode(settings.defaultLanguageMode);
       setTimeFormat24h(settings.timeFormat24h);
+      setAdminSystemStatus((previous) => (sameAdminSystemStatus(previous, systemStatus) ? previous : systemStatus));
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const resetStoredEvents = async () => {
+    if (!token || !session || session.role !== 'ADMIN') {
+      return;
+    }
+
+    setBusyKey('admin-reset-events');
+    setErrorMessage(null);
+
+    try {
+      const reset = await api.adminResetEvents(token);
+      setAdminData((previous) => {
+        if (!previous) {
+          return previous;
+        }
+        return {
+          ...previous,
+          events: []
+        };
+      });
+      deferredAdminFeedRef.current = [];
+      clearRecentFeedHighlights();
+      setResetEventsModalOpen(false);
+
+      const latestStatus = await api.adminSystemStatus(token);
+      setAdminSystemStatus((previous) => (sameAdminSystemStatus(previous, latestStatus) ? previous : latestStatus));
+      setInfoMessage(`${t('resetStoredEventsDone')}: ${reset.deletedEvents}`);
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
@@ -3051,6 +3208,30 @@ export default function App() {
     }
     return adminData.events[0];
   }, [adminData]);
+
+  const systemStatusSeries = useMemo(() => {
+    return adminSystemStatus?.eventsLast10Minutes ?? [];
+  }, [adminSystemStatus]);
+
+  const systemStatusMaxEventCount = useMemo(() => {
+    if (systemStatusSeries.length === 0) {
+      return 1;
+    }
+    const max = systemStatusSeries.reduce((current, point) => Math.max(current, point.eventCount), 0);
+    return Math.max(1, max);
+  }, [systemStatusSeries]);
+
+  const systemStatusRamUsagePct = useMemo(() => {
+    if (!adminSystemStatus) {
+      return null;
+    }
+    const used = adminSystemStatus.ramUsedBytes;
+    const total = adminSystemStatus.ramTotalBytes;
+    if (used === null || total === null || total <= 0) {
+      return null;
+    }
+    return Math.max(0, Math.min(100, (used / total) * 100));
+  }, [adminSystemStatus]);
 
   const counterResetBusy = counterResetTarget
     ? counterResetTarget.isVirtual
@@ -4078,6 +4259,13 @@ export default function App() {
                 {t('groupsTasks')}
               </button>
               <button
+                className={`button tiny ${adminPage === 'systemStatus' ? 'active' : 'secondary'}`}
+                type="button"
+                onClick={() => setAdminPage('systemStatus')}
+              >
+                {t('systemStatus')}
+              </button>
+              <button
                 className={`button tiny ${adminPage === 'settings' ? 'active' : 'secondary'}`}
                 type="button"
                 onClick={() => setAdminPage('settings')}
@@ -4120,6 +4308,9 @@ export default function App() {
                       </button>
                       <button className="button secondary" type="button" onClick={() => setAdminPage('groupsTasks')}>
                         {t('groupsTasks')}
+                      </button>
+                      <button className="button secondary" type="button" onClick={() => setAdminPage('systemStatus')}>
+                        {t('systemStatus')}
                       </button>
                       <button className="button secondary" type="button" onClick={() => setAdminPage('settings')}>
                         {t('settings')}
@@ -4210,6 +4401,99 @@ export default function App() {
                   >
                     {t('saveSettings')}
                   </button>
+                </section>
+              ) : null}
+
+              {adminPage === 'systemStatus' ? (
+                <section className="panel panel-animate full-width system-status-panel">
+                  <div className="panel-header">
+                    <h2>{t('systemStatus')}</h2>
+                    <button
+                      className="button secondary"
+                      type="button"
+                      onClick={refreshAdminData}
+                      disabled={busyKey === 'admin-refresh' || busyKey === 'admin-reset-events'}
+                    >
+                      {t('refresh')}
+                    </button>
+                  </div>
+
+                  {!adminSystemStatus ? (
+                    <p className="muted">{t('loading')}</p>
+                  ) : (
+                    <div className="system-status-grid">
+                      <article className="system-status-card">
+                        <h3>{t('eventsLast10Minutes')}</h3>
+                        <div className="system-status-chart">
+                          {systemStatusSeries.map((point) => {
+                            const heightPct =
+                              systemStatusMaxEventCount <= 0 || point.eventCount <= 0
+                                ? 0
+                                : Math.max(6, Math.round((point.eventCount / systemStatusMaxEventCount) * 100));
+                            const timeLabel = formatMinuteTimestamp(point.minuteTs, language, timeFormat24h);
+                            return (
+                              <div className="system-status-bar-column" key={String(point.minuteTs)}>
+                                <span className="system-status-bar-value">{point.eventCount}</span>
+                                <div className="system-status-bar-track">
+                                  <span className="system-status-bar-fill" style={{ height: `${heightPct}%` }} />
+                                </div>
+                                <span className="system-status-bar-label">{timeLabel}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </article>
+
+                      <article className="system-status-card">
+                        <h3>{t('cpuLoad')}</h3>
+                        <p className="system-status-value">
+                          {adminSystemStatus.cpuLoadPct === null ? '-' : `${adminSystemStatus.cpuLoadPct.toFixed(1)}%`}
+                        </p>
+                        <h3>{t('ramUsage')}</h3>
+                        <p className="system-status-value">
+                          {adminSystemStatus.ramUsedBytes === null || adminSystemStatus.ramTotalBytes === null
+                            ? '-'
+                            : `${formatBytes(adminSystemStatus.ramUsedBytes, language)} / ${formatBytes(adminSystemStatus.ramTotalBytes, language)}`}
+                        </p>
+                        {systemStatusRamUsagePct !== null ? (
+                          <div className="system-status-progress">
+                            <span style={{ width: `${systemStatusRamUsagePct.toFixed(1)}%` }} />
+                          </div>
+                        ) : null}
+                      </article>
+
+                      <article className="system-status-card">
+                        <h3>{t('databaseSize')}</h3>
+                        <button
+                          className="button secondary system-status-db-button"
+                          type="button"
+                          onClick={() => setResetEventsModalOpen(true)}
+                        >
+                          {formatBytes(adminSystemStatus.postgresSizeBytes, language)}
+                        </button>
+                        <p className="muted">{t('resetStoredEvents')}</p>
+                      </article>
+
+                      <article className="system-status-card">
+                        <h3>{t('websocketSessions')}</h3>
+                        <div className="system-status-sessions">
+                          <div className="system-status-session-row">
+                            <span>{t('wsAdmin')}</span>
+                            <strong>{adminSystemStatus.websocketSessions.admin}</strong>
+                          </div>
+                          <div className="system-status-session-row">
+                            <span>{t('wsStudent')}</span>
+                            <strong>{adminSystemStatus.websocketSessions.student}</strong>
+                          </div>
+                          <div className="system-status-session-row">
+                            <span>{t('wsTotal')}</span>
+                            <strong>{adminSystemStatus.websocketSessions.total}</strong>
+                          </div>
+                        </div>
+                        <p className="muted">{formatTs(adminSystemStatus.generatedAt)}</p>
+                      </article>
+                    </div>
+                  )}
                 </section>
               ) : null}
 
@@ -4551,6 +4835,33 @@ export default function App() {
                 {t('applyVirtualState')}
               </button>
               <button className="button secondary" type="button" onClick={closeVirtualControlModal}>
+                {t('close')}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {resetEventsModalOpen ? (
+        <div className="event-modal-backdrop" onClick={() => setResetEventsModalOpen(false)}>
+          <div className="event-modal counter-reset-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="panel-header">
+              <h2>{t('resetStoredEventsConfirmTitle')}</h2>
+              <button className="button secondary" type="button" onClick={() => setResetEventsModalOpen(false)}>
+                {t('close')}
+              </button>
+            </div>
+            <p>{t('resetStoredEventsConfirmBody')}</p>
+            <div className="event-modal-actions">
+              <button
+                className="button danger"
+                type="button"
+                onClick={resetStoredEvents}
+                disabled={busyKey === 'admin-reset-events'}
+              >
+                {t('resetStoredEvents')}
+              </button>
+              <button className="button secondary" type="button" onClick={() => setResetEventsModalOpen(false)}>
                 {t('close')}
               </button>
             </div>
