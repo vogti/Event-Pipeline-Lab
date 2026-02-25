@@ -1,0 +1,8 @@
+# Optional config if you prefer cloudflared config-file mode over token mode.
+tunnel: <tunnel-uuid>
+credentials-file: /etc/cloudflared/<tunnel-uuid>.json
+
+ingress:
+  - hostname: epl.example.com
+    service: http://backend:8080
+  - service: http_status:404

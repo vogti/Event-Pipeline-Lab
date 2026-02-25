@@ -1,0 +1,66 @@
+name: epl
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: epl-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-epl}
+      POSTGRES_USER: ${POSTGRES_USER:-epl}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-epl}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-epl} -d ${POSTGRES_DB:-epl}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: epl-mosquitto
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./infra/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: epl-backend
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-epl}
+      DB_USERNAME: ${POSTGRES_USER:-epl}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-epl}
+      MQTT_BROKER_URI: tcp://mosquitto:1883
+      MQTT_CLIENT_ID: ${MQTT_CLIENT_ID:-epl-backend}
+      EPL_ADMIN_BUFFER_SIZE: ${EPL_ADMIN_BUFFER_SIZE:-500}
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: epl-cloudflared
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - backend
+    restart: unless-stopped
+    profiles: ["public"]
+
+volumes:
+  postgres_data:
+  mosquitto_data:
+  mosquitto_log:
