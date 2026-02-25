@@ -4,6 +4,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import ch.marcovogt.epl.eventingestionnormalization.CanonicalEvent;
+import ch.marcovogt.epl.realtimewebsocket.AdminWebSocketBroadcaster;
+import ch.marcovogt.epl.realtimewebsocket.RealtimeSyncService;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -23,16 +25,22 @@ public class DeviceStatusService {
 
     private final DeviceStatusRepository deviceStatusRepository;
     private final ObjectMapper objectMapper;
+    private final AdminWebSocketBroadcaster adminWebSocketBroadcaster;
+    private final RealtimeSyncService realtimeSyncService;
     private final Clock clock;
     private final Duration offlineTimeout;
 
     public DeviceStatusService(
             DeviceStatusRepository deviceStatusRepository,
             ObjectMapper objectMapper,
+            AdminWebSocketBroadcaster adminWebSocketBroadcaster,
+            RealtimeSyncService realtimeSyncService,
             @Value("${epl.device.offline-timeout:PT25S}") Duration offlineTimeout
     ) {
         this.deviceStatusRepository = deviceStatusRepository;
         this.objectMapper = objectMapper;
+        this.adminWebSocketBroadcaster = adminWebSocketBroadcaster;
+        this.realtimeSyncService = realtimeSyncService;
         this.offlineTimeout = offlineTimeout;
         this.clock = Clock.systemUTC();
     }
@@ -74,7 +82,12 @@ public class DeviceStatusService {
         }
 
         staleOnlineDevices.forEach(status -> status.setOnline(false));
-        deviceStatusRepository.saveAll(staleOnlineDevices);
+        List<DeviceStatus> saved = deviceStatusRepository.saveAll(staleOnlineDevices);
+        for (DeviceStatus status : saved) {
+            DeviceStatusDto dto = DeviceStatusDto.from(status);
+            adminWebSocketBroadcaster.broadcastDeviceStatus(dto);
+            realtimeSyncService.broadcastDeviceStatusToStudents(dto);
+        }
         log.info("Marked {} stale devices offline (cutoff={})", staleOnlineDevices.size(), cutoff);
     }
 

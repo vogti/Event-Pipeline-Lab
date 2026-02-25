@@ -2909,18 +2909,6 @@ export default function App() {
                       : blackPressed
                         ? t('statePressed')
                         : t('stateReleased');
-                  const greenLed =
-                    greenOn === null
-                      ? t('stateUnknown')
-                      : greenOn
-                        ? t('stateOn')
-                        : t('stateOff');
-                  const orangeLed =
-                    orangeOn === null
-                      ? t('stateUnknown')
-                      : orangeOn
-                        ? t('stateOn')
-                        : t('stateOff');
                   const temperature =
                     temperatureC === null ? '-' : `${temperatureC.toFixed(1)} °C`;
                   const humidity =
@@ -3046,7 +3034,7 @@ export default function App() {
                           </span>
                           <span className="metric-text">{counterValue}</span>
                         </button>
-                        <div className="device-metric">
+                        <div className="device-metric full">
                           <span className="metric-icon">
                             <MetricIcon kind="buttons" />
                           </span>
@@ -3055,7 +3043,7 @@ export default function App() {
                             <span className={`state-label ${redButtonClass}`}>{redButton}</span>
                           </span>
                         </div>
-                        <div className="device-metric">
+                        <div className="device-metric full">
                           <span className="metric-icon">
                             <MetricIcon kind="buttons" />
                           </span>
@@ -3063,12 +3051,6 @@ export default function App() {
                             <span className="metric-label">Black:</span>
                             <span className={`state-label ${blackButtonClass}`}>{blackButton}</span>
                           </span>
-                        </div>
-                        <div className="device-metric full">
-                          <span className="metric-icon">
-                            <MetricIcon kind="leds" />
-                          </span>
-                          <span className="metric-text">{t('metricLeds')}: G {greenLed}, O {orangeLed}</span>
                         </div>
                       </div>
 
