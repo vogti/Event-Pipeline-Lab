@@ -51,8 +51,7 @@ textarea {
 }
 
 .topbar {
-  position: sticky;
-  top: 0;
+  position: static;
   z-index: 20;
   margin-bottom: 1rem;
   padding: 0.9rem 1rem;
@@ -122,6 +121,71 @@ textarea {
   align-items: center;
   color: #2b4559;
   font-size: 0.82rem;
+}
+
+.user-menu {
+  position: relative;
+}
+
+.user-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.48rem;
+  min-height: 2.15rem;
+}
+
+.user-menu-name {
+  max-width: 220px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.user-menu-caret {
+  font-size: 0.72rem;
+  color: #3e5a6f;
+}
+
+.user-menu-panel {
+  position: absolute;
+  top: calc(100% + 0.45rem);
+  right: 0;
+  z-index: 40;
+  min-width: 260px;
+  border-radius: 12px;
+  border: 1px solid rgba(29, 53, 73, 0.2);
+  background: rgba(248, 252, 254, 0.98);
+  box-shadow: 0 14px 30px rgba(18, 40, 60, 0.18);
+  padding: 0.6rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.user-menu-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.user-menu-section {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.user-menu-label {
+  color: #355268;
+  font-size: 0.78rem;
+}
+
+.user-menu-actions {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.user-menu-link {
+  width: 100%;
+  justify-content: center;
 }
 
 .content {
@@ -223,11 +287,10 @@ textarea {
   border-radius: 11px;
   padding: 0.5rem 0.75rem;
   cursor: pointer;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transition: box-shadow 0.15s ease;
 }
 
 .button:hover:enabled {
-  transform: translateY(-1px);
   box-shadow: 0 6px 18px rgba(8, 64, 80, 0.2);
 }
 

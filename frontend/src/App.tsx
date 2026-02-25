@@ -167,20 +167,157 @@ function compareByNewestIngestTs(a: CanonicalEvent, b: CanonicalEvent): number {
   return bEpoch - aEpoch;
 }
 
-function prependBounded(items: CanonicalEvent[], item: CanonicalEvent, maxSize: number): CanonicalEvent[] {
-  const next = [item, ...items].sort(compareByNewestIngestTs);
-  if (next.length <= maxSize) {
-    return next;
+function mergeEventsBounded(
+  existing: CanonicalEvent[],
+  incoming: CanonicalEvent[],
+  maxSize: number
+): CanonicalEvent[] {
+  if (incoming.length === 0) {
+    return existing;
   }
-  return next.slice(0, maxSize);
+
+  const byId = new Map(existing.map((event) => [event.id, event]));
+  let changed = false;
+  for (const event of incoming) {
+    if (byId.has(event.id)) {
+      continue;
+    }
+    byId.set(event.id, event);
+    changed = true;
+  }
+  if (!changed) {
+    return existing;
+  }
+
+  const merged = Array.from(byId.values()).sort(compareByNewestIngestTs).slice(0, maxSize);
+  if (
+    merged.length === existing.length &&
+    merged.every((event, index) => event.id === existing[index]?.id)
+  ) {
+    return existing;
+  }
+  return merged;
 }
 
 function clampFeed(items: CanonicalEvent[]): CanonicalEvent[] {
-  const sorted = [...items].sort(compareByNewestIngestTs);
-  if (sorted.length <= MAX_FEED_EVENTS) {
-    return sorted;
+  return mergeEventsBounded([], items, MAX_FEED_EVENTS);
+}
+
+function isLikelyEpochTimestamp(value: number): boolean {
+  if (!Number.isFinite(value)) {
+    return false;
   }
-  return sorted.slice(0, MAX_FEED_EVENTS);
+  if (value >= 946_684_800_000 && value <= 4_102_444_800_000) {
+    return true;
+  }
+  if (value >= 946_684_800 && value <= 4_102_444_800) {
+    return true;
+  }
+  return false;
+}
+
+function looksLikeIpAddress(value: string): boolean {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return false;
+  }
+
+  const ipv4Match = trimmed.match(/^(\d{1,3})(?:\.(\d{1,3})){3}$/);
+  if (ipv4Match) {
+    const parts = trimmed.split('.');
+    return parts.every((part) => {
+      const parsed = Number(part);
+      return Number.isInteger(parsed) && parsed >= 0 && parsed <= 255;
+    });
+  }
+
+  if (trimmed.includes(':') && /^[0-9a-fA-F:]+$/.test(trimmed)) {
+    return true;
+  }
+  return false;
+}
+
+function findIpAddress(node: unknown, depth = 0): string | null {
+  if (depth > 6 || node === null || node === undefined) {
+    return null;
+  }
+
+  if (typeof node === 'string') {
+    return looksLikeIpAddress(node) ? node.trim() : null;
+  }
+  if (typeof node === 'number' || typeof node === 'boolean') {
+    return null;
+  }
+  if (Array.isArray(node)) {
+    for (const entry of node) {
+      const found = findIpAddress(entry, depth + 1);
+      if (found) {
+        return found;
+      }
+    }
+    return null;
+  }
+
+  const objectNode = node as Record<string, unknown>;
+  const priorityKeys = ['ip', 'ip_address', 'ipAddress', 'sta_ip', 'ipv4', 'address'];
+  for (const key of priorityKeys) {
+    if (!(key in objectNode)) {
+      continue;
+    }
+    const found = findIpAddress(objectNode[key], depth + 1);
+    if (found) {
+      return found;
+    }
+  }
+
+  for (const [key, value] of Object.entries(objectNode)) {
+    if (key.toLowerCase().includes('ip')) {
+      const found = findIpAddress(value, depth + 1);
+      if (found) {
+        return found;
+      }
+    }
+  }
+
+  for (const value of Object.values(objectNode)) {
+    const found = findIpAddress(value, depth + 1);
+    if (found) {
+      return found;
+    }
+  }
+  return null;
+}
+
+function extractIpAddressFromDeviceStatus(device: DeviceStatus, events: CanonicalEvent[]): string | null {
+  if (device.wifiPayloadJson) {
+    const wifiPayload = tryParsePayload(device.wifiPayloadJson);
+    const fromStatusPayload = findIpAddress(wifiPayload);
+    if (fromStatusPayload) {
+      return fromStatusPayload;
+    }
+  }
+
+  for (const event of events) {
+    if (event.deviceId !== device.deviceId) {
+      continue;
+    }
+    const fromEventPayload = findIpAddress(tryParsePayload(event.payloadJson));
+    if (fromEventPayload) {
+      return fromEventPayload;
+    }
+  }
+  return null;
+}
+
+function sameDeviceStatus(a: DeviceStatus, b: DeviceStatus): boolean {
+  return (
+    a.deviceId === b.deviceId &&
+    a.online === b.online &&
+    a.lastSeen === b.lastSeen &&
+    a.rssi === b.rssi &&
+    a.wifiPayloadJson === b.wifiPayloadJson &&
+    a.updatedAt === b.updatedAt
+  );
 }
 
 function getStoredToken(): string | null {
@@ -440,9 +577,29 @@ function eventValueSummary(event: CanonicalEvent): string {
       ['params', 'voltmeter:100', 'value']
     ]) ?? findNumberByKeys(parsedPayload, ['brightness', 'lux', 'ldr', 'voltage']);
 
+  const strictCounter =
+    firstNumber(parsedPayload, [
+      ['counter'],
+      ['count'],
+      ['total'],
+      ['counterValue'],
+      ['counter_value'],
+      ['blueCounter'],
+      ['params', 'counter:0', 'value'],
+      ['params', 'counter:100', 'value']
+    ]) ??
+    findNumberByKeys(parsedPayload, [
+      'counter',
+      'count',
+      'total',
+      'counterValue',
+      'counter_value',
+      'blueCounter'
+    ]);
+  const looseCounter = firstNumber(parsedPayload, [['value']]);
   const counter =
-    firstNumber(parsedPayload, [['count'], ['total'], ['counter'], ['value']]) ??
-    findNumberByKeys(parsedPayload, ['count', 'total', 'counter']);
+    strictCounter ??
+    (looseCounter !== null && !isLikelyEpochTimestamp(looseCounter) ? looseCounter : null);
 
   if (lowerEventType.includes('temperature') && temperature !== null) {
     return `${temperature.toFixed(1)} °C`;
@@ -454,6 +611,9 @@ function eventValueSummary(event: CanonicalEvent): string {
     return formatBrightnessMeasurement(brightness);
   }
   if (event.category === 'COUNTER' && counter !== null) {
+    if (isLikelyEpochTimestamp(counter) && strictCounter === null) {
+      return '';
+    }
     return Number.isInteger(counter) ? String(counter) : counter.toFixed(2);
   }
 
@@ -887,9 +1047,11 @@ export default function App() {
   const [feedViewMode, setFeedViewMode] = useState<FeedViewMode>('rendered');
   const [selectedEvent, setSelectedEvent] = useState<CanonicalEvent | null>(null);
   const [eventDetailsViewMode, setEventDetailsViewMode] = useState<EventDetailsViewMode>('rendered');
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   const studentPauseRef = useRef(studentFeedPaused);
   const adminPauseRef = useRef(adminFeedPaused);
+  const userMenuRef = useRef<HTMLDivElement | null>(null);
 
   const reportBackgroundError = useCallback((context: string, error: unknown) => {
     const message = toErrorMessage(error);
@@ -956,6 +1118,7 @@ export default function App() {
     }
     setToken(null);
     setSession(null);
+    setUserMenuOpen(false);
     setWsConnection('disconnected');
     clearRoleState();
   }, [clearRoleState]);
@@ -1090,6 +1253,32 @@ export default function App() {
   }, [selectedEvent]);
 
   useEffect(() => {
+    if (!userMenuOpen) {
+      return;
+    }
+    const onPointerDown = (event: MouseEvent) => {
+      if (!userMenuRef.current) {
+        return;
+      }
+      if (userMenuRef.current.contains(event.target as Node)) {
+        return;
+      }
+      setUserMenuOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setUserMenuOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', onPointerDown);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('mousedown', onPointerDown);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [userMenuOpen]);
+
+  useEffect(() => {
     if (!session || !token) {
       return;
     }
@@ -1139,9 +1328,9 @@ export default function App() {
         if (!previous) {
           return previous;
         }
-        let nextFeed = previous.feed;
-        for (const queuedEvent of queued) {
-          nextFeed = prependBounded(nextFeed, queuedEvent, MAX_FEED_EVENTS);
+        const nextFeed = mergeEventsBounded(previous.feed, queued, MAX_FEED_EVENTS);
+        if (nextFeed === previous.feed) {
+          return previous;
         }
         return {
           ...previous,
@@ -1155,7 +1344,7 @@ export default function App() {
       if (studentFeedFlushTimer !== null) {
         return;
       }
-      studentFeedFlushTimer = window.setTimeout(flushStudentFeedQueue, 80);
+      studentFeedFlushTimer = window.setTimeout(flushStudentFeedQueue, 180);
     };
 
     const flushAdminFeedQueue = () => {
@@ -1169,9 +1358,9 @@ export default function App() {
         if (!previous) {
           return previous;
         }
-        let nextFeed = previous.events;
-        for (const queuedEvent of queued) {
-          nextFeed = prependBounded(nextFeed, queuedEvent, MAX_FEED_EVENTS);
+        const nextFeed = mergeEventsBounded(previous.events, queued, MAX_FEED_EVENTS);
+        if (nextFeed === previous.events) {
+          return previous;
         }
         return {
           ...previous,
@@ -1185,7 +1374,7 @@ export default function App() {
       if (adminFeedFlushTimer !== null) {
         return;
       }
-      adminFeedFlushTimer = window.setTimeout(flushAdminFeedQueue, 80);
+      adminFeedFlushTimer = window.setTimeout(flushAdminFeedQueue, 180);
     };
 
     const flushAdminDeviceStatusQueue = () => {
@@ -1200,8 +1389,17 @@ export default function App() {
           return previous;
         }
         const nextDevices = new Map(previous.devices.map((device) => [device.deviceId, device]));
+        let changed = false;
         for (const queuedDevice of queuedStatuses) {
+          const existing = nextDevices.get(queuedDevice.deviceId);
+          if (existing && sameDeviceStatus(existing, queuedDevice)) {
+            continue;
+          }
           nextDevices.set(queuedDevice.deviceId, queuedDevice);
+          changed = true;
+        }
+        if (!changed) {
+          return previous;
         }
         return {
           ...previous,
@@ -1215,7 +1413,7 @@ export default function App() {
       if (adminDeviceStatusFlushTimer !== null) {
         return;
       }
-      adminDeviceStatusFlushTimer = window.setTimeout(flushAdminDeviceStatusQueue, 120);
+      adminDeviceStatusFlushTimer = window.setTimeout(flushAdminDeviceStatusQueue, 240);
     };
 
     const handleEnvelope = (envelope: WsEnvelope<unknown>) => {
@@ -1734,6 +1932,20 @@ export default function App() {
     return buildDeviceTelemetrySnapshots(adminData.events);
   }, [adminData]);
 
+  const adminDeviceIpById = useMemo<Record<string, string>>(() => {
+    if (!adminData) {
+      return {};
+    }
+    const next: Record<string, string> = {};
+    for (const device of adminData.devices) {
+      const ipAddress = extractIpAddressFromDeviceStatus(device, adminData.events);
+      if (ipAddress) {
+        next[device.deviceId] = ipAddress;
+      }
+    }
+    return next;
+  }, [adminData]);
+
   const wsLabel = useMemo(() => {
     if (wsConnection === 'connected') {
       return t('wsConnected');
@@ -1750,6 +1962,25 @@ export default function App() {
     }
     return session.role === 'ADMIN' ? t('roleAdmin') : t('roleStudent');
   }, [session, t]);
+
+  const userMenuLabel = useMemo(() => {
+    if (!session) {
+      return '';
+    }
+    return session.displayName?.trim() || session.username;
+  }, [session]);
+
+  const settingsSectionId = session?.role === 'ADMIN' ? 'admin-settings-panel' : 'student-settings-panel';
+
+  const openSettingsSection = useCallback(() => {
+    const element = document.getElementById(settingsSectionId);
+    if (!element) {
+      setUserMenuOpen(false);
+      return;
+    }
+    element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setUserMenuOpen(false);
+  }, [settingsSectionId]);
 
   const formatTs = useCallback(
     (value: TimestampValue): string => {
@@ -1871,36 +2102,61 @@ export default function App() {
         </div>
 
         <div className="topbar-controls">
-          <div className={`status-pill ${wsConnection}`}>{wsLabel}</div>
-          {roleLabel ? <div className="status-pill role">{roleLabel}</div> : null}
-
-          <div className="language-controls">
-            <span>{t('language')}</span>
-            <button
-              className={`button tiny ${language === 'de' ? 'active' : 'secondary'}`}
-              type="button"
-              onClick={() => setManualLanguage('de')}
-            >
-              DE
-            </button>
-            <button
-              className={`button tiny ${language === 'en' ? 'active' : 'secondary'}`}
-              type="button"
-              onClick={() => setManualLanguage('en')}
-            >
-              EN
-            </button>
-          </div>
-
           {session ? (
-            <button
-              className="button danger"
-              type="button"
-              onClick={handleLogout}
-              disabled={busyKey === 'logout'}
-            >
-              {t('logout')}
-            </button>
+            <div className="user-menu" ref={userMenuRef}>
+              <button
+                className="button secondary user-menu-trigger"
+                type="button"
+                onClick={() => setUserMenuOpen((open) => !open)}
+                aria-haspopup="menu"
+                aria-expanded={userMenuOpen}
+              >
+                <span className="user-menu-name">{userMenuLabel}</span>
+                <span className="user-menu-caret" aria-hidden="true">▾</span>
+              </button>
+
+              {userMenuOpen ? (
+                <div className="user-menu-panel" role="menu">
+                  <div className="user-menu-status-row">
+                    <span className={`status-pill ${wsConnection}`}>{wsLabel}</span>
+                    {roleLabel ? <span className="status-pill role">{roleLabel}</span> : null}
+                  </div>
+
+                  <div className="user-menu-section">
+                    <div className="user-menu-label">{t('language')}</div>
+                    <div className="user-menu-actions">
+                      <button
+                        className={`button tiny ${language === 'de' ? 'active' : 'secondary'}`}
+                        type="button"
+                        onClick={() => setManualLanguage('de')}
+                      >
+                        DE
+                      </button>
+                      <button
+                        className={`button tiny ${language === 'en' ? 'active' : 'secondary'}`}
+                        type="button"
+                        onClick={() => setManualLanguage('en')}
+                      >
+                        EN
+                      </button>
+                    </div>
+                  </div>
+
+                  <button className="button secondary user-menu-link" type="button" onClick={openSettingsSection}>
+                    {t('settings')}
+                  </button>
+
+                  <button
+                    className="button danger user-menu-link"
+                    type="button"
+                    onClick={handleLogout}
+                    disabled={busyKey === 'logout'}
+                  >
+                    {t('logout')}
+                  </button>
+                </div>
+              ) : null}
+            </div>
           ) : null}
         </div>
       </header>
@@ -1986,7 +2242,7 @@ export default function App() {
               </div>
             </section>
 
-            <section className="panel panel-animate">
+            <section className="panel panel-animate" id="student-settings-panel">
               <h2>{t('groupConfig')}</h2>
               <div className="config-grid">
                 {studentData.capabilities.allowedConfigOptions.map((option) => (
@@ -2244,7 +2500,7 @@ export default function App() {
               </div>
             </section>
 
-            <section className="panel panel-animate">
+            <section className="panel panel-animate" id="admin-settings-panel">
               <h2>{t('settings')}</h2>
               <label>
                 <span>{t('defaultLanguageMode')}</span>
@@ -2350,6 +2606,7 @@ export default function App() {
                     snapshot?.humidityPct === null ? '-' : `${Math.round(snapshot.humidityPct)} %`;
                   const brightness =
                     snapshot?.brightness === null ? '-' : formatBrightnessMeasurement(snapshot.brightness);
+                  const ipAddress = adminDeviceIpById[device.deviceId] ?? '-';
                   const bars = rssiBars(device.rssi);
                   const rssiHint = device.rssi === null ? t('rssiNoData') : `${device.rssi} dBm`;
 
@@ -2364,6 +2621,9 @@ export default function App() {
 
                       <p>
                         {t('lastEvent')}: {formatTs(device.lastSeen)}
+                      </p>
+                      <p>
+                        {t('ipAddress')}: {ipAddress}
                       </p>
                       <p>
                         {t('uptime')}: {uptimeNow === null ? '-' : formatRoundedDuration(uptimeNow, language)}
@@ -2386,19 +2646,19 @@ export default function App() {
                           <span className="metric-icon">
                             <MetricIcon kind="temperature" />
                           </span>
-                          <span className="metric-text">{t('metricTemp')}: {temperature}</span>
+                          <span className="metric-text" title={t('metricTemp')}>{temperature}</span>
                         </div>
                         <div className="device-metric">
                           <span className="metric-icon">
                             <MetricIcon kind="humidity" />
                           </span>
-                          <span className="metric-text">{t('metricHumidity')}: {humidity}</span>
+                          <span className="metric-text" title={t('metricHumidity')}>{humidity}</span>
                         </div>
                         <div className="device-metric">
                           <span className="metric-icon">
                             <MetricIcon kind="brightness" />
                           </span>
-                          <span className="metric-text">{t('metricBrightness')}: {brightness}</span>
+                          <span className="metric-text" title={t('metricBrightness')}>{brightness}</span>
                         </div>
                         <div className="device-metric">
                           <span className="metric-icon">
