@@ -41,6 +41,20 @@ interface AdminViewData {
 }
 
 type WsConnectionState = 'connecting' | 'connected' | 'disconnected';
+type FeedViewMode = 'rendered' | 'raw';
+type EventDetailsViewMode = 'rendered' | 'raw';
+
+interface DeviceTelemetrySnapshot {
+  temperatureC: number | null;
+  humidityPct: number | null;
+  brightness: number | null;
+  buttonRedPressed: boolean | null;
+  buttonBlackPressed: boolean | null;
+  ledGreenOn: boolean | null;
+  ledOrangeOn: boolean | null;
+  uptimeMs: number | null;
+  uptimeIngestTs: TimestampValue;
+}
 
 const CATEGORY_OPTIONS: Array<EventCategory | 'ALL'> = [
   'ALL',
@@ -241,6 +255,452 @@ function feedMatchesTopic(event: CanonicalEvent, topicFilter: string): boolean {
   );
 }
 
+function tryParsePayload(payloadJson: string): unknown | null {
+  try {
+    return JSON.parse(payloadJson);
+  } catch {
+    return null;
+  }
+}
+
+function formatScalar(value: unknown): string | null {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  return null;
+}
+
+function extractEventValueFromPayload(node: unknown, depth = 0): string | null {
+  if (depth > 4 || node === null || node === undefined) {
+    return null;
+  }
+
+  const scalar = formatScalar(node);
+  if (scalar !== null) {
+    return scalar;
+  }
+
+  if (Array.isArray(node)) {
+    for (const value of node) {
+      const extracted = extractEventValueFromPayload(value, depth + 1);
+      if (extracted !== null) {
+        return extracted;
+      }
+    }
+    return null;
+  }
+
+  if (typeof node !== 'object') {
+    return null;
+  }
+
+  const objectNode = node as Record<string, unknown>;
+  const priorityKeys = [
+    'value',
+    'state',
+    'output',
+    'on',
+    'action',
+    'event',
+    'button',
+    'online',
+    'count',
+    'total',
+    'rssi',
+    'temperature',
+    'humidity',
+    'voltage'
+  ];
+
+  for (const key of priorityKeys) {
+    if (!(key in objectNode)) {
+      continue;
+    }
+    const value = extractEventValueFromPayload(objectNode[key], depth + 1);
+    if (value !== null) {
+      return `${key}=${value}`;
+    }
+  }
+
+  for (const [key, value] of Object.entries(objectNode)) {
+    const extracted = extractEventValueFromPayload(value, depth + 1);
+    if (extracted !== null) {
+      return extracted.includes('=') ? `${key}.${extracted}` : `${key}=${extracted}`;
+    }
+  }
+
+  return null;
+}
+
+function eventValueSummary(event: CanonicalEvent): string {
+  const parsedPayload = tryParsePayload(event.payloadJson);
+  if (parsedPayload === null) {
+    return '-';
+  }
+  return extractEventValueFromPayload(parsedPayload) ?? '-';
+}
+
+function emptyDeviceTelemetrySnapshot(): DeviceTelemetrySnapshot {
+  return {
+    temperatureC: null,
+    humidityPct: null,
+    brightness: null,
+    buttonRedPressed: null,
+    buttonBlackPressed: null,
+    ledGreenOn: null,
+    ledOrangeOn: null,
+    uptimeMs: null,
+    uptimeIngestTs: null
+  };
+}
+
+function toNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
+function toBoolean(value: unknown): boolean | null {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'number') {
+    if (value === 1) {
+      return true;
+    }
+    if (value === 0) {
+      return false;
+    }
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['true', 'on', 'pressed', 'press', '1'].includes(normalized)) {
+      return true;
+    }
+    if (['false', 'off', 'released', 'release', '0'].includes(normalized)) {
+      return false;
+    }
+  }
+  return null;
+}
+
+function readPath(root: unknown, path: string[]): unknown {
+  let current: unknown = root;
+  for (const segment of path) {
+    if (!current || typeof current !== 'object') {
+      return null;
+    }
+    const next = (current as Record<string, unknown>)[segment];
+    if (next === undefined) {
+      return null;
+    }
+    current = next;
+  }
+  return current;
+}
+
+function firstNumber(root: unknown, paths: string[][]): number | null {
+  for (const path of paths) {
+    const value = toNumber(readPath(root, path));
+    if (value !== null) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function firstBoolean(root: unknown, paths: string[][]): boolean | null {
+  for (const path of paths) {
+    const value = toBoolean(readPath(root, path));
+    if (value !== null) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function findNumberByKeys(node: unknown, keys: string[], depth = 0): number | null {
+  if (depth > 5 || node === null || node === undefined) {
+    return null;
+  }
+  const direct = toNumber(node);
+  if (direct !== null) {
+    return direct;
+  }
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      const value = findNumberByKeys(item, keys, depth + 1);
+      if (value !== null) {
+        return value;
+      }
+    }
+    return null;
+  }
+  if (typeof node !== 'object') {
+    return null;
+  }
+  for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+    if (keys.includes(key)) {
+      const parsed = toNumber(value);
+      if (parsed !== null) {
+        return parsed;
+      }
+    }
+  }
+  for (const value of Object.values(node as Record<string, unknown>)) {
+    const parsed = findNumberByKeys(value, keys, depth + 1);
+    if (parsed !== null) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
+function extractButtonState(event: CanonicalEvent, payload: unknown, channel: 'red' | 'black'): boolean | null {
+  const prefix = `button.${channel}.`;
+  if (event.eventType.startsWith(prefix)) {
+    if (event.eventType.endsWith('.press')) {
+      return true;
+    }
+    if (event.eventType.endsWith('.release')) {
+      return false;
+    }
+  }
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+  if (channel === 'red') {
+    return firstBoolean(payload, [['params', 'input:0', 'state'], ['input:0', 'state']]);
+  }
+  return firstBoolean(payload, [['params', 'input:1', 'state'], ['input:1', 'state']]);
+}
+
+function extractLedState(event: CanonicalEvent, payload: unknown, channel: 'green' | 'orange'): boolean | null {
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+
+  const isTargetEvent =
+    (channel === 'green' &&
+      (event.eventType.includes('green') || event.topic.includes('switch:0'))) ||
+    (channel === 'orange' &&
+      (event.eventType.includes('orange') || event.topic.includes('switch:1')));
+
+  if (!isTargetEvent) {
+    return null;
+  }
+
+  if (channel === 'green') {
+    return firstBoolean(payload, [
+      ['params', 'switch:0', 'output'],
+      ['switch:0', 'output'],
+      ['output'],
+      ['on'],
+      ['state']
+    ]);
+  }
+  return firstBoolean(payload, [
+    ['params', 'switch:1', 'output'],
+    ['switch:1', 'output'],
+    ['output'],
+    ['on'],
+    ['state']
+  ]);
+}
+
+function extractUptimeMs(payload: unknown): number | null {
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+
+  const directMs = firstNumber(payload, [['ts_uptime_ms'], ['uptime_ms']]);
+  if (directMs !== null && directMs >= 0) {
+    return directMs;
+  }
+
+  const deepMs = findNumberByKeys(payload, ['ts_uptime_ms', 'uptime_ms']);
+  if (deepMs !== null && deepMs >= 0) {
+    return deepMs;
+  }
+
+  const seconds = firstNumber(payload, [['sys', 'uptime'], ['uptime']]);
+  if (seconds !== null && seconds >= 0) {
+    return seconds * 1000;
+  }
+
+  return null;
+}
+
+function buildDeviceTelemetrySnapshots(events: CanonicalEvent[]): Record<string, DeviceTelemetrySnapshot> {
+  const byDevice: Record<string, DeviceTelemetrySnapshot> = {};
+
+  for (const event of events) {
+    if (!byDevice[event.deviceId]) {
+      byDevice[event.deviceId] = emptyDeviceTelemetrySnapshot();
+    }
+    const snapshot = byDevice[event.deviceId];
+    const payload = tryParsePayload(event.payloadJson);
+
+    if (snapshot.temperatureC === null) {
+      const temperature = firstNumber(payload, [
+        ['temperature'],
+        ['temp'],
+        ['tC'],
+        ['params', 'temperature:100', 'tC'],
+        ['params', 'temperature:100', 'value']
+      ]) ?? findNumberByKeys(payload, ['temperature', 'temp', 'tC']);
+      if (temperature !== null) {
+        snapshot.temperatureC = temperature;
+      }
+    }
+
+    if (snapshot.humidityPct === null) {
+      const humidity = firstNumber(payload, [
+        ['humidity'],
+        ['hum'],
+        ['rh'],
+        ['params', 'humidity:100', 'rh'],
+        ['params', 'humidity:100', 'value']
+      ]) ?? findNumberByKeys(payload, ['humidity', 'hum', 'rh']);
+      if (humidity !== null) {
+        snapshot.humidityPct = humidity;
+      }
+    }
+
+    if (snapshot.brightness === null) {
+      const brightness = firstNumber(payload, [
+        ['brightness'],
+        ['lux'],
+        ['ldr'],
+        ['voltage'],
+        ['params', 'voltmeter:100', 'voltage'],
+        ['params', 'voltmeter:100', 'value']
+      ]) ?? findNumberByKeys(payload, ['brightness', 'lux', 'ldr', 'voltage']);
+      if (brightness !== null) {
+        snapshot.brightness = brightness;
+      }
+    }
+
+    if (snapshot.buttonRedPressed === null) {
+      const red = extractButtonState(event, payload, 'red');
+      if (red !== null) {
+        snapshot.buttonRedPressed = red;
+      }
+    }
+
+    if (snapshot.buttonBlackPressed === null) {
+      const black = extractButtonState(event, payload, 'black');
+      if (black !== null) {
+        snapshot.buttonBlackPressed = black;
+      }
+    }
+
+    if (snapshot.ledGreenOn === null) {
+      const green = extractLedState(event, payload, 'green');
+      if (green !== null) {
+        snapshot.ledGreenOn = green;
+      }
+    }
+
+    if (snapshot.ledOrangeOn === null) {
+      const orange = extractLedState(event, payload, 'orange');
+      if (orange !== null) {
+        snapshot.ledOrangeOn = orange;
+      }
+    }
+
+    if (snapshot.uptimeMs === null) {
+      const uptimeMs = extractUptimeMs(payload);
+      if (uptimeMs !== null) {
+        snapshot.uptimeMs = uptimeMs;
+        snapshot.uptimeIngestTs = event.ingestTs;
+      }
+    }
+  }
+
+  return byDevice;
+}
+
+function formatRoundedDuration(durationMs: number, language: Language): string {
+  if (!Number.isFinite(durationMs) || durationMs < 0) {
+    return '-';
+  }
+
+  const totalMinutes = Math.max(0, Math.round(durationMs / 60_000));
+  if (totalMinutes < 1) {
+    return language === 'de' ? '<1 Min' : '<1 min';
+  }
+  if (totalMinutes < 60) {
+    return language === 'de' ? `${totalMinutes} Min` : `${totalMinutes} min`;
+  }
+  const totalHours = Math.floor(totalMinutes / 60);
+  const remainingMinutes = totalMinutes % 60;
+  if (totalHours < 24) {
+    return language === 'de'
+      ? `${totalHours} Std ${remainingMinutes} Min`
+      : `${totalHours}h ${remainingMinutes}m`;
+  }
+  const days = Math.floor(totalHours / 24);
+  const remainingHours = totalHours % 24;
+  return language === 'de' ? `${days} T ${remainingHours} Std` : `${days}d ${remainingHours}h`;
+}
+
+function estimateUptimeNow(snapshot: DeviceTelemetrySnapshot | undefined, nowEpochMs: number): number | null {
+  if (!snapshot || snapshot.uptimeMs === null) {
+    return null;
+  }
+  const ingestEpochMs = timestampToEpochMillis(snapshot.uptimeIngestTs);
+  if (ingestEpochMs === null) {
+    return snapshot.uptimeMs;
+  }
+  return snapshot.uptimeMs + Math.max(0, nowEpochMs - ingestEpochMs);
+}
+
+function rssiBars(rssi: number | null): number {
+  if (rssi === null) {
+    return 0;
+  }
+  if (rssi >= -55) {
+    return 4;
+  }
+  if (rssi >= -67) {
+    return 3;
+  }
+  if (rssi >= -75) {
+    return 2;
+  }
+  if (rssi >= -85) {
+    return 1;
+  }
+  return 0;
+}
+
+function rssiClassName(rssi: number | null): string {
+  if (rssi === null) {
+    return 'none';
+  }
+  if (rssi >= -67) {
+    return 'good';
+  }
+  if (rssi >= -75) {
+    return 'fair';
+  }
+  if (rssi >= -85) {
+    return 'weak';
+  }
+  return 'bad';
+}
+
 export default function App() {
   const [token, setToken] = useState<string | null>(() => getStoredToken());
   const [session, setSession] = useState<AuthMe | null>(null);
@@ -273,6 +733,10 @@ export default function App() {
   const [defaultLanguageMode, setDefaultLanguageMode] = useState<LanguageMode>('BROWSER_EN_FALLBACK');
   const [timeFormat24h, setTimeFormat24h] = useState(true);
   const [languageOverride, setLanguageOverride] = useState<Language | null>(() => getStoredLanguageOverride());
+  const [feedViewMode, setFeedViewMode] = useState<FeedViewMode>('rendered');
+  const [selectedEvent, setSelectedEvent] = useState<CanonicalEvent | null>(null);
+  const [eventDetailsViewMode, setEventDetailsViewMode] = useState<EventDetailsViewMode>('rendered');
+  const [nowEpochMs, setNowEpochMs] = useState<number>(() => Date.now());
 
   const studentPauseRef = useRef(studentFeedPaused);
   const adminPauseRef = useRef(adminFeedPaused);
@@ -459,6 +923,30 @@ export default function App() {
     }
     setStudentShowInternal(false);
   }, [studentData]);
+
+  useEffect(() => {
+    if (!selectedEvent) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setSelectedEvent(null);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [selectedEvent]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setNowEpochMs(Date.now());
+    }, 30_000);
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, []);
 
   useEffect(() => {
     if (!session || !token) {
@@ -1014,6 +1502,13 @@ export default function App() {
     });
   }, [adminCategoryFilter, adminData, adminDeviceFilter, adminIncludeInternal, adminTopicFilter]);
 
+  const adminDeviceSnapshots = useMemo<Record<string, DeviceTelemetrySnapshot>>(() => {
+    if (!adminData) {
+      return {};
+    }
+    return buildDeviceTelemetrySnapshots(adminData.events);
+  }, [adminData]);
+
   const wsLabel = useMemo(() => {
     if (wsConnection === 'connected') {
       return t('wsConnected');
@@ -1037,6 +1532,45 @@ export default function App() {
     },
     [language, timeFormat24h]
   );
+
+  const selectedEventFields = useMemo<Array<[string, string]>>(() => {
+    if (!selectedEvent) {
+      return [];
+    }
+
+    return [
+      ['ID', selectedEvent.id],
+      ['DEVICE ID', selectedEvent.deviceId],
+      ['TOPIC', selectedEvent.topic],
+      ['EVENT TYPE', selectedEvent.eventType],
+      ['CATEGORY', selectedEvent.category],
+      ['INGEST TS', formatTs(selectedEvent.ingestTs)],
+      ['DEVICE TS', formatTs(selectedEvent.deviceTs)],
+      ['VALUE', eventValueSummary(selectedEvent)],
+      ['VALID', String(selectedEvent.valid)],
+      ['VALIDATION ERRORS', selectedEvent.validationErrors ?? '-'],
+      ['INTERNAL', String(selectedEvent.isInternal)],
+      ['GROUP KEY', selectedEvent.groupKey ?? '-'],
+      ['SEQUENCE NO', selectedEvent.sequenceNo == null ? '-' : String(selectedEvent.sequenceNo)],
+      ['SCENARIO FLAGS', selectedEvent.scenarioFlags]
+    ];
+  }, [formatTs, selectedEvent]);
+
+  const selectedEventRawJson = useMemo(() => {
+    if (!selectedEvent) {
+      return '';
+    }
+    const parsedPayload = tryParsePayload(selectedEvent.payloadJson);
+    const payloadForRaw = parsedPayload === null ? selectedEvent.payloadJson : parsedPayload;
+    return JSON.stringify(
+      {
+        ...selectedEvent,
+        payloadParsed: payloadForRaw
+      },
+      null,
+      2
+    );
+  }, [selectedEvent]);
 
   const renderConfigInput = (
     option: string,
@@ -1362,6 +1896,15 @@ export default function App() {
                 <button
                   className="button secondary"
                   type="button"
+                  onClick={() =>
+                    setFeedViewMode((mode) => (mode === 'rendered' ? 'raw' : 'rendered'))
+                  }
+                >
+                  {feedViewMode === 'rendered' ? t('switchToRawFeed') : t('switchToRenderedFeed')}
+                </button>
+                <button
+                  className="button secondary"
+                  type="button"
                   onClick={() => {
                     setStudentData((previous) => {
                       if (!previous) {
@@ -1398,25 +1941,47 @@ export default function App() {
                 <table className="feed-table">
                   <thead>
                     <tr>
-                      <th>ingestTs</th>
-                      <th>deviceId</th>
-                      <th>eventType</th>
-                      <th>topic</th>
+                      <th>INGEST TS</th>
+                      <th>DEVICE ID</th>
+                      <th>EVENT TYPE</th>
+                      <th>{feedViewMode === 'rendered' ? t('value') : t('rawPayload')}</th>
+                      <th>TOPIC</th>
                     </tr>
                   </thead>
                   <tbody>
                     {studentVisibleFeed.length === 0 ? (
                       <tr>
-                        <td colSpan={4} className="muted">
+                        <td colSpan={5} className="muted">
                           {t('noEvents')}
                         </td>
                       </tr>
                     ) : (
                       studentVisibleFeed.map((eventItem) => (
-                          <tr key={eventItem.id}>
+                          <tr
+                            key={eventItem.id}
+                            className="feed-row-clickable"
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => {
+                              setSelectedEvent(eventItem);
+                              setEventDetailsViewMode('rendered');
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault();
+                                setSelectedEvent(eventItem);
+                                setEventDetailsViewMode('rendered');
+                              }
+                            }}
+                          >
                             <td>{formatTs(eventItem.ingestTs)}</td>
                             <td>{eventItem.deviceId}</td>
                             <td>{eventItem.eventType}</td>
+                            <td className="mono raw-cell">
+                              {feedViewMode === 'rendered'
+                                ? eventValueSummary(eventItem)
+                                : eventItem.payloadJson}
+                            </td>
                             <td className="mono">{eventItem.topic}</td>
                           </tr>
                         ))
@@ -1528,6 +2093,48 @@ export default function App() {
               <div className="devices-grid">
                 {adminData.devices.map((device) => (
                   <article className="device-card" key={device.deviceId}>
+                    {(() => {
+                      const snapshot = adminDeviceSnapshots[device.deviceId];
+                      const uptimeNow = estimateUptimeNow(snapshot, nowEpochMs);
+                      const redButton =
+                        snapshot?.buttonRedPressed === null
+                          ? t('stateUnknown')
+                          : snapshot.buttonRedPressed
+                            ? t('statePressed')
+                            : t('stateReleased');
+                      const blackButton =
+                        snapshot?.buttonBlackPressed === null
+                          ? t('stateUnknown')
+                          : snapshot.buttonBlackPressed
+                            ? t('statePressed')
+                            : t('stateReleased');
+                      const greenLed =
+                        snapshot?.ledGreenOn === null
+                          ? t('stateUnknown')
+                          : snapshot.ledGreenOn
+                            ? t('stateOn')
+                            : t('stateOff');
+                      const orangeLed =
+                        snapshot?.ledOrangeOn === null
+                          ? t('stateUnknown')
+                          : snapshot.ledOrangeOn
+                            ? t('stateOn')
+                            : t('stateOff');
+                      const temperature =
+                        snapshot?.temperatureC === null ? '-' : `${snapshot.temperatureC.toFixed(1)}°C`;
+                      const humidity =
+                        snapshot?.humidityPct === null ? '-' : `${Math.round(snapshot.humidityPct)}%`;
+                      const brightness =
+                        snapshot?.brightness === null
+                          ? '-'
+                          : snapshot.brightness > 5
+                            ? `${Math.round(snapshot.brightness)} lx`
+                            : `${snapshot.brightness.toFixed(2)} V`;
+                      const bars = rssiBars(device.rssi);
+                      const rssiHint = device.rssi === null ? t('rssiNoData') : `${device.rssi} dBm`;
+
+                      return (
+                        <>
                     <header>
                       <strong>{device.deviceId}</strong>
                       <span className={`chip ${device.online ? 'ok' : 'warn'}`}>
@@ -1539,8 +2146,43 @@ export default function App() {
                       {t('lastSeen')}: {formatTs(device.lastSeen)}
                     </p>
                     <p>
-                      {t('rssi')}: {device.rssi ?? '-'}
+                      {t('uptime')}: {uptimeNow === null ? '-' : formatRoundedDuration(uptimeNow, language)}
                     </p>
+                    <div className="rssi-row">
+                      <span>{t('rssi')}:</span>
+                      <div
+                        className={`rssi-bars ${rssiClassName(device.rssi)}`}
+                        title={rssiHint}
+                        aria-label={rssiHint}
+                      >
+                        <span className={`bar ${bars >= 1 ? 'active' : ''}`} />
+                        <span className={`bar ${bars >= 2 ? 'active' : ''}`} />
+                        <span className={`bar ${bars >= 3 ? 'active' : ''}`} />
+                        <span className={`bar ${bars >= 4 ? 'active' : ''}`} />
+                      </div>
+                    </div>
+                    <div className="device-metrics-grid">
+                      <div className="device-metric">
+                        <span className="metric-icon">T</span>
+                        <span className="metric-text">{t('metricTemp')}: {temperature}</span>
+                      </div>
+                      <div className="device-metric">
+                        <span className="metric-icon">H</span>
+                        <span className="metric-text">{t('metricHumidity')}: {humidity}</span>
+                      </div>
+                      <div className="device-metric">
+                        <span className="metric-icon">B</span>
+                        <span className="metric-text">{t('metricBrightness')}: {brightness}</span>
+                      </div>
+                      <div className="device-metric">
+                        <span className="metric-icon">BTN</span>
+                        <span className="metric-text">{t('metricButtons')}: R {redButton}, B {blackButton}</span>
+                      </div>
+                      <div className="device-metric full">
+                        <span className="metric-icon">LED</span>
+                        <span className="metric-text">{t('metricLeds')}: G {greenLed}, O {orangeLed}</span>
+                      </div>
+                    </div>
 
                     <div className="button-grid">
                       <button
@@ -1584,6 +2226,9 @@ export default function App() {
                         {t('commandCounterReset')}
                       </button>
                     </div>
+                        </>
+                      );
+                    })()}
                   </article>
                 ))}
               </div>
@@ -1598,6 +2243,15 @@ export default function App() {
                   onClick={() => setAdminFeedPaused((value) => !value)}
                 >
                   {adminFeedPaused ? t('resume') : t('pause')}
+                </button>
+                <button
+                  className="button secondary"
+                  type="button"
+                  onClick={() =>
+                    setFeedViewMode((mode) => (mode === 'rendered' ? 'raw' : 'rendered'))
+                  }
+                >
+                  {feedViewMode === 'rendered' ? t('switchToRawFeed') : t('switchToRenderedFeed')}
                 </button>
                 <button
                   className="button secondary"
@@ -1656,26 +2310,48 @@ export default function App() {
                 <table className="feed-table">
                   <thead>
                     <tr>
-                      <th>ingestTs</th>
-                      <th>deviceId</th>
-                      <th>eventType</th>
-                      <th>category</th>
-                      <th>topic</th>
+                      <th>INGEST TS</th>
+                      <th>DEVICE ID</th>
+                      <th>EVENT TYPE</th>
+                      <th>{feedViewMode === 'rendered' ? t('value') : t('rawPayload')}</th>
+                      <th>{t('category')}</th>
+                      <th>TOPIC</th>
                     </tr>
                   </thead>
                   <tbody>
                     {adminVisibleFeed.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="muted">
+                        <td colSpan={6} className="muted">
                           {t('noEvents')}
                         </td>
                       </tr>
                     ) : (
                       adminVisibleFeed.map((eventItem) => (
-                          <tr key={eventItem.id}>
+                          <tr
+                            key={eventItem.id}
+                            className="feed-row-clickable"
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => {
+                              setSelectedEvent(eventItem);
+                              setEventDetailsViewMode('rendered');
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault();
+                                setSelectedEvent(eventItem);
+                                setEventDetailsViewMode('rendered');
+                              }
+                            }}
+                          >
                             <td>{formatTs(eventItem.ingestTs)}</td>
                             <td>{eventItem.deviceId}</td>
                             <td>{eventItem.eventType}</td>
+                            <td className="mono raw-cell">
+                              {feedViewMode === 'rendered'
+                                ? eventValueSummary(eventItem)
+                                : eventItem.payloadJson}
+                            </td>
                             <td>{eventItem.category}</td>
                             <td className="mono">{eventItem.topic}</td>
                           </tr>
@@ -1688,6 +2364,55 @@ export default function App() {
           </div>
         ) : null}
       </main>
+
+      {selectedEvent ? (
+        <div className="event-modal-backdrop" onClick={() => setSelectedEvent(null)}>
+          <div className="event-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="panel-header">
+              <h2>{t('eventDetails')}</h2>
+              <div className="event-modal-actions">
+                <button
+                  className="button secondary"
+                  type="button"
+                  onClick={() =>
+                    setEventDetailsViewMode((mode) => (mode === 'rendered' ? 'raw' : 'rendered'))
+                  }
+                >
+                  {eventDetailsViewMode === 'rendered'
+                    ? t('switchToRawEvent')
+                    : t('switchToRenderedEvent')}
+                </button>
+                <button className="button" type="button" onClick={() => setSelectedEvent(null)}>
+                  {t('close')}
+                </button>
+              </div>
+            </div>
+
+            {eventDetailsViewMode === 'rendered' ? (
+              <>
+                <div className="event-details-grid">
+                  {selectedEventFields.map(([key, value]) => (
+                    <div key={key} className="event-details-row">
+                      <div className="event-details-key">{key}</div>
+                      <div className="event-details-value mono">{value}</div>
+                    </div>
+                  ))}
+                </div>
+                <h3 className="event-modal-subtitle">{t('payload')}</h3>
+                <pre className="event-modal-pre">
+                  {JSON.stringify(
+                    tryParsePayload(selectedEvent.payloadJson) ?? selectedEvent.payloadJson,
+                    null,
+                    2
+                  )}
+                </pre>
+              </>
+            ) : (
+              <pre className="event-modal-pre">{selectedEventRawJson}</pre>
+            )}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

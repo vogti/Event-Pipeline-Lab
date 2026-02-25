@@ -376,6 +376,101 @@ textarea {
   grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
 }
 
+.rssi-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #355268;
+  font-size: 0.84rem;
+  margin-bottom: 0.35rem;
+}
+
+.rssi-bars {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  border-radius: 7px;
+  padding: 2px 5px;
+  border: 1px solid rgba(40, 64, 83, 0.2);
+  background: rgba(240, 246, 250, 0.92);
+}
+
+.rssi-bars .bar {
+  width: 4px;
+  border-radius: 2px;
+  background: rgba(76, 96, 112, 0.25);
+}
+
+.rssi-bars .bar:nth-child(1) { height: 4px; }
+.rssi-bars .bar:nth-child(2) { height: 7px; }
+.rssi-bars .bar:nth-child(3) { height: 10px; }
+.rssi-bars .bar:nth-child(4) { height: 13px; }
+
+.rssi-bars.good .bar.active {
+  background: #1f8a59;
+}
+
+.rssi-bars.fair .bar.active {
+  background: #4b8f22;
+}
+
+.rssi-bars.weak .bar.active {
+  background: #d3861b;
+}
+
+.rssi-bars.bad .bar.active {
+  background: #c04b39;
+}
+
+.rssi-bars.none .bar.active {
+  background: rgba(76, 96, 112, 0.25);
+}
+
+.device-metrics-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem;
+  margin: 0.3rem 0 0.55rem;
+}
+
+.device-metric {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid rgba(29, 53, 73, 0.13);
+  border-radius: 9px;
+  padding: 0.24rem 0.32rem;
+  background: rgba(247, 251, 253, 0.85);
+  min-width: 0;
+}
+
+.device-metric.full {
+  grid-column: 1 / -1;
+}
+
+.metric-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.6rem;
+  height: 1.25rem;
+  border-radius: 6px;
+  background: rgba(28, 90, 123, 0.14);
+  color: #1f4e6d;
+  font-size: 0.62rem;
+  font-weight: 760;
+  letter-spacing: 0.02em;
+}
+
+.metric-text {
+  min-width: 0;
+  font-size: 0.73rem;
+  color: #2d495c;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .button-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -420,6 +515,19 @@ textarea {
   vertical-align: top;
 }
 
+.feed-row-clickable {
+  cursor: pointer;
+}
+
+.feed-row-clickable:hover {
+  background: rgba(228, 241, 247, 0.65);
+}
+
+.feed-row-clickable:focus-visible {
+  outline: 2px solid rgba(15, 122, 143, 0.55);
+  outline-offset: -2px;
+}
+
 .feed-table th {
   position: sticky;
   top: 0;
@@ -430,8 +538,88 @@ textarea {
   text-transform: uppercase;
 }
 
+.raw-cell {
+  max-width: 380px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .mono {
   font-family: 'IBM Plex Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
+}
+
+.event-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgba(15, 29, 43, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.event-modal {
+  width: min(980px, 100%);
+  max-height: 92vh;
+  overflow: auto;
+  border-radius: 14px;
+  border: 1px solid rgba(29, 53, 73, 0.24);
+  background: rgba(250, 253, 255, 0.98);
+  box-shadow: 0 22px 54px rgba(16, 35, 49, 0.35);
+  padding: 1rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.event-modal-actions {
+  display: flex;
+  gap: 0.45rem;
+}
+
+.event-details-grid {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.event-details-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 220px) 1fr;
+  gap: 0.55rem;
+  align-items: start;
+  border-bottom: 1px solid rgba(45, 68, 84, 0.08);
+  padding-bottom: 0.2rem;
+}
+
+.event-details-key {
+  color: #2a4a61;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.event-details-value {
+  color: #1d3345;
+  word-break: break-word;
+}
+
+.event-modal-subtitle {
+  margin: 0;
+  color: #2a4a61;
+  font-size: 0.92rem;
+}
+
+.event-modal-pre {
+  margin: 0;
+  max-height: 42vh;
+  overflow: auto;
+  border-radius: 10px;
+  border: 1px solid rgba(45, 68, 84, 0.16);
+  background: rgba(236, 247, 251, 0.8);
+  padding: 0.6rem;
+  font-family: 'IBM Plex Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-size: 0.76rem;
+  line-height: 1.35;
 }
 
 .loading {
@@ -462,11 +650,19 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .device-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+
   .split-grid {
     grid-template-columns: 1fr;
   }
 
   .feed-table {
     font-size: 0.72rem;
+  }
+
+  .event-details-row {
+    grid-template-columns: 1fr;
   }
 }
