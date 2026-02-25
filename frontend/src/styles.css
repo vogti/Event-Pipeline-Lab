@@ -57,8 +57,7 @@ textarea {
   margin-bottom: 1rem;
   padding: 0.9rem 1rem;
   border-radius: 18px;
-  background: rgba(245, 250, 252, 0.82);
-  backdrop-filter: blur(12px);
+  background: rgba(245, 250, 252, 0.96);
   border: 1px solid rgba(18, 36, 52, 0.12);
   display: flex;
   gap: 1rem;
@@ -460,6 +459,11 @@ textarea {
   font-size: 0.62rem;
   font-weight: 760;
   letter-spacing: 0.02em;
+}
+
+.metric-icon svg {
+  width: 0.94rem;
+  height: 0.94rem;
 }
 
 .metric-text {

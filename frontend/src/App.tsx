@@ -56,6 +56,8 @@ interface DeviceTelemetrySnapshot {
   uptimeIngestTs: TimestampValue;
 }
 
+type MetricIconKind = 'temperature' | 'humidity' | 'brightness' | 'buttons' | 'leds';
+
 const CATEGORY_OPTIONS: Array<EventCategory | 'ALL'> = [
   'ALL',
   'BUTTON',
@@ -66,6 +68,67 @@ const CATEGORY_OPTIONS: Array<EventCategory | 'ALL'> = [
   'COMMAND',
   'ACK'
 ];
+
+function MetricIcon({ kind }: { kind: MetricIconKind }) {
+  if (kind === 'temperature') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path
+          d="M10 4a2 2 0 1 1 4 0v8.4a4.6 4.6 0 1 1-4 0V4Z"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <line x1="12" y1="10" x2="12" y2="16.2" stroke="currentColor" strokeWidth="1.8" />
+      </svg>
+    );
+  }
+  if (kind === 'humidity') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path
+          d="M12 3.6C9.6 6.6 6.5 9.9 6.5 13.5a5.5 5.5 0 0 0 11 0c0-3.6-3.1-6.9-5.5-9.9Z"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+  if (kind === 'brightness') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <circle cx="12" cy="12" r="3.6" fill="none" stroke="currentColor" strokeWidth="1.8" />
+        <line x1="12" y1="3.5" x2="12" y2="6" stroke="currentColor" strokeWidth="1.8" />
+        <line x1="12" y1="18" x2="12" y2="20.5" stroke="currentColor" strokeWidth="1.8" />
+        <line x1="3.5" y1="12" x2="6" y2="12" stroke="currentColor" strokeWidth="1.8" />
+        <line x1="18" y1="12" x2="20.5" y2="12" stroke="currentColor" strokeWidth="1.8" />
+        <line x1="6.3" y1="6.3" x2="8" y2="8" stroke="currentColor" strokeWidth="1.8" />
+        <line x1="16" y1="16" x2="17.7" y2="17.7" stroke="currentColor" strokeWidth="1.8" />
+        <line x1="6.3" y1="17.7" x2="8" y2="16" stroke="currentColor" strokeWidth="1.8" />
+        <line x1="16" y1="8" x2="17.7" y2="6.3" stroke="currentColor" strokeWidth="1.8" />
+      </svg>
+    );
+  }
+  if (kind === 'buttons') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <circle cx="8" cy="12" r="3.1" fill="none" stroke="currentColor" strokeWidth="1.8" />
+        <circle cx="16" cy="12" r="3.1" fill="none" stroke="currentColor" strokeWidth="1.8" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <rect x="4.4" y="8.2" width="6.3" height="7.6" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.8" />
+      <rect x="13.3" y="8.2" width="6.3" height="7.6" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  );
+}
 
 function timestampToEpochMillis(value: TimestampValue): number | null {
   if (value === null || value === undefined) {
@@ -263,6 +326,12 @@ function tryParsePayload(payloadJson: string): unknown | null {
   }
 }
 
+function isTelemetryEvent(event: CanonicalEvent): boolean {
+  const topic = event.topic.toLowerCase();
+  const eventType = event.eventType.toLowerCase();
+  return topic.includes('/telemetry') || eventType.includes('telemetry');
+}
+
 function formatScalar(value: unknown): string | null {
   if (typeof value === 'string') {
     return value;
@@ -298,22 +367,7 @@ function extractEventValueFromPayload(node: unknown, depth = 0): string | null {
   }
 
   const objectNode = node as Record<string, unknown>;
-  const priorityKeys = [
-    'value',
-    'state',
-    'output',
-    'on',
-    'action',
-    'event',
-    'button',
-    'online',
-    'count',
-    'total',
-    'rssi',
-    'temperature',
-    'humidity',
-    'voltage'
-  ];
+  const priorityKeys = ['value', 'state', 'output', 'on', 'action', 'event', 'button', 'online'];
 
   for (const key of priorityKeys) {
     if (!(key in objectNode)) {
@@ -321,26 +375,123 @@ function extractEventValueFromPayload(node: unknown, depth = 0): string | null {
     }
     const value = extractEventValueFromPayload(objectNode[key], depth + 1);
     if (value !== null) {
-      return `${key}=${value}`;
+      return value;
     }
   }
 
-  for (const [key, value] of Object.entries(objectNode)) {
+  for (const value of Object.values(objectNode)) {
     const extracted = extractEventValueFromPayload(value, depth + 1);
     if (extracted !== null) {
-      return extracted.includes('=') ? `${key}.${extracted}` : `${key}=${extracted}`;
+      return extracted;
     }
   }
 
   return null;
 }
 
+function formatBrightnessMeasurement(value: number): string {
+  return value > 5 ? `${Math.round(value)} lx` : `${value.toFixed(2)} V`;
+}
+
 function eventValueSummary(event: CanonicalEvent): string {
+  if (isTelemetryEvent(event)) {
+    return '';
+  }
+
+  const lowerEventType = event.eventType.toLowerCase();
+  const lowerTopic = event.topic.toLowerCase();
+  if (lowerEventType.endsWith('.press')) {
+    return 'pressed';
+  }
+  if (lowerEventType.endsWith('.release')) {
+    return 'released';
+  }
+
   const parsedPayload = tryParsePayload(event.payloadJson);
   if (parsedPayload === null) {
-    return '-';
+    return '';
   }
-  return extractEventValueFromPayload(parsedPayload) ?? '-';
+
+  const temperature =
+    firstNumber(parsedPayload, [
+      ['temperature'],
+      ['temp'],
+      ['tC'],
+      ['params', 'temperature:100', 'tC'],
+      ['params', 'temperature:100', 'value']
+    ]) ?? findNumberByKeys(parsedPayload, ['temperature', 'temp', 'tC']);
+
+  const humidity =
+    firstNumber(parsedPayload, [
+      ['humidity'],
+      ['hum'],
+      ['rh'],
+      ['params', 'humidity:100', 'rh'],
+      ['params', 'humidity:100', 'value']
+    ]) ?? findNumberByKeys(parsedPayload, ['humidity', 'hum', 'rh']);
+
+  const brightness =
+    firstNumber(parsedPayload, [
+      ['brightness'],
+      ['lux'],
+      ['ldr'],
+      ['voltage'],
+      ['params', 'voltmeter:100', 'voltage'],
+      ['params', 'voltmeter:100', 'value']
+    ]) ?? findNumberByKeys(parsedPayload, ['brightness', 'lux', 'ldr', 'voltage']);
+
+  const counter =
+    firstNumber(parsedPayload, [['count'], ['total'], ['counter'], ['value']]) ??
+    findNumberByKeys(parsedPayload, ['count', 'total', 'counter']);
+
+  if (lowerEventType.includes('temperature') && temperature !== null) {
+    return `${temperature.toFixed(1)} °C`;
+  }
+  if (lowerEventType.includes('humidity') && humidity !== null) {
+    return `${Math.round(humidity)} %`;
+  }
+  if ((lowerEventType.includes('ldr') || lowerTopic.includes('/sensor/ldr')) && brightness !== null) {
+    return formatBrightnessMeasurement(brightness);
+  }
+  if (event.category === 'COUNTER' && counter !== null) {
+    return Number.isInteger(counter) ? String(counter) : counter.toFixed(2);
+  }
+
+  if (event.category === 'SENSOR') {
+    const sensorParts: string[] = [];
+    if (temperature !== null) {
+      sensorParts.push(`${temperature.toFixed(1)} °C`);
+    }
+    if (humidity !== null) {
+      sensorParts.push(`${Math.round(humidity)} %`);
+    }
+    if (brightness !== null && sensorParts.length === 0) {
+      sensorParts.push(formatBrightnessMeasurement(brightness));
+    }
+    if (sensorParts.length > 0) {
+      return sensorParts.join(' / ');
+    }
+  }
+
+  const state = firstBoolean(parsedPayload, [['state'], ['output'], ['on'], ['online'], ['value']]);
+  if (state !== null) {
+    if (lowerEventType.includes('button')) {
+      return state ? 'pressed' : 'released';
+    }
+    if (lowerEventType.includes('online') || lowerTopic.includes('/status/heartbeat')) {
+      return state ? 'online' : 'offline';
+    }
+    return state ? 'on' : 'off';
+  }
+
+  const rssi =
+    firstNumber(parsedPayload, [['rssi'], ['wifi', 'rssi'], ['params', 'wifi', 'rssi']]) ??
+    findNumberByKeys(parsedPayload, ['rssi']);
+  if (rssi !== null) {
+    return `${Math.round(rssi)} dBm`;
+  }
+
+  return extractEventValueFromPayload(parsedPayload) ?? '';
 }
 
 function emptyDeviceTelemetrySnapshot(): DeviceTelemetrySnapshot {
@@ -736,7 +887,6 @@ export default function App() {
   const [feedViewMode, setFeedViewMode] = useState<FeedViewMode>('rendered');
   const [selectedEvent, setSelectedEvent] = useState<CanonicalEvent | null>(null);
   const [eventDetailsViewMode, setEventDetailsViewMode] = useState<EventDetailsViewMode>('rendered');
-  const [nowEpochMs, setNowEpochMs] = useState<number>(() => Date.now());
 
   const studentPauseRef = useRef(studentFeedPaused);
   const adminPauseRef = useRef(adminFeedPaused);
@@ -940,15 +1090,6 @@ export default function App() {
   }, [selectedEvent]);
 
   useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      setNowEpochMs(Date.now());
-    }, 30_000);
-    return () => {
-      window.clearInterval(intervalId);
-    };
-  }, []);
-
-  useEffect(() => {
     if (!session || !token) {
       return;
     }
@@ -956,6 +1097,12 @@ export default function App() {
     let socket: WebSocket | null = null;
     let reconnectTimer: number | null = null;
     let groupRefreshTimer: number | null = null;
+    let studentFeedFlushTimer: number | null = null;
+    let adminFeedFlushTimer: number | null = null;
+    let adminDeviceStatusFlushTimer: number | null = null;
+    let studentFeedQueue: CanonicalEvent[] = [];
+    let adminFeedQueue: CanonicalEvent[] = [];
+    const adminDeviceStatusQueue = new Map<string, DeviceStatus>();
     let closed = false;
 
     const rolePath = session.role === 'ADMIN' ? '/ws/admin' : '/ws/student';
@@ -981,22 +1128,103 @@ export default function App() {
       }, 1500);
     };
 
+    const flushStudentFeedQueue = () => {
+      studentFeedFlushTimer = null;
+      if (studentFeedQueue.length === 0) {
+        return;
+      }
+      const queued = studentFeedQueue;
+      studentFeedQueue = [];
+      setStudentData((previous) => {
+        if (!previous) {
+          return previous;
+        }
+        let nextFeed = previous.feed;
+        for (const queuedEvent of queued) {
+          nextFeed = prependBounded(nextFeed, queuedEvent, MAX_FEED_EVENTS);
+        }
+        return {
+          ...previous,
+          feed: nextFeed
+        };
+      });
+    };
+
+    const queueStudentFeedEvent = (eventPayload: CanonicalEvent) => {
+      studentFeedQueue.push(eventPayload);
+      if (studentFeedFlushTimer !== null) {
+        return;
+      }
+      studentFeedFlushTimer = window.setTimeout(flushStudentFeedQueue, 80);
+    };
+
+    const flushAdminFeedQueue = () => {
+      adminFeedFlushTimer = null;
+      if (adminFeedQueue.length === 0) {
+        return;
+      }
+      const queued = adminFeedQueue;
+      adminFeedQueue = [];
+      setAdminData((previous) => {
+        if (!previous) {
+          return previous;
+        }
+        let nextFeed = previous.events;
+        for (const queuedEvent of queued) {
+          nextFeed = prependBounded(nextFeed, queuedEvent, MAX_FEED_EVENTS);
+        }
+        return {
+          ...previous,
+          events: nextFeed
+        };
+      });
+    };
+
+    const queueAdminFeedEvent = (eventPayload: CanonicalEvent) => {
+      adminFeedQueue.push(eventPayload);
+      if (adminFeedFlushTimer !== null) {
+        return;
+      }
+      adminFeedFlushTimer = window.setTimeout(flushAdminFeedQueue, 80);
+    };
+
+    const flushAdminDeviceStatusQueue = () => {
+      adminDeviceStatusFlushTimer = null;
+      if (adminDeviceStatusQueue.size === 0) {
+        return;
+      }
+      const queuedStatuses = Array.from(adminDeviceStatusQueue.values());
+      adminDeviceStatusQueue.clear();
+      setAdminData((previous) => {
+        if (!previous) {
+          return previous;
+        }
+        const nextDevices = new Map(previous.devices.map((device) => [device.deviceId, device]));
+        for (const queuedDevice of queuedStatuses) {
+          nextDevices.set(queuedDevice.deviceId, queuedDevice);
+        }
+        return {
+          ...previous,
+          devices: Array.from(nextDevices.values()).sort((a, b) => a.deviceId.localeCompare(b.deviceId))
+        };
+      });
+    };
+
+    const queueAdminDeviceStatus = (deviceStatus: DeviceStatus) => {
+      adminDeviceStatusQueue.set(deviceStatus.deviceId, deviceStatus);
+      if (adminDeviceStatusFlushTimer !== null) {
+        return;
+      }
+      adminDeviceStatusFlushTimer = window.setTimeout(flushAdminDeviceStatusQueue, 120);
+    };
+
     const handleEnvelope = (envelope: WsEnvelope<unknown>) => {
       if (session.role === 'STUDENT') {
         if (envelope.type === 'event.feed.append') {
           if (studentPauseRef.current) {
             return;
           }
-          const eventPayload = envelope.payload as CanonicalEvent;
-          setStudentData((previous) => {
-            if (!previous) {
-              return previous;
-            }
-            return {
-              ...previous,
-              feed: prependBounded(previous.feed, eventPayload, MAX_FEED_EVENTS)
-            };
-          });
+          queueStudentFeedEvent(envelope.payload as CanonicalEvent);
           return;
         }
 
@@ -1094,43 +1322,12 @@ export default function App() {
         if (adminPauseRef.current) {
           return;
         }
-        const eventPayload = envelope.payload as CanonicalEvent;
-        setAdminData((previous) => {
-          if (!previous) {
-            return previous;
-          }
-          return {
-            ...previous,
-            events: prependBounded(previous.events, eventPayload, MAX_FEED_EVENTS)
-          };
-        });
+        queueAdminFeedEvent(envelope.payload as CanonicalEvent);
         return;
       }
 
       if (envelope.type === 'device.status.updated') {
-        const nextDevice = envelope.payload as DeviceStatus;
-        setAdminData((previous) => {
-          if (!previous) {
-            return previous;
-          }
-
-          const index = previous.devices.findIndex((device) => device.deviceId === nextDevice.deviceId);
-          if (index < 0) {
-            return {
-              ...previous,
-              devices: [...previous.devices, nextDevice].sort((a, b) =>
-                a.deviceId.localeCompare(b.deviceId)
-              )
-            };
-          }
-
-          const nextDevices = [...previous.devices];
-          nextDevices[index] = nextDevice;
-          return {
-            ...previous,
-            devices: nextDevices
-          };
-        });
+        queueAdminDeviceStatus(envelope.payload as DeviceStatus);
         return;
       }
 
@@ -1224,6 +1421,18 @@ export default function App() {
       if (groupRefreshTimer !== null) {
         window.clearTimeout(groupRefreshTimer);
       }
+      if (studentFeedFlushTimer !== null) {
+        window.clearTimeout(studentFeedFlushTimer);
+      }
+      if (adminFeedFlushTimer !== null) {
+        window.clearTimeout(adminFeedFlushTimer);
+      }
+      if (adminDeviceStatusFlushTimer !== null) {
+        window.clearTimeout(adminDeviceStatusFlushTimer);
+      }
+      studentFeedQueue = [];
+      adminFeedQueue = [];
+      adminDeviceStatusQueue.clear();
 
       if (socket) {
         socket.close();
@@ -1473,7 +1682,7 @@ export default function App() {
     }
 
     return studentData.feed.filter((event) => {
-      if (!studentShowInternal && event.isInternal) {
+      if (!studentShowInternal && (event.isInternal || isTelemetryEvent(event))) {
         return false;
       }
       return feedMatchesTopic(event, studentTopicFilter);
@@ -1486,7 +1695,7 @@ export default function App() {
     }
 
     return adminData.events.filter((event) => {
-      if (!adminIncludeInternal && event.isInternal) {
+      if (!adminIncludeInternal && (event.isInternal || isTelemetryEvent(event))) {
         return false;
       }
 
@@ -1501,6 +1710,22 @@ export default function App() {
       return feedMatchesTopic(event, adminTopicFilter);
     });
   }, [adminCategoryFilter, adminData, adminDeviceFilter, adminIncludeInternal, adminTopicFilter]);
+
+  const studentFeedValues = useMemo(() => {
+    const values = new Map<string, string>();
+    for (const event of studentVisibleFeed) {
+      values.set(event.id, eventValueSummary(event));
+    }
+    return values;
+  }, [studentVisibleFeed]);
+
+  const adminFeedValues = useMemo(() => {
+    const values = new Map<string, string>();
+    for (const event of adminVisibleFeed) {
+      values.set(event.id, eventValueSummary(event));
+    }
+    return values;
+  }, [adminVisibleFeed]);
 
   const adminDeviceSnapshots = useMemo<Record<string, DeviceTelemetrySnapshot>>(() => {
     if (!adminData) {
@@ -1532,6 +1757,7 @@ export default function App() {
     },
     [language, timeFormat24h]
   );
+  const nowEpochMs = Date.now();
 
   const selectedEventFields = useMemo<Array<[string, string]>>(() => {
     if (!selectedEvent) {
@@ -1546,7 +1772,7 @@ export default function App() {
       ['CATEGORY', selectedEvent.category],
       ['INGEST TS', formatTs(selectedEvent.ingestTs)],
       ['DEVICE TS', formatTs(selectedEvent.deviceTs)],
-      ['VALUE', eventValueSummary(selectedEvent)],
+      ['VALUE', eventValueSummary(selectedEvent) || '-'],
       ['VALID', String(selectedEvent.valid)],
       ['VALIDATION ERRORS', selectedEvent.validationErrors ?? '-'],
       ['INTERNAL', String(selectedEvent.isInternal)],
@@ -1979,7 +2205,7 @@ export default function App() {
                             <td>{eventItem.eventType}</td>
                             <td className="mono raw-cell">
                               {feedViewMode === 'rendered'
-                                ? eventValueSummary(eventItem)
+                                ? (studentFeedValues.get(eventItem.id) ?? '')
                                 : eventItem.payloadJson}
                             </td>
                             <td className="mono">{eventItem.topic}</td>
@@ -2091,146 +2317,150 @@ export default function App() {
               </div>
 
               <div className="devices-grid">
-                {adminData.devices.map((device) => (
-                  <article className="device-card" key={device.deviceId}>
-                    {(() => {
-                      const snapshot = adminDeviceSnapshots[device.deviceId];
-                      const uptimeNow = estimateUptimeNow(snapshot, nowEpochMs);
-                      const redButton =
-                        snapshot?.buttonRedPressed === null
-                          ? t('stateUnknown')
-                          : snapshot.buttonRedPressed
-                            ? t('statePressed')
-                            : t('stateReleased');
-                      const blackButton =
-                        snapshot?.buttonBlackPressed === null
-                          ? t('stateUnknown')
-                          : snapshot.buttonBlackPressed
-                            ? t('statePressed')
-                            : t('stateReleased');
-                      const greenLed =
-                        snapshot?.ledGreenOn === null
-                          ? t('stateUnknown')
-                          : snapshot.ledGreenOn
-                            ? t('stateOn')
-                            : t('stateOff');
-                      const orangeLed =
-                        snapshot?.ledOrangeOn === null
-                          ? t('stateUnknown')
-                          : snapshot.ledOrangeOn
-                            ? t('stateOn')
-                            : t('stateOff');
-                      const temperature =
-                        snapshot?.temperatureC === null ? '-' : `${snapshot.temperatureC.toFixed(1)}°C`;
-                      const humidity =
-                        snapshot?.humidityPct === null ? '-' : `${Math.round(snapshot.humidityPct)}%`;
-                      const brightness =
-                        snapshot?.brightness === null
-                          ? '-'
-                          : snapshot.brightness > 5
-                            ? `${Math.round(snapshot.brightness)} lx`
-                            : `${snapshot.brightness.toFixed(2)} V`;
-                      const bars = rssiBars(device.rssi);
-                      const rssiHint = device.rssi === null ? t('rssiNoData') : `${device.rssi} dBm`;
+                {adminData.devices.map((device) => {
+                  const snapshot = adminDeviceSnapshots[device.deviceId];
+                  const uptimeNow = estimateUptimeNow(snapshot, nowEpochMs);
+                  const redButton =
+                    snapshot?.buttonRedPressed === null
+                      ? t('stateUnknown')
+                      : snapshot.buttonRedPressed
+                        ? t('statePressed')
+                        : t('stateReleased');
+                  const blackButton =
+                    snapshot?.buttonBlackPressed === null
+                      ? t('stateUnknown')
+                      : snapshot.buttonBlackPressed
+                        ? t('statePressed')
+                        : t('stateReleased');
+                  const greenLed =
+                    snapshot?.ledGreenOn === null
+                      ? t('stateUnknown')
+                      : snapshot.ledGreenOn
+                        ? t('stateOn')
+                        : t('stateOff');
+                  const orangeLed =
+                    snapshot?.ledOrangeOn === null
+                      ? t('stateUnknown')
+                      : snapshot.ledOrangeOn
+                        ? t('stateOn')
+                        : t('stateOff');
+                  const temperature =
+                    snapshot?.temperatureC === null ? '-' : `${snapshot.temperatureC.toFixed(1)} °C`;
+                  const humidity =
+                    snapshot?.humidityPct === null ? '-' : `${Math.round(snapshot.humidityPct)} %`;
+                  const brightness =
+                    snapshot?.brightness === null ? '-' : formatBrightnessMeasurement(snapshot.brightness);
+                  const bars = rssiBars(device.rssi);
+                  const rssiHint = device.rssi === null ? t('rssiNoData') : `${device.rssi} dBm`;
 
-                      return (
-                        <>
-                    <header>
-                      <strong>{device.deviceId}</strong>
-                      <span className={`chip ${device.online ? 'ok' : 'warn'}`}>
-                        {statusLabel(device.online, language)}
-                      </span>
-                    </header>
+                  return (
+                    <article className="device-card" key={device.deviceId}>
+                      <header>
+                        <strong>{device.deviceId}</strong>
+                        <span className={`chip ${device.online ? 'ok' : 'warn'}`}>
+                          {statusLabel(device.online, language)}
+                        </span>
+                      </header>
 
-                    <p>
-                      {t('lastSeen')}: {formatTs(device.lastSeen)}
-                    </p>
-                    <p>
-                      {t('uptime')}: {uptimeNow === null ? '-' : formatRoundedDuration(uptimeNow, language)}
-                    </p>
-                    <div className="rssi-row">
-                      <span>{t('rssi')}:</span>
-                      <div
-                        className={`rssi-bars ${rssiClassName(device.rssi)}`}
-                        title={rssiHint}
-                        aria-label={rssiHint}
-                      >
-                        <span className={`bar ${bars >= 1 ? 'active' : ''}`} />
-                        <span className={`bar ${bars >= 2 ? 'active' : ''}`} />
-                        <span className={`bar ${bars >= 3 ? 'active' : ''}`} />
-                        <span className={`bar ${bars >= 4 ? 'active' : ''}`} />
+                      <p>
+                        {t('lastEvent')}: {formatTs(device.lastSeen)}
+                      </p>
+                      <p>
+                        {t('uptime')}: {uptimeNow === null ? '-' : formatRoundedDuration(uptimeNow, language)}
+                      </p>
+                      <div className="rssi-row">
+                        <span>{t('rssi')}:</span>
+                        <div
+                          className={`rssi-bars ${rssiClassName(device.rssi)}`}
+                          title={rssiHint}
+                          aria-label={rssiHint}
+                        >
+                          <span className={`bar ${bars >= 1 ? 'active' : ''}`} />
+                          <span className={`bar ${bars >= 2 ? 'active' : ''}`} />
+                          <span className={`bar ${bars >= 3 ? 'active' : ''}`} />
+                          <span className={`bar ${bars >= 4 ? 'active' : ''}`} />
+                        </div>
                       </div>
-                    </div>
-                    <div className="device-metrics-grid">
-                      <div className="device-metric">
-                        <span className="metric-icon">T</span>
-                        <span className="metric-text">{t('metricTemp')}: {temperature}</span>
+                      <div className="device-metrics-grid">
+                        <div className="device-metric">
+                          <span className="metric-icon">
+                            <MetricIcon kind="temperature" />
+                          </span>
+                          <span className="metric-text">{t('metricTemp')}: {temperature}</span>
+                        </div>
+                        <div className="device-metric">
+                          <span className="metric-icon">
+                            <MetricIcon kind="humidity" />
+                          </span>
+                          <span className="metric-text">{t('metricHumidity')}: {humidity}</span>
+                        </div>
+                        <div className="device-metric">
+                          <span className="metric-icon">
+                            <MetricIcon kind="brightness" />
+                          </span>
+                          <span className="metric-text">{t('metricBrightness')}: {brightness}</span>
+                        </div>
+                        <div className="device-metric">
+                          <span className="metric-icon">
+                            <MetricIcon kind="buttons" />
+                          </span>
+                          <span className="metric-text">
+                            {t('metricButtons')}: R {redButton}, B {blackButton}
+                          </span>
+                        </div>
+                        <div className="device-metric full">
+                          <span className="metric-icon">
+                            <MetricIcon kind="leds" />
+                          </span>
+                          <span className="metric-text">{t('metricLeds')}: G {greenLed}, O {orangeLed}</span>
+                        </div>
                       </div>
-                      <div className="device-metric">
-                        <span className="metric-icon">H</span>
-                        <span className="metric-text">{t('metricHumidity')}: {humidity}</span>
-                      </div>
-                      <div className="device-metric">
-                        <span className="metric-icon">B</span>
-                        <span className="metric-text">{t('metricBrightness')}: {brightness}</span>
-                      </div>
-                      <div className="device-metric">
-                        <span className="metric-icon">BTN</span>
-                        <span className="metric-text">{t('metricButtons')}: R {redButton}, B {blackButton}</span>
-                      </div>
-                      <div className="device-metric full">
-                        <span className="metric-icon">LED</span>
-                        <span className="metric-text">{t('metricLeds')}: G {greenLed}, O {orangeLed}</span>
-                      </div>
-                    </div>
 
-                    <div className="button-grid">
-                      <button
-                        className="button"
-                        type="button"
-                        onClick={() => sendAdminDeviceCommand(device.deviceId, 'LED_GREEN', true)}
-                        disabled={busyKey === `admin-command-${device.deviceId}-LED_GREEN-true`}
-                      >
-                        {t('commandGreenOn')}
-                      </button>
-                      <button
-                        className="button secondary"
-                        type="button"
-                        onClick={() => sendAdminDeviceCommand(device.deviceId, 'LED_GREEN', false)}
-                        disabled={busyKey === `admin-command-${device.deviceId}-LED_GREEN-false`}
-                      >
-                        {t('commandGreenOff')}
-                      </button>
-                      <button
-                        className="button"
-                        type="button"
-                        onClick={() => sendAdminDeviceCommand(device.deviceId, 'LED_ORANGE', true)}
-                        disabled={busyKey === `admin-command-${device.deviceId}-LED_ORANGE-true`}
-                      >
-                        {t('commandOrangeOn')}
-                      </button>
-                      <button
-                        className="button secondary"
-                        type="button"
-                        onClick={() => sendAdminDeviceCommand(device.deviceId, 'LED_ORANGE', false)}
-                        disabled={busyKey === `admin-command-${device.deviceId}-LED_ORANGE-false`}
-                      >
-                        {t('commandOrangeOff')}
-                      </button>
-                      <button
-                        className="button ghost"
-                        type="button"
-                        onClick={() => sendAdminDeviceCommand(device.deviceId, 'COUNTER_RESET')}
-                        disabled={busyKey === `admin-command-${device.deviceId}-COUNTER_RESET-undefined`}
-                      >
-                        {t('commandCounterReset')}
-                      </button>
-                    </div>
-                        </>
-                      );
-                    })()}
-                  </article>
-                ))}
+                      <div className="button-grid">
+                        <button
+                          className="button"
+                          type="button"
+                          onClick={() => sendAdminDeviceCommand(device.deviceId, 'LED_GREEN', true)}
+                          disabled={busyKey === `admin-command-${device.deviceId}-LED_GREEN-true`}
+                        >
+                          {t('commandGreenOn')}
+                        </button>
+                        <button
+                          className="button secondary"
+                          type="button"
+                          onClick={() => sendAdminDeviceCommand(device.deviceId, 'LED_GREEN', false)}
+                          disabled={busyKey === `admin-command-${device.deviceId}-LED_GREEN-false`}
+                        >
+                          {t('commandGreenOff')}
+                        </button>
+                        <button
+                          className="button"
+                          type="button"
+                          onClick={() => sendAdminDeviceCommand(device.deviceId, 'LED_ORANGE', true)}
+                          disabled={busyKey === `admin-command-${device.deviceId}-LED_ORANGE-true`}
+                        >
+                          {t('commandOrangeOn')}
+                        </button>
+                        <button
+                          className="button secondary"
+                          type="button"
+                          onClick={() => sendAdminDeviceCommand(device.deviceId, 'LED_ORANGE', false)}
+                          disabled={busyKey === `admin-command-${device.deviceId}-LED_ORANGE-false`}
+                        >
+                          {t('commandOrangeOff')}
+                        </button>
+                        <button
+                          className="button ghost"
+                          type="button"
+                          onClick={() => sendAdminDeviceCommand(device.deviceId, 'COUNTER_RESET')}
+                          disabled={busyKey === `admin-command-${device.deviceId}-COUNTER_RESET-undefined`}
+                        >
+                          {t('commandCounterReset')}
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })}
               </div>
             </section>
 
@@ -2349,7 +2579,7 @@ export default function App() {
                             <td>{eventItem.eventType}</td>
                             <td className="mono raw-cell">
                               {feedViewMode === 'rendered'
-                                ? eventValueSummary(eventItem)
+                                ? (adminFeedValues.get(eventItem.id) ?? '')
                                 : eventItem.payloadJson}
                             </td>
                             <td>{eventItem.category}</td>
