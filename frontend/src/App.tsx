@@ -43,6 +43,7 @@ interface AdminViewData {
 type WsConnectionState = 'connecting' | 'connected' | 'disconnected';
 type FeedViewMode = 'rendered' | 'raw';
 type EventDetailsViewMode = 'rendered' | 'raw';
+type AdminPage = 'dashboard' | 'devices' | 'feed' | 'groupsTasks' | 'settings';
 
 interface DeviceTelemetrySnapshot {
   temperatureC: number | null;
@@ -625,6 +626,9 @@ function eventValueSummary(event: CanonicalEvent): string {
 
   const lowerEventType = event.eventType.toLowerCase();
   const lowerTopic = event.topic.toLowerCase();
+  if (lowerEventType === 'status.system' || lowerEventType.startsWith('status.system.')) {
+    return '';
+  }
   if (lowerEventType.endsWith('.press')) {
     return 'pressed';
   }
@@ -693,6 +697,25 @@ function eventValueSummary(event: CanonicalEvent): string {
     }
     if (sensorParts.length > 0) {
       return sensorParts.join(' / ');
+    }
+  }
+
+  if (
+    lowerEventType.includes('led.green.state_changed') ||
+    lowerEventType.includes('led.orange.state_changed')
+  ) {
+    const ledState = firstBoolean(parsedPayload, [
+      ['output'],
+      ['state'],
+      ['on'],
+      ['value'],
+      ['params', 'switch:0', 'output'],
+      ['switch:0', 'output'],
+      ['params', 'switch:1', 'output'],
+      ['switch:1', 'output']
+    ]);
+    if (ledState !== null) {
+      return ledState ? 'on' : 'off';
     }
   }
 
@@ -1237,6 +1260,7 @@ export default function App() {
   const [pinEditorDeviceId, setPinEditorDeviceId] = useState<string | null>(null);
   const [pinEditorValue, setPinEditorValue] = useState('');
   const [pinEditorLoading, setPinEditorLoading] = useState(false);
+  const [adminPage, setAdminPage] = useState<AdminPage>('dashboard');
 
   const studentPauseRef = useRef(studentFeedPaused);
   const adminPauseRef = useRef(adminFeedPaused);
@@ -1305,6 +1329,7 @@ export default function App() {
     setPinEditorDeviceId(null);
     setPinEditorValue('');
     setPinEditorLoading(false);
+    setAdminPage('dashboard');
   }, []);
 
   const clearAuth = useCallback(() => {
@@ -1375,6 +1400,7 @@ export default function App() {
     setAdminSettingsDraftTimeFormat24h(settings.timeFormat24h);
     setDefaultLanguageMode(settings.defaultLanguageMode);
     setTimeFormat24h(settings.timeFormat24h);
+    setAdminPage('dashboard');
   }, []);
 
   useEffect(() => {
@@ -2280,20 +2306,52 @@ export default function App() {
     return session.displayName?.trim() || session.username;
   }, [session]);
 
-  const settingsSectionId = session?.role === 'ADMIN' ? 'admin-settings-panel' : 'student-settings-panel';
+  const adminOnlineDeviceCount = useMemo(() => {
+    if (!adminData) {
+      return 0;
+    }
+    return adminData.devices.reduce((sum, device) => sum + (device.online ? 1 : 0), 0);
+  }, [adminData]);
+
+  const adminOnlineUserCount = useMemo(() => {
+    if (!adminData) {
+      return 0;
+    }
+    return adminData.groups.reduce((sum, group) => sum + group.onlineCount, 0);
+  }, [adminData]);
+
+  const adminActiveTask = useMemo(() => {
+    if (!adminData) {
+      return null;
+    }
+    return adminData.tasks.find((task) => task.active) ?? null;
+  }, [adminData]);
+
+  const adminLatestEvent = useMemo(() => {
+    if (!adminData || adminData.events.length === 0) {
+      return null;
+    }
+    return adminData.events[0];
+  }, [adminData]);
+
   const counterResetBusy = counterResetDeviceId
     ? busyKey === `admin-command-${counterResetDeviceId}-COUNTER_RESET-undefined`
     : false;
 
   const openSettingsSection = useCallback(() => {
-    const element = document.getElementById(settingsSectionId);
+    if (session?.role === 'ADMIN') {
+      setAdminPage('settings');
+      setUserMenuOpen(false);
+      return;
+    }
+    const element = document.getElementById('student-settings-panel');
     if (!element) {
       setUserMenuOpen(false);
       return;
     }
     element.scrollIntoView({ behavior: 'smooth', block: 'start' });
     setUserMenuOpen(false);
-  }, [settingsSectionId]);
+  }, [session]);
 
   const formatTs = useCallback(
     (value: TimestampValue): string => {
@@ -2334,7 +2392,8 @@ export default function App() {
     return JSON.stringify(
       {
         ...selectedEvent,
-        payloadParsed: payloadForRaw
+        payloadJson: payloadForRaw,
+        payloadJsonRaw: selectedEvent.payloadJson
       },
       null,
       2
@@ -2788,11 +2847,102 @@ export default function App() {
         ) : null}
 
         {!booting && session?.role === 'ADMIN' && adminData ? (
-          <div className="dashboard-grid">
-            <section className="panel hero panel-animate">
-              <h2>{t('tasks')}</h2>
-              <div className="tasks-list">
-                {adminData.tasks.map((task) => (
+          <div className="admin-page-shell">
+            <nav className="panel panel-animate admin-page-nav">
+              <button
+                className={`button tiny ${adminPage === 'dashboard' ? 'active' : 'secondary'}`}
+                type="button"
+                onClick={() => setAdminPage('dashboard')}
+              >
+                {t('dashboard')}
+              </button>
+              <button
+                className={`button tiny ${adminPage === 'devices' ? 'active' : 'secondary'}`}
+                type="button"
+                onClick={() => setAdminPage('devices')}
+              >
+                {t('devices')}
+              </button>
+              <button
+                className={`button tiny ${adminPage === 'feed' ? 'active' : 'secondary'}`}
+                type="button"
+                onClick={() => setAdminPage('feed')}
+              >
+                {t('liveFeed')}
+              </button>
+              <button
+                className={`button tiny ${adminPage === 'groupsTasks' ? 'active' : 'secondary'}`}
+                type="button"
+                onClick={() => setAdminPage('groupsTasks')}
+              >
+                {t('groupsTasks')}
+              </button>
+              <button
+                className={`button tiny ${adminPage === 'settings' ? 'active' : 'secondary'}`}
+                type="button"
+                onClick={() => setAdminPage('settings')}
+              >
+                {t('settings')}
+              </button>
+            </nav>
+
+            <div className="dashboard-grid">
+              {adminPage === 'dashboard' ? (
+                <>
+                  <section className="panel hero panel-animate full-width">
+                    <div className="panel-header">
+                      <h2>{t('dashboard')}</h2>
+                      <span className={`status-pill ${wsConnection}`}>{wsLabel}</span>
+                    </div>
+                    <div className="chip-row">
+                      <span className="chip">{t('devices')}: {adminData.devices.length}</span>
+                      <span className="chip ok">{t('online')}: {adminOnlineDeviceCount}</span>
+                      <span className="chip warn">{t('offline')}: {adminData.devices.length - adminOnlineDeviceCount}</span>
+                      <span className="chip">{t('groups')}: {adminData.groups.length}</span>
+                      <span className="chip">{t('groupPresence')}: {adminOnlineUserCount}</span>
+                      <span className="chip">{t('liveFeed')}: {adminData.events.length}</span>
+                    </div>
+                    <div className="meta-row">
+                      <span>{t('currentTask')}: {adminActiveTask ? taskTitle(adminActiveTask, language) : '-'}</span>
+                      <span>
+                        {t('lastEvent')}: {adminLatestEvent ? formatRelativeFromNow(adminLatestEvent.ingestTs, nowEpochMs, language) : '-'}
+                      </span>
+                    </div>
+                    <div className="admin-dashboard-actions">
+                      <button className="button secondary" type="button" onClick={() => setAdminPage('devices')}>
+                        {t('devices')}
+                      </button>
+                      <button className="button secondary" type="button" onClick={() => setAdminPage('feed')}>
+                        {t('liveFeed')}
+                      </button>
+                      <button className="button secondary" type="button" onClick={() => setAdminPage('groupsTasks')}>
+                        {t('groupsTasks')}
+                      </button>
+                      <button className="button secondary" type="button" onClick={() => setAdminPage('settings')}>
+                        {t('settings')}
+                      </button>
+                    </div>
+                  </section>
+
+                  <section className="panel panel-animate">
+                    <h2>{t('tasks')}</h2>
+                    <p className="muted">
+                      {t('currentTask')}: {adminActiveTask ? taskTitle(adminActiveTask, language) : '-'}
+                    </p>
+                  </section>
+
+                  <section className="panel panel-animate">
+                    <h2>{t('groups')}</h2>
+                    <p className="muted">{t('groupPresence')}: {adminOnlineUserCount}</p>
+                  </section>
+                </>
+              ) : null}
+
+              {adminPage === 'groupsTasks' ? (
+                <section className="panel hero panel-animate">
+                  <h2>{t('tasks')}</h2>
+                  <div className="tasks-list">
+                    {adminData.tasks.map((task) => (
                   <article key={task.id} className={`task-card ${task.active ? 'active' : ''}`}>
                     <header>
                       <strong>{taskTitle(task, language)}</strong>
@@ -2807,85 +2957,91 @@ export default function App() {
                     >
                       {t('activate')}
                     </button>
-                  </article>
-                ))}
-              </div>
-            </section>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
 
-            <section className="panel panel-animate" id="admin-settings-panel">
-              <h2>{t('settings')}</h2>
-              <label>
-                <span>{t('defaultLanguageMode')}</span>
-                <select
-                  className="input"
-                  value={adminSettingsDraftMode}
-                  onChange={(event) =>
-                    setAdminSettingsDraftMode(event.target.value as LanguageMode)
-                  }
-                >
-                  <option value="DE">{t('modeDe')}</option>
-                  <option value="EN">{t('modeEn')}</option>
-                  <option value="BROWSER_EN_FALLBACK">{t('modeBrowser')}</option>
-                </select>
-              </label>
-              <label>
-                <span>{t('timeFormat')}</span>
-                <select
-                  className="input"
-                  value={adminSettingsDraftTimeFormat24h ? '24' : '12'}
-                  onChange={(event) => setAdminSettingsDraftTimeFormat24h(event.target.value === '24')}
-                >
-                  <option value="24">{t('timeFormat24h')}</option>
-                  <option value="12">{t('timeFormat12h')}</option>
-                </select>
-              </label>
-              <button
-                className="button"
-                type="button"
-                onClick={saveAdminSettings}
-                disabled={busyKey === 'admin-settings'}
-              >
-                {t('saveSettings')}
-              </button>
-            </section>
+              {adminPage === 'settings' ? (
+                <section className="panel panel-animate full-width" id="admin-settings-panel">
+                  <h2>{t('settings')}</h2>
+                  <label>
+                    <span>{t('defaultLanguageMode')}</span>
+                    <select
+                      className="input"
+                      value={adminSettingsDraftMode}
+                      onChange={(event) =>
+                        setAdminSettingsDraftMode(event.target.value as LanguageMode)
+                      }
+                    >
+                      <option value="DE">{t('modeDe')}</option>
+                      <option value="EN">{t('modeEn')}</option>
+                      <option value="BROWSER_EN_FALLBACK">{t('modeBrowser')}</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>{t('timeFormat')}</span>
+                    <select
+                      className="input"
+                      value={adminSettingsDraftTimeFormat24h ? '24' : '12'}
+                      onChange={(event) => setAdminSettingsDraftTimeFormat24h(event.target.value === '24')}
+                    >
+                      <option value="24">{t('timeFormat24h')}</option>
+                      <option value="12">{t('timeFormat12h')}</option>
+                    </select>
+                  </label>
+                  <button
+                    className="button"
+                    type="button"
+                    onClick={saveAdminSettings}
+                    disabled={busyKey === 'admin-settings'}
+                  >
+                    {t('saveSettings')}
+                  </button>
+                </section>
+              ) : null}
 
-            <section className="panel panel-animate">
-              <h2>{t('groups')}</h2>
-              <div className="groups-list">
-                {adminData.groups.map((group) => (
-                  <article key={group.groupKey} className="group-card">
-                    <header>
-                      <strong>{group.groupKey}</strong>
-                      <span className="chip">online: {group.onlineCount}</span>
-                    </header>
-                    <p className="muted">cfg rev {group.config.revision}</p>
-                    <ul>
-                      {group.presence.map((presence) => (
-                        <li key={`${presence.username}-${presence.lastSeen}`}>
-                          {presence.displayName} - {formatTs(presence.lastSeen)}
-                        </li>
-                      ))}
-                    </ul>
-                  </article>
-                ))}
-              </div>
-            </section>
+              {adminPage === 'groupsTasks' ? (
+                <section className="panel panel-animate">
+                  <h2>{t('groups')}</h2>
+                  <div className="groups-list">
+                    {adminData.groups.map((group) => (
+                      <article key={group.groupKey} className="group-card">
+                        <header>
+                          <strong>{group.groupKey}</strong>
+                          <span className="chip">online: {group.onlineCount}</span>
+                        </header>
+                        <p className="muted">cfg rev {group.config.revision}</p>
+                        <ul>
+                          {group.presence.map((presence) => (
+                            <li key={`${presence.username}-${presence.lastSeen}`}>
+                              {presence.displayName} - {formatTs(presence.lastSeen)}
+                            </li>
+                          ))}
+                        </ul>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
 
-            <section className="panel panel-animate full-width">
-              <div className="panel-header">
-                <h2>{t('devices')}</h2>
-                <button
-                  className="button secondary"
-                  type="button"
-                  onClick={refreshAdminData}
-                  disabled={busyKey === 'admin-refresh'}
-                >
-                  {t('refresh')}
-                </button>
-              </div>
+              {adminPage === 'devices' ? (
+                <section className="panel panel-animate full-width">
+                  <div className="panel-header">
+                    <h2>{t('devices')}</h2>
+                    <button
+                      className="button secondary"
+                      type="button"
+                      onClick={refreshAdminData}
+                      disabled={busyKey === 'admin-refresh'}
+                    >
+                      {t('refresh')}
+                    </button>
+                  </div>
 
-              <div className="devices-grid">
-                {adminData.devices.map((device) => {
+                  <div className="devices-grid">
+                    {adminData.devices.map((device) => {
                   const snapshot = adminDeviceSnapshots[device.deviceId];
                   const uptimeNow = estimateUptimeNow(snapshot, nowEpochMs);
                   const redPressed = snapshot?.buttonRedPressed ?? null;
@@ -2898,13 +3054,13 @@ export default function App() {
                   const counterRaw = snapshot?.counterValue ?? null;
                   const isDeviceOnline = device.online;
                   const redButton =
-                    redPressed === null
+                    !isDeviceOnline || redPressed === null
                       ? t('stateUnknown')
                       : redPressed
                         ? t('statePressed')
                         : t('stateReleased');
                   const blackButton =
-                    blackPressed === null
+                    !isDeviceOnline || blackPressed === null
                       ? t('stateUnknown')
                       : blackPressed
                         ? t('statePressed')
@@ -2930,9 +3086,17 @@ export default function App() {
                   const uptimeLabel =
                     !isDeviceOnline || uptimeNow === null ? '-' : formatRoundedDuration(uptimeNow, language);
                   const redButtonClass =
-                    redPressed === null ? 'state-unknown' : redPressed ? 'state-pressed' : 'state-released';
+                    !isDeviceOnline || redPressed === null
+                      ? 'state-unknown'
+                      : redPressed
+                        ? 'state-pressed'
+                        : 'state-released';
                   const blackButtonClass =
-                    blackPressed === null ? 'state-unknown' : blackPressed ? 'state-pressed' : 'state-released';
+                    !isDeviceOnline || blackPressed === null
+                      ? 'state-unknown'
+                      : blackPressed
+                        ? 'state-pressed'
+                        : 'state-released';
                   const nextGreenState = greenOn === null ? true : !greenOn;
                   const nextOrangeState = orangeOn === null ? true : !orangeOn;
                   const greenBusy =
@@ -3076,43 +3240,45 @@ export default function App() {
                       </div>
                     </article>
                   );
-                })}
-              </div>
-            </section>
+                    })}
+                  </div>
+                </section>
+              ) : null}
 
-            <section className="panel panel-animate feed-panel full-width">
-              <h2>{t('liveFeed')}</h2>
-              <div className="toolbar">
-                <button
-                  className="button secondary"
-                  type="button"
-                  onClick={() => setAdminFeedPaused((value) => !value)}
-                >
-                  {adminFeedPaused ? t('resume') : t('pause')}
-                </button>
-                <button
-                  className="button secondary"
-                  type="button"
-                  onClick={() =>
-                    setFeedViewMode((mode) => (mode === 'rendered' ? 'raw' : 'rendered'))
-                  }
-                >
-                  {feedViewMode === 'rendered' ? t('switchToRawFeed') : t('switchToRenderedFeed')}
-                </button>
-                <button
-                  className="button secondary"
-                  type="button"
-                  onClick={() => {
-                    setAdminData((previous) => {
-                      if (!previous) {
-                        return previous;
+              {adminPage === 'feed' ? (
+                <section className="panel panel-animate feed-panel full-width">
+                  <h2>{t('liveFeed')}</h2>
+                  <div className="toolbar">
+                    <button
+                      className="button secondary"
+                      type="button"
+                      onClick={() => setAdminFeedPaused((value) => !value)}
+                    >
+                      {adminFeedPaused ? t('resume') : t('pause')}
+                    </button>
+                    <button
+                      className="button secondary"
+                      type="button"
+                      onClick={() =>
+                        setFeedViewMode((mode) => (mode === 'rendered' ? 'raw' : 'rendered'))
                       }
-                      return { ...previous, events: [] };
-                    });
-                  }}
-                >
-                  {t('clear')}
-                </button>
+                    >
+                      {feedViewMode === 'rendered' ? t('switchToRawFeed') : t('switchToRenderedFeed')}
+                    </button>
+                    <button
+                      className="button secondary"
+                      type="button"
+                      onClick={() => {
+                        setAdminData((previous) => {
+                          if (!previous) {
+                            return previous;
+                          }
+                          return { ...previous, events: [] };
+                        });
+                      }}
+                    >
+                      {t('clear')}
+                    </button>
 
                 <input
                   className="input"
@@ -3150,63 +3316,65 @@ export default function App() {
                   />
                   <span>{t('includeInternal')}</span>
                 </label>
-              </div>
+                  </div>
 
-              <div className="feed-table-wrap">
-                <table className="feed-table">
-                  <thead>
-                    <tr>
-                      <th>INGEST TS</th>
-                      <th>DEVICE ID</th>
-                      <th>EVENT TYPE</th>
-                      <th>{feedViewMode === 'rendered' ? t('value') : t('rawPayload')}</th>
-                      <th>{t('category')}</th>
-                      <th>TOPIC</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {adminVisibleFeed.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="muted">
-                          {t('noEvents')}
-                        </td>
-                      </tr>
-                    ) : (
-                      adminVisibleFeed.map((eventItem) => (
-                          <tr
-                            key={eventItem.id}
-                            className="feed-row-clickable"
-                            role="button"
-                            tabIndex={0}
-                            onClick={() => {
-                              setSelectedEvent(eventItem);
-                              setEventDetailsViewMode('rendered');
-                            }}
-                            onKeyDown={(event) => {
-                              if (event.key === 'Enter' || event.key === ' ') {
-                                event.preventDefault();
-                                setSelectedEvent(eventItem);
-                                setEventDetailsViewMode('rendered');
-                              }
-                            }}
-                          >
-                            <td>{formatTs(eventItem.ingestTs)}</td>
-                            <td>{eventItem.deviceId}</td>
-                            <td>{eventItem.eventType}</td>
-                            <td className="mono raw-cell">
-                              {feedViewMode === 'rendered'
-                                ? (adminFeedValues.get(eventItem.id) ?? '')
-                                : eventItem.payloadJson}
+                  <div className="feed-table-wrap">
+                    <table className="feed-table">
+                      <thead>
+                        <tr>
+                          <th>INGEST TS</th>
+                          <th>DEVICE ID</th>
+                          <th>EVENT TYPE</th>
+                          <th>{feedViewMode === 'rendered' ? t('value') : t('rawPayload')}</th>
+                          <th>{t('category')}</th>
+                          <th>TOPIC</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {adminVisibleFeed.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="muted">
+                              {t('noEvents')}
                             </td>
-                            <td>{eventItem.category}</td>
-                            <td className="mono">{eventItem.topic}</td>
                           </tr>
-                        ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </section>
+                        ) : (
+                          adminVisibleFeed.map((eventItem) => (
+                              <tr
+                                key={eventItem.id}
+                                className="feed-row-clickable"
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => {
+                                  setSelectedEvent(eventItem);
+                                  setEventDetailsViewMode('rendered');
+                                }}
+                                onKeyDown={(event) => {
+                                  if (event.key === 'Enter' || event.key === ' ') {
+                                    event.preventDefault();
+                                    setSelectedEvent(eventItem);
+                                    setEventDetailsViewMode('rendered');
+                                  }
+                                }}
+                              >
+                                <td>{formatTs(eventItem.ingestTs)}</td>
+                                <td>{eventItem.deviceId}</td>
+                                <td>{eventItem.eventType}</td>
+                                <td className="mono raw-cell">
+                                  {feedViewMode === 'rendered'
+                                    ? (adminFeedValues.get(eventItem.id) ?? '')
+                                    : eventItem.payloadJson}
+                                </td>
+                                <td>{eventItem.category}</td>
+                                <td className="mono">{eventItem.topic}</td>
+                              </tr>
+                            ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              ) : null}
+            </div>
           </div>
         ) : null}
       </main>
@@ -3254,7 +3422,7 @@ export default function App() {
                 </pre>
               </>
             ) : (
-              <pre className="event-modal-pre">{selectedEventRawJson}</pre>
+              <pre className="event-modal-pre event-modal-pre-raw">{selectedEventRawJson}</pre>
             )}
           </div>
         </div>
