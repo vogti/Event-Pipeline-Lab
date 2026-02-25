@@ -48,6 +48,7 @@ interface DeviceTelemetrySnapshot {
   temperatureC: number | null;
   humidityPct: number | null;
   brightness: number | null;
+  counterValue: number | null;
   buttonRedPressed: boolean | null;
   buttonBlackPressed: boolean | null;
   ledGreenOn: boolean | null;
@@ -56,7 +57,13 @@ interface DeviceTelemetrySnapshot {
   uptimeIngestTs: TimestampValue;
 }
 
-type MetricIconKind = 'temperature' | 'humidity' | 'brightness' | 'buttons' | 'leds';
+type MetricIconKind =
+  | 'temperature'
+  | 'humidity'
+  | 'brightness'
+  | 'counter'
+  | 'buttons'
+  | 'leds';
 
 const CATEGORY_OPTIONS: Array<EventCategory | 'ALL'> = [
   'ALL',
@@ -122,10 +129,34 @@ function MetricIcon({ kind }: { kind: MetricIconKind }) {
       </svg>
     );
   }
+  if (kind === 'counter') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <rect x="4.2" y="6.5" width="15.6" height="11" rx="2" fill="none" stroke="currentColor" strokeWidth="1.8" />
+        <line x1="8.4" y1="10" x2="15.6" y2="10" stroke="currentColor" strokeWidth="1.8" />
+        <line x1="8.4" y1="14" x2="15.6" y2="14" stroke="currentColor" strokeWidth="1.8" />
+      </svg>
+    );
+  }
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
       <rect x="4.4" y="8.2" width="6.3" height="7.6" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.8" />
       <rect x="13.3" y="8.2" width="6.3" height="7.6" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function SettingsIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path
+        d="M10.3 3.5h3.4l.5 2.1 1.9.8 1.9-1.1 2.4 2.4-1.1 1.9.8 1.9 2.1.5v3.4l-2.1.5-.8 1.9 1.1 1.9-2.4 2.4-1.9-1.1-1.9.8-.5 2.1h-3.4l-.5-2.1-1.9-.8-1.9 1.1-2.4-2.4 1.1-1.9-.8-1.9-2.1-.5v-3.4l2.1-.5.8-1.9-1.1-1.9 2.4-2.4 1.9 1.1 1.9-.8z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+      <circle cx="12" cy="12" r="2.6" fill="none" stroke="currentColor" strokeWidth="1.8" />
     </svg>
   );
 }
@@ -216,6 +247,52 @@ function isLikelyEpochTimestamp(value: number): boolean {
   return false;
 }
 
+function isCounterEvent(event: CanonicalEvent): boolean {
+  const lowerTopic = event.topic.toLowerCase();
+  const lowerEventType = event.eventType.toLowerCase();
+  return (
+    event.category === 'COUNTER' ||
+    lowerTopic.includes('/counter') ||
+    lowerEventType.includes('counter')
+  );
+}
+
+function extractCounterValueFromPayload(payload: unknown, allowLooseValue: boolean): number | null {
+  const strictCounter =
+    firstNumber(payload, [
+      ['counter'],
+      ['count'],
+      ['total'],
+      ['counterValue'],
+      ['counter_value'],
+      ['blueCounter'],
+      ['params', 'counter:0', 'value'],
+      ['params', 'counter:100', 'value']
+    ]) ??
+    findNumberByKeys(payload, [
+      'counter',
+      'count',
+      'total',
+      'counterValue',
+      'counter_value',
+      'blueCounter'
+    ]);
+
+  if (strictCounter !== null) {
+    return isLikelyEpochTimestamp(strictCounter) ? null : strictCounter;
+  }
+
+  if (!allowLooseValue) {
+    return null;
+  }
+
+  const looseValue = firstNumber(payload, [['value']]);
+  if (looseValue === null) {
+    return null;
+  }
+  return isLikelyEpochTimestamp(looseValue) ? null : looseValue;
+}
+
 function looksLikeIpAddress(value: string): boolean {
   const trimmed = value.trim();
   if (trimmed.length === 0) {
@@ -235,6 +312,17 @@ function looksLikeIpAddress(value: string): boolean {
     return true;
   }
   return false;
+}
+
+function ipAddressToHref(ipAddress: string): string | null {
+  const trimmed = ipAddress.trim();
+  if (!looksLikeIpAddress(trimmed)) {
+    return null;
+  }
+  if (trimmed.includes(':')) {
+    return `http://[${trimmed}]`;
+  }
+  return `http://${trimmed}`;
 }
 
 function findIpAddress(node: unknown, depth = 0): string | null {
@@ -577,29 +665,7 @@ function eventValueSummary(event: CanonicalEvent): string {
       ['params', 'voltmeter:100', 'value']
     ]) ?? findNumberByKeys(parsedPayload, ['brightness', 'lux', 'ldr', 'voltage']);
 
-  const strictCounter =
-    firstNumber(parsedPayload, [
-      ['counter'],
-      ['count'],
-      ['total'],
-      ['counterValue'],
-      ['counter_value'],
-      ['blueCounter'],
-      ['params', 'counter:0', 'value'],
-      ['params', 'counter:100', 'value']
-    ]) ??
-    findNumberByKeys(parsedPayload, [
-      'counter',
-      'count',
-      'total',
-      'counterValue',
-      'counter_value',
-      'blueCounter'
-    ]);
-  const looseCounter = firstNumber(parsedPayload, [['value']]);
-  const counter =
-    strictCounter ??
-    (looseCounter !== null && !isLikelyEpochTimestamp(looseCounter) ? looseCounter : null);
+  const counter = extractCounterValueFromPayload(parsedPayload, true);
 
   if (lowerEventType.includes('temperature') && temperature !== null) {
     return `${temperature.toFixed(1)} °C`;
@@ -611,9 +677,6 @@ function eventValueSummary(event: CanonicalEvent): string {
     return formatBrightnessMeasurement(brightness);
   }
   if (event.category === 'COUNTER' && counter !== null) {
-    if (isLikelyEpochTimestamp(counter) && strictCounter === null) {
-      return '';
-    }
     return Number.isInteger(counter) ? String(counter) : counter.toFixed(2);
   }
 
@@ -659,6 +722,7 @@ function emptyDeviceTelemetrySnapshot(): DeviceTelemetrySnapshot {
     temperatureC: null,
     humidityPct: null,
     brightness: null,
+    counterValue: null,
     buttonRedPressed: null,
     buttonBlackPressed: null,
     ledGreenOn: null,
@@ -744,10 +808,6 @@ function findNumberByKeys(node: unknown, keys: string[], depth = 0): number | nu
   if (depth > 5 || node === null || node === undefined) {
     return null;
   }
-  const direct = toNumber(node);
-  if (direct !== null) {
-    return direct;
-  }
   if (Array.isArray(node)) {
     for (const item of node) {
       const value = findNumberByKeys(item, keys, depth + 1);
@@ -760,8 +820,9 @@ function findNumberByKeys(node: unknown, keys: string[], depth = 0): number | nu
   if (typeof node !== 'object') {
     return null;
   }
+  const keySet = new Set(keys);
   for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
-    if (keys.includes(key)) {
+    if (keySet.has(key)) {
       const parsed = toNumber(value);
       if (parsed !== null) {
         return parsed;
@@ -902,6 +963,13 @@ function buildDeviceTelemetrySnapshots(events: CanonicalEvent[]): Record<string,
       }
     }
 
+    if (snapshot.counterValue === null && isCounterEvent(event)) {
+      const counterValue = extractCounterValueFromPayload(payload, true);
+      if (counterValue !== null) {
+        snapshot.counterValue = counterValue;
+      }
+    }
+
     if (snapshot.buttonRedPressed === null) {
       const red = extractButtonState(event, payload, 'red');
       if (red !== null) {
@@ -942,6 +1010,107 @@ function buildDeviceTelemetrySnapshots(events: CanonicalEvent[]): Record<string,
   return byDevice;
 }
 
+function sameTelemetrySnapshot(a: DeviceTelemetrySnapshot, b: DeviceTelemetrySnapshot): boolean {
+  return (
+    a.temperatureC === b.temperatureC &&
+    a.humidityPct === b.humidityPct &&
+    a.brightness === b.brightness &&
+    a.counterValue === b.counterValue &&
+    a.buttonRedPressed === b.buttonRedPressed &&
+    a.buttonBlackPressed === b.buttonBlackPressed &&
+    a.ledGreenOn === b.ledGreenOn &&
+    a.ledOrangeOn === b.ledOrangeOn &&
+    a.uptimeMs === b.uptimeMs &&
+    a.uptimeIngestTs === b.uptimeIngestTs
+  );
+}
+
+function mergeTelemetrySnapshotCache(
+  previous: Record<string, DeviceTelemetrySnapshot>,
+  latest: Record<string, DeviceTelemetrySnapshot>
+): Record<string, DeviceTelemetrySnapshot> {
+  const allDeviceIds = new Set([...Object.keys(previous), ...Object.keys(latest)]);
+  const next: Record<string, DeviceTelemetrySnapshot> = {};
+  let changed = false;
+
+  for (const deviceId of allDeviceIds) {
+    const previousSnapshot = previous[deviceId];
+    const latestSnapshot = latest[deviceId];
+
+    if (!previousSnapshot && latestSnapshot) {
+      next[deviceId] = latestSnapshot;
+      changed = true;
+      continue;
+    }
+    if (previousSnapshot && !latestSnapshot) {
+      next[deviceId] = previousSnapshot;
+      continue;
+    }
+    if (!previousSnapshot || !latestSnapshot) {
+      continue;
+    }
+
+    const merged: DeviceTelemetrySnapshot = {
+      temperatureC: latestSnapshot.temperatureC ?? previousSnapshot.temperatureC,
+      humidityPct: latestSnapshot.humidityPct ?? previousSnapshot.humidityPct,
+      brightness: latestSnapshot.brightness ?? previousSnapshot.brightness,
+      counterValue: latestSnapshot.counterValue ?? previousSnapshot.counterValue,
+      buttonRedPressed: latestSnapshot.buttonRedPressed ?? previousSnapshot.buttonRedPressed,
+      buttonBlackPressed: latestSnapshot.buttonBlackPressed ?? previousSnapshot.buttonBlackPressed,
+      ledGreenOn: latestSnapshot.ledGreenOn ?? previousSnapshot.ledGreenOn,
+      ledOrangeOn: latestSnapshot.ledOrangeOn ?? previousSnapshot.ledOrangeOn,
+      uptimeMs: latestSnapshot.uptimeMs ?? previousSnapshot.uptimeMs,
+      uptimeIngestTs:
+        latestSnapshot.uptimeMs !== null
+          ? latestSnapshot.uptimeIngestTs
+          : previousSnapshot.uptimeIngestTs
+    };
+
+    next[deviceId] = merged;
+    if (!sameTelemetrySnapshot(previousSnapshot, merged)) {
+      changed = true;
+    }
+  }
+
+  if (!changed && Object.keys(previous).length === Object.keys(next).length) {
+    return previous;
+  }
+  return next;
+}
+
+function mergeIpAddressCache(
+  previous: Record<string, string>,
+  latest: Record<string, string>,
+  activeDeviceIds: string[]
+): Record<string, string> {
+  const activeIds = new Set(activeDeviceIds);
+  const next: Record<string, string> = {};
+  let changed = false;
+
+  for (const deviceId of activeIds) {
+    const value = latest[deviceId] ?? previous[deviceId];
+    if (!value) {
+      continue;
+    }
+    next[deviceId] = value;
+    if (previous[deviceId] !== value) {
+      changed = true;
+    }
+  }
+
+  for (const existingDeviceId of Object.keys(previous)) {
+    if (!activeIds.has(existingDeviceId)) {
+      changed = true;
+      break;
+    }
+  }
+
+  if (!changed && Object.keys(previous).length === Object.keys(next).length) {
+    return previous;
+  }
+  return next;
+}
+
 function formatRoundedDuration(durationMs: number, language: Language): string {
   if (!Number.isFinite(durationMs) || durationMs < 0) {
     return '-';
@@ -975,6 +1144,19 @@ function estimateUptimeNow(snapshot: DeviceTelemetrySnapshot | undefined, nowEpo
     return snapshot.uptimeMs;
   }
   return snapshot.uptimeMs + Math.max(0, nowEpochMs - ingestEpochMs);
+}
+
+function formatRelativeFromNow(value: TimestampValue, nowEpochMs: number, language: Language): string {
+  const epochMillis = timestampToEpochMillis(value);
+  if (epochMillis === null) {
+    return '-';
+  }
+  const elapsed = Math.max(0, nowEpochMs - epochMillis);
+  const duration = formatRoundedDuration(elapsed, language);
+  if (duration === '-') {
+    return '-';
+  }
+  return language === 'de' ? `vor ${duration}` : `${duration} ago`;
 }
 
 function rssiBars(rssi: number | null): number {
@@ -1035,6 +1217,8 @@ export default function App() {
   const [adminFeedPaused, setAdminFeedPaused] = useState(false);
   const [adminSettingsDraftMode, setAdminSettingsDraftMode] = useState<LanguageMode>('BROWSER_EN_FALLBACK');
   const [adminSettingsDraftTimeFormat24h, setAdminSettingsDraftTimeFormat24h] = useState(true);
+  const [adminDeviceSnapshots, setAdminDeviceSnapshots] = useState<Record<string, DeviceTelemetrySnapshot>>({});
+  const [adminDeviceIpById, setAdminDeviceIpById] = useState<Record<string, string>>({});
 
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -1048,6 +1232,10 @@ export default function App() {
   const [selectedEvent, setSelectedEvent] = useState<CanonicalEvent | null>(null);
   const [eventDetailsViewMode, setEventDetailsViewMode] = useState<EventDetailsViewMode>('rendered');
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [nowEpochMs, setNowEpochMs] = useState<number>(() => Date.now());
+  const [pinEditorDeviceId, setPinEditorDeviceId] = useState<string | null>(null);
+  const [pinEditorValue, setPinEditorValue] = useState('');
+  const [pinEditorLoading, setPinEditorLoading] = useState(false);
 
   const studentPauseRef = useRef(studentFeedPaused);
   const adminPauseRef = useRef(adminFeedPaused);
@@ -1110,6 +1298,11 @@ export default function App() {
     setAdminFeedPaused(false);
     setAdminSettingsDraftMode('BROWSER_EN_FALLBACK');
     setAdminSettingsDraftTimeFormat24h(true);
+    setAdminDeviceSnapshots({});
+    setAdminDeviceIpById({});
+    setPinEditorDeviceId(null);
+    setPinEditorValue('');
+    setPinEditorLoading(false);
   }, []);
 
   const clearAuth = useCallback(() => {
@@ -1277,6 +1470,56 @@ export default function App() {
       window.removeEventListener('keydown', onKeyDown);
     };
   }, [userMenuOpen]);
+
+  useEffect(() => {
+    if (!pinEditorDeviceId) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closePinEditor();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [pinEditorDeviceId]);
+
+  useEffect(() => {
+    const timerId = window.setInterval(() => {
+      setNowEpochMs(Date.now());
+    }, 60_000);
+    return () => {
+      window.clearInterval(timerId);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!adminData) {
+      setAdminDeviceSnapshots({});
+      setAdminDeviceIpById({});
+      return;
+    }
+
+    const latestSnapshots = buildDeviceTelemetrySnapshots(adminData.events);
+    setAdminDeviceSnapshots((previous) => mergeTelemetrySnapshotCache(previous, latestSnapshots));
+
+    const latestIpByDeviceId: Record<string, string> = {};
+    for (const device of adminData.devices) {
+      const ipAddress = extractIpAddressFromDeviceStatus(device, adminData.events);
+      if (ipAddress) {
+        latestIpByDeviceId[device.deviceId] = ipAddress;
+      }
+    }
+    setAdminDeviceIpById((previous) =>
+      mergeIpAddressCache(
+        previous,
+        latestIpByDeviceId,
+        adminData.devices.map((device) => device.deviceId)
+      )
+    );
+  }, [adminData]);
 
   useEffect(() => {
     if (!session || !token) {
@@ -1833,6 +2076,57 @@ export default function App() {
     }
   };
 
+  const closePinEditor = () => {
+    setPinEditorDeviceId(null);
+    setPinEditorValue('');
+    setPinEditorLoading(false);
+  };
+
+  const openPinEditor = async (deviceId: string) => {
+    if (!token) {
+      return;
+    }
+
+    setPinEditorDeviceId(deviceId);
+    setPinEditorValue('');
+    setPinEditorLoading(true);
+    setErrorMessage(null);
+
+    try {
+      const pinInfo = await api.adminDevicePin(token, deviceId);
+      setPinEditorValue(pinInfo.pin);
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error));
+      setPinEditorDeviceId(null);
+    } finally {
+      setPinEditorLoading(false);
+    }
+  };
+
+  const savePinEditor = async () => {
+    if (!token || !pinEditorDeviceId) {
+      return;
+    }
+    const nextPin = pinEditorValue.trim();
+    if (!nextPin) {
+      setErrorMessage(toErrorMessage(new Error('PIN must not be blank')));
+      return;
+    }
+
+    setBusyKey(`pin-save-${pinEditorDeviceId}`);
+    setErrorMessage(null);
+
+    try {
+      const updated = await api.updateAdminDevicePin(token, pinEditorDeviceId, nextPin);
+      setPinEditorValue(updated.pin);
+      setInfoMessage(t('pinSaved'));
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
   const refreshAdminData = async () => {
     if (!token || !session || session.role !== 'ADMIN') {
       return;
@@ -1925,27 +2219,6 @@ export default function App() {
     return values;
   }, [adminVisibleFeed]);
 
-  const adminDeviceSnapshots = useMemo<Record<string, DeviceTelemetrySnapshot>>(() => {
-    if (!adminData) {
-      return {};
-    }
-    return buildDeviceTelemetrySnapshots(adminData.events);
-  }, [adminData]);
-
-  const adminDeviceIpById = useMemo<Record<string, string>>(() => {
-    if (!adminData) {
-      return {};
-    }
-    const next: Record<string, string> = {};
-    for (const device of adminData.devices) {
-      const ipAddress = extractIpAddressFromDeviceStatus(device, adminData.events);
-      if (ipAddress) {
-        next[device.deviceId] = ipAddress;
-      }
-    }
-    return next;
-  }, [adminData]);
-
   const wsLabel = useMemo(() => {
     if (wsConnection === 'connected') {
       return t('wsConnected');
@@ -1988,7 +2261,6 @@ export default function App() {
     },
     [language, timeFormat24h]
   );
-  const nowEpochMs = Date.now();
 
   const selectedEventFields = useMemo<Array<[string, string]>>(() => {
     if (!selectedEvent) {
@@ -2606,39 +2878,82 @@ export default function App() {
                     snapshot?.humidityPct === null ? '-' : `${Math.round(snapshot.humidityPct)} %`;
                   const brightness =
                     snapshot?.brightness === null ? '-' : formatBrightnessMeasurement(snapshot.brightness);
+                  const counterValue =
+                    snapshot?.counterValue === null || snapshot?.counterValue === undefined
+                      ? '-'
+                      : Number.isInteger(snapshot.counterValue)
+                        ? String(snapshot.counterValue)
+                        : snapshot.counterValue.toFixed(2);
                   const ipAddress = adminDeviceIpById[device.deviceId] ?? '-';
+                  const ipAddressHref = ipAddressToHref(ipAddress);
+                  const lastEventRelative = formatRelativeFromNow(device.lastSeen, nowEpochMs, language);
                   const bars = rssiBars(device.rssi);
                   const rssiHint = device.rssi === null ? t('rssiNoData') : `${device.rssi} dBm`;
+                  const nextGreenState = snapshot?.ledGreenOn === null ? true : !snapshot.ledGreenOn;
+                  const nextOrangeState = snapshot?.ledOrangeOn === null ? true : !snapshot.ledOrangeOn;
+                  const greenBusy =
+                    busyKey?.startsWith(`admin-command-${device.deviceId}-LED_GREEN-`) ?? false;
+                  const orangeBusy =
+                    busyKey?.startsWith(`admin-command-${device.deviceId}-LED_ORANGE-`) ?? false;
+                  const rssiTooltipId = `rssi-tooltip-${device.deviceId}`;
 
                   return (
                     <article className="device-card" key={device.deviceId}>
                       <header>
                         <strong>{device.deviceId}</strong>
-                        <span className={`chip ${device.online ? 'ok' : 'warn'}`}>
-                          {statusLabel(device.online, language)}
-                        </span>
+                        <div className="device-header-actions">
+                          <button
+                            className="icon-button"
+                            type="button"
+                            title={t('pinSettings')}
+                            aria-label={`${t('pinSettings')} ${device.deviceId}`}
+                            onClick={() => openPinEditor(device.deviceId)}
+                          >
+                            <SettingsIcon />
+                          </button>
+                          <span className={`chip ${device.online ? 'ok' : 'warn'}`}>
+                            {statusLabel(device.online, language)}
+                          </span>
+                        </div>
                       </header>
 
-                      <p>
-                        {t('lastEvent')}: {formatTs(device.lastSeen)}
+                      <p title={formatTs(device.lastSeen)}>
+                        {t('lastEvent')}: {lastEventRelative}
                       </p>
                       <p>
-                        {t('ipAddress')}: {ipAddress}
+                        {t('ipAddress')}:{' '}
+                        {ipAddressHref ? (
+                          <a
+                            className="device-link"
+                            href={ipAddressHref}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            {ipAddress}
+                          </a>
+                        ) : (
+                          ipAddress
+                        )}
                       </p>
                       <p>
                         {t('uptime')}: {uptimeNow === null ? '-' : formatRoundedDuration(uptimeNow, language)}
                       </p>
                       <div className="rssi-row">
                         <span>{t('rssi')}:</span>
-                        <div
-                          className={`rssi-bars ${rssiClassName(device.rssi)}`}
-                          title={rssiHint}
-                          aria-label={rssiHint}
-                        >
-                          <span className={`bar ${bars >= 1 ? 'active' : ''}`} />
-                          <span className={`bar ${bars >= 2 ? 'active' : ''}`} />
-                          <span className={`bar ${bars >= 3 ? 'active' : ''}`} />
-                          <span className={`bar ${bars >= 4 ? 'active' : ''}`} />
+                        <div className="rssi-tooltip-host">
+                          <div
+                            className={`rssi-bars ${rssiClassName(device.rssi)}`}
+                            aria-label={rssiHint}
+                            aria-describedby={rssiTooltipId}
+                          >
+                            <span className={`bar ${bars >= 1 ? 'active' : ''}`} />
+                            <span className={`bar ${bars >= 2 ? 'active' : ''}`} />
+                            <span className={`bar ${bars >= 3 ? 'active' : ''}`} />
+                            <span className={`bar ${bars >= 4 ? 'active' : ''}`} />
+                          </div>
+                          <span className="rssi-tooltip" id={rssiTooltipId}>
+                            {rssiHint}
+                          </span>
                         </div>
                       </div>
                       <div className="device-metrics-grid">
@@ -2662,11 +2977,21 @@ export default function App() {
                         </div>
                         <div className="device-metric">
                           <span className="metric-icon">
+                            <MetricIcon kind="counter" />
+                          </span>
+                          <span className="metric-text">{t('metricCounter')}: {counterValue}</span>
+                        </div>
+                        <div className="device-metric">
+                          <span className="metric-icon">
                             <MetricIcon kind="buttons" />
                           </span>
-                          <span className="metric-text">
-                            {t('metricButtons')}: R {redButton}, B {blackButton}
+                          <span className="metric-text">{t('metricButtonRed')}: {redButton}</span>
+                        </div>
+                        <div className="device-metric">
+                          <span className="metric-icon">
+                            <MetricIcon kind="buttons" />
                           </span>
+                          <span className="metric-text">{t('metricButtonBlack')}: {blackButton}</span>
                         </div>
                         <div className="device-metric full">
                           <span className="metric-icon">
@@ -2678,36 +3003,20 @@ export default function App() {
 
                       <div className="button-grid">
                         <button
-                          className="button"
+                          className={`button ${snapshot?.ledGreenOn ? 'active' : 'secondary'}`}
                           type="button"
-                          onClick={() => sendAdminDeviceCommand(device.deviceId, 'LED_GREEN', true)}
-                          disabled={busyKey === `admin-command-${device.deviceId}-LED_GREEN-true`}
+                          onClick={() => sendAdminDeviceCommand(device.deviceId, 'LED_GREEN', nextGreenState)}
+                          disabled={greenBusy}
                         >
-                          {t('commandGreenOn')}
+                          {t('commandGreenToggle')} ({greenLed})
                         </button>
                         <button
-                          className="button secondary"
+                          className={`button ${snapshot?.ledOrangeOn ? 'active' : 'secondary'}`}
                           type="button"
-                          onClick={() => sendAdminDeviceCommand(device.deviceId, 'LED_GREEN', false)}
-                          disabled={busyKey === `admin-command-${device.deviceId}-LED_GREEN-false`}
+                          onClick={() => sendAdminDeviceCommand(device.deviceId, 'LED_ORANGE', nextOrangeState)}
+                          disabled={orangeBusy}
                         >
-                          {t('commandGreenOff')}
-                        </button>
-                        <button
-                          className="button"
-                          type="button"
-                          onClick={() => sendAdminDeviceCommand(device.deviceId, 'LED_ORANGE', true)}
-                          disabled={busyKey === `admin-command-${device.deviceId}-LED_ORANGE-true`}
-                        >
-                          {t('commandOrangeOn')}
-                        </button>
-                        <button
-                          className="button secondary"
-                          type="button"
-                          onClick={() => sendAdminDeviceCommand(device.deviceId, 'LED_ORANGE', false)}
-                          disabled={busyKey === `admin-command-${device.deviceId}-LED_ORANGE-false`}
-                        >
-                          {t('commandOrangeOff')}
+                          {t('commandOrangeToggle')} ({orangeLed})
                         </button>
                         <button
                           className="button ghost"
@@ -2900,6 +3209,47 @@ export default function App() {
             ) : (
               <pre className="event-modal-pre">{selectedEventRawJson}</pre>
             )}
+          </div>
+        </div>
+      ) : null}
+
+      {pinEditorDeviceId ? (
+        <div className="event-modal-backdrop" onClick={closePinEditor}>
+          <div className="event-modal pin-editor-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="panel-header">
+              <h2>
+                {t('pinSettingsForDevice')}: {pinEditorDeviceId}
+              </h2>
+              <button className="button secondary" type="button" onClick={closePinEditor}>
+                {t('close')}
+              </button>
+            </div>
+
+            <label className="form-grid">
+              <span>{t('pin')}</span>
+              <input
+                className="input mono"
+                value={pinEditorValue}
+                onChange={(event) => setPinEditorValue(event.target.value)}
+                disabled={pinEditorLoading || busyKey === `pin-save-${pinEditorDeviceId}`}
+              />
+            </label>
+
+            {pinEditorLoading ? <p className="muted">{t('loading')}</p> : null}
+
+            <div className="event-modal-actions">
+              <button
+                className="button"
+                type="button"
+                onClick={savePinEditor}
+                disabled={pinEditorLoading || busyKey === `pin-save-${pinEditorDeviceId}`}
+              >
+                {t('savePin')}
+              </button>
+              <button className="button secondary" type="button" onClick={closePinEditor}>
+                {t('close')}
+              </button>
+            </div>
           </div>
         </div>
       ) : null}

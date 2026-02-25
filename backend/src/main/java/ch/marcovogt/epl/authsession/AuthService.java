@@ -6,10 +6,12 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.http.HttpStatus;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class AuthService {
@@ -125,6 +127,27 @@ public class AuthService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public String getStudentGroupPin(String deviceId) {
+        return findStudentGroupAccount(deviceId).getPinCode();
+    }
+
+    @Transactional
+    public String updateStudentGroupPin(String deviceId, String pin) {
+        String normalizedPin = pin == null ? "" : pin.trim();
+        if (normalizedPin.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "PIN must not be blank");
+        }
+        if (normalizedPin.length() > 64) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "PIN too long");
+        }
+
+        AuthAccount account = findStudentGroupAccount(deviceId);
+        account.setPinCode(normalizedPin);
+        authAccountRepository.save(account);
+        return normalizedPin;
+    }
+
     @Scheduled(fixedDelayString = "${epl.auth.cleanup-delay-ms:60000}")
     @Transactional
     public void cleanupExpiredSessions() {
@@ -150,6 +173,14 @@ public class AuthService {
 
         String suffix = UUID.randomUUID().toString().substring(0, 6);
         return "student-" + suffix;
+    }
+
+    private AuthAccount findStudentGroupAccount(String deviceId) {
+        return authAccountRepository.findByUsernameAndRoleAndEnabledTrue(deviceId, AppRole.STUDENT)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Unknown student group account: " + deviceId
+                ));
     }
 
     private SessionPrincipal toPrincipal(AuthSession session) {

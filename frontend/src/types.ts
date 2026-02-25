@@ -81,6 +81,11 @@ export interface DeviceStatus {
   updatedAt: TimestampValue;
 }
 
+export interface DevicePinInfo {
+  deviceId: string;
+  pin: string;
+}
+
 export interface GroupOverview {
   groupKey: string;
   onlineCount: number;

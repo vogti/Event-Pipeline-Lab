@@ -3,6 +3,7 @@ import type {
   AuthMe,
   CanonicalEvent,
   DeviceCommandType,
+  DevicePinInfo,
   DeviceStatus,
   GroupConfig,
   GroupOverview,
@@ -196,6 +197,25 @@ export const api = {
       {
         method: 'POST',
         body: JSON.stringify({ command, on })
+      },
+      token
+    );
+  },
+
+  adminDevicePin(token: string, deviceId: string): Promise<DevicePinInfo> {
+    return request<DevicePinInfo>(
+      `/api/admin/devices/${encodeURIComponent(deviceId)}/pin`,
+      undefined,
+      token
+    );
+  },
+
+  updateAdminDevicePin(token: string, deviceId: string, pin: string): Promise<DevicePinInfo> {
+    return request<DevicePinInfo>(
+      `/api/admin/devices/${encodeURIComponent(deviceId)}/pin`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ pin })
       },
       token
     );

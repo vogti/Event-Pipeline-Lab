@@ -8,5 +8,7 @@ public interface AuthAccountRepository extends JpaRepository<AuthAccount, String
 
     Optional<AuthAccount> findByUsernameAndEnabledTrue(String username);
 
+    Optional<AuthAccount> findByUsernameAndRoleAndEnabledTrue(String username, AppRole role);
+
     List<AuthAccount> findByRoleOrderByUsernameAsc(AppRole role);
 }

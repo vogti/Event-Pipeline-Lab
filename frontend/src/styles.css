@@ -438,6 +438,40 @@ textarea {
   grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
 }
 
+.device-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+}
+
+.icon-button {
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 8px;
+  border: 1px solid rgba(44, 67, 84, 0.24);
+  background: rgba(239, 246, 250, 0.95);
+  color: #2f546a;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: box-shadow 0.15s ease;
+}
+
+.icon-button:hover {
+  box-shadow: 0 4px 12px rgba(18, 40, 60, 0.15);
+}
+
+.icon-button svg {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.device-link {
+  color: #1e6488;
+  text-decoration: underline;
+}
+
 .rssi-row {
   display: flex;
   align-items: center;
@@ -445,6 +479,11 @@ textarea {
   color: #355268;
   font-size: 0.84rem;
   margin-bottom: 0.35rem;
+}
+
+.rssi-tooltip-host {
+  position: relative;
+  display: inline-flex;
 }
 
 .rssi-bars {
@@ -486,6 +525,28 @@ textarea {
 
 .rssi-bars.none .bar.active {
   background: rgba(76, 96, 112, 0.25);
+}
+
+.rssi-tooltip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 5px);
+  transform: translateX(-50%);
+  white-space: nowrap;
+  border-radius: 6px;
+  background: rgba(21, 40, 54, 0.9);
+  color: #f1f7fa;
+  border: 1px solid rgba(168, 196, 214, 0.28);
+  padding: 0.2rem 0.38rem;
+  font-size: 0.66rem;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+.rssi-tooltip-host:hover .rssi-tooltip,
+.rssi-tooltip-host:focus-within .rssi-tooltip {
+  opacity: 1;
 }
 
 .device-metrics-grid {
@@ -687,6 +748,10 @@ textarea {
   font-family: 'IBM Plex Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
   font-size: 0.76rem;
   line-height: 1.35;
+}
+
+.pin-editor-modal {
+  width: min(460px, 100%);
 }
 
 .loading {
