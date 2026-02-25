@@ -15,12 +15,15 @@ class DeviceIdMappingTest {
     @Test
     void shouldMapGroupKeyToVirtualDevice() {
         assertThat(DeviceIdMapping.virtualDeviceIdForGroup("epld10")).contains("eplvd10");
-        assertThat(DeviceIdMapping.virtualDeviceIdForGroup("epld11")).isEmpty();
+        assertThat(DeviceIdMapping.virtualDeviceIdForGroup("epld11")).contains("eplvd11");
+        assertThat(DeviceIdMapping.virtualDeviceIdForGroup("epld00")).isEmpty();
     }
 
     @Test
     void shouldTreatPhysicalAsOwnGroup() {
         assertThat(DeviceIdMapping.groupKeyForDevice("epld03")).contains("epld03");
         assertThat(DeviceIdMapping.isVirtualDeviceId("epld03")).isFalse();
+        assertThat(DeviceIdMapping.isPhysicalDeviceId("epld03")).isTrue();
+        assertThat(DeviceIdMapping.isPhysicalDeviceId("eplvd03")).isFalse();
     }
 }

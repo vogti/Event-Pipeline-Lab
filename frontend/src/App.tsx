@@ -47,6 +47,7 @@ type WsConnectionState = 'connecting' | 'connected' | 'disconnected';
 type FeedViewMode = 'rendered' | 'raw';
 type EventDetailsViewMode = 'rendered' | 'raw';
 type AdminPage = 'dashboard' | 'devices' | 'virtualDevices' | 'feed' | 'groupsTasks' | 'settings';
+type CounterResetTarget = { deviceId: string; isVirtual: boolean };
 
 interface VirtualDevicePatch {
   buttonRedPressed?: boolean;
@@ -1486,7 +1487,7 @@ export default function App() {
   const [eventDetailsViewMode, setEventDetailsViewMode] = useState<EventDetailsViewMode>('rendered');
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [nowEpochMs, setNowEpochMs] = useState<number>(() => Date.now());
-  const [counterResetDeviceId, setCounterResetDeviceId] = useState<string | null>(null);
+  const [counterResetTarget, setCounterResetTarget] = useState<CounterResetTarget | null>(null);
   const [pinEditorDeviceId, setPinEditorDeviceId] = useState<string | null>(null);
   const [pinEditorValue, setPinEditorValue] = useState('');
   const [pinEditorLoading, setPinEditorLoading] = useState(false);
@@ -1685,7 +1686,7 @@ export default function App() {
     setStudentVirtualPatch(null);
     setVirtualControlDeviceId(null);
     setVirtualControlPatch(null);
-    setCounterResetDeviceId(null);
+    setCounterResetTarget(null);
     setPinEditorDeviceId(null);
     setPinEditorValue('');
     setPinEditorLoading(false);
@@ -1892,19 +1893,19 @@ export default function App() {
   }, [userMenuOpen]);
 
   useEffect(() => {
-    if (!counterResetDeviceId) {
+    if (!counterResetTarget) {
       return;
     }
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        closeCounterResetModal();
+        setCounterResetTarget(null);
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => {
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [counterResetDeviceId]);
+  }, [counterResetTarget]);
 
   useEffect(() => {
     if (!pinEditorDeviceId) {
@@ -2759,6 +2760,28 @@ export default function App() {
     setVirtualControlPatch(null);
   }, []);
 
+  const applyUpdatedVirtualDevice = useCallback((updated: VirtualDeviceState) => {
+    setAdminData((previous) => {
+      if (!previous) {
+        return previous;
+      }
+      const existing = previous.virtualDevices.find((entry) => entry.deviceId === updated.deviceId);
+      if (existing && sameVirtualDeviceState(existing, updated)) {
+        return previous;
+      }
+      const hasExisting = Boolean(existing);
+      const nextVirtualDevices = hasExisting
+        ? previous.virtualDevices.map((entry) =>
+            entry.deviceId === updated.deviceId ? updated : entry
+          )
+        : [...previous.virtualDevices, updated].sort((a, b) => a.deviceId.localeCompare(b.deviceId));
+      return {
+        ...previous,
+        virtualDevices: nextVirtualDevices
+      };
+    });
+  }, []);
+
   const saveAdminVirtualDevice = async () => {
     if (!token || !virtualControlDeviceId || !virtualControlPatch) {
       return;
@@ -2770,25 +2793,7 @@ export default function App() {
 
     try {
       const updated = await api.adminVirtualDeviceControl(token, virtualControlDeviceId, virtualControlPatch);
-      setAdminData((previous) => {
-        if (!previous) {
-          return previous;
-        }
-        const existing = previous.virtualDevices.find((entry) => entry.deviceId === updated.deviceId);
-        if (existing && sameVirtualDeviceState(existing, updated)) {
-          return previous;
-        }
-        const hasExisting = Boolean(existing);
-        const nextVirtualDevices = hasExisting
-          ? previous.virtualDevices.map((entry) =>
-              entry.deviceId === updated.deviceId ? updated : entry
-            )
-          : [...previous.virtualDevices, updated].sort((a, b) => a.deviceId.localeCompare(b.deviceId));
-        return {
-          ...previous,
-          virtualDevices: nextVirtualDevices
-        };
-      });
+      applyUpdatedVirtualDevice(updated);
       const nextPatch = patchFromVirtualDevice(updated);
       setVirtualControlPatch((previous) => (sameVirtualDevicePatch(previous, nextPatch) ? previous : nextPatch));
     } catch (error) {
@@ -2799,18 +2804,43 @@ export default function App() {
   };
 
   const closeCounterResetModal = useCallback(() => {
-    setCounterResetDeviceId(null);
+    setCounterResetTarget(null);
   }, []);
 
-  const openCounterResetModal = useCallback((deviceId: string) => {
-    setCounterResetDeviceId(deviceId);
+  const openCounterResetModal = useCallback((deviceId: string, isVirtual = false) => {
+    setCounterResetTarget({ deviceId, isVirtual });
   }, []);
 
   const confirmCounterReset = async () => {
-    if (!counterResetDeviceId) {
+    if (!counterResetTarget) {
       return;
     }
-    const ok = await sendAdminDeviceCommand(counterResetDeviceId, 'COUNTER_RESET');
+    if (counterResetTarget.isVirtual) {
+      if (!token) {
+        return;
+      }
+      const busyId = `admin-virtual-counter-reset-${counterResetTarget.deviceId}`;
+      setBusyKey(busyId);
+      setErrorMessage(null);
+      try {
+        const updated = await api.adminVirtualDeviceControl(token, counterResetTarget.deviceId, {
+          counterValue: 0
+        });
+        applyUpdatedVirtualDevice(updated);
+        if (virtualControlDeviceId === updated.deviceId) {
+          const nextPatch = patchFromVirtualDevice(updated);
+          setVirtualControlPatch((previous) => (sameVirtualDevicePatch(previous, nextPatch) ? previous : nextPatch));
+        }
+        closeCounterResetModal();
+      } catch (error) {
+        setErrorMessage(toErrorMessage(error));
+      } finally {
+        setBusyKey(null);
+      }
+      return;
+    }
+
+    const ok = await sendAdminDeviceCommand(counterResetTarget.deviceId, 'COUNTER_RESET');
     if (ok) {
       closeCounterResetModal();
     }
@@ -3015,8 +3045,10 @@ export default function App() {
     return adminData.events[0];
   }, [adminData]);
 
-  const counterResetBusy = counterResetDeviceId
-    ? busyKey === `admin-command-${counterResetDeviceId}-COUNTER_RESET-undefined`
+  const counterResetBusy = counterResetTarget
+    ? counterResetTarget.isVirtual
+      ? busyKey === `admin-virtual-counter-reset-${counterResetTarget.deviceId}`
+      : busyKey === `admin-command-${counterResetTarget.deviceId}-COUNTER_RESET-undefined`
     : false;
   const studentVirtualBusy = busyKey === 'student-virtual-control';
   const virtualControlBusy = virtualControlDeviceId
@@ -3349,9 +3381,9 @@ export default function App() {
       return null;
     }
     return adminData.virtualDevices.map((device) => {
-      const ipAddressHref = ipAddressToHref(device.ipAddress);
       const redButtonClass = device.buttonRedPressed ? 'state-pressed' : 'state-released';
       const blackButtonClass = device.buttonBlackPressed ? 'state-pressed' : 'state-released';
+      const counterBusy = busyKey === `admin-virtual-counter-reset-${device.deviceId}`;
 
       return (
         <article className="device-card" key={device.deviceId}>
@@ -3371,21 +3403,6 @@ export default function App() {
           <p>{t('groupConfig')}: {device.groupKey}</p>
           <p title={formatTs(device.updatedAt)}>
             {t('lastEvent')}: {formatRelativeFromNow(device.updatedAt, nowEpochMs, language)}
-          </p>
-          <p>
-            {t('ipAddress')}:{' '}
-            {ipAddressHref ? (
-              <a
-                className="device-link"
-                href={ipAddressHref}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                {device.ipAddress}
-              </a>
-            ) : (
-              device.ipAddress
-            )}
           </p>
 
           <div className="device-metrics-grid">
@@ -3407,12 +3424,18 @@ export default function App() {
               </span>
               <span className="metric-text">{formatBrightnessMeasurement(device.brightness)}</span>
             </div>
-            <div className="device-metric">
+            <button
+              className="device-metric counter-metric-trigger"
+              type="button"
+              onClick={() => openCounterResetModal(device.deviceId, true)}
+              title={t('commandCounterReset')}
+              disabled={counterBusy}
+            >
               <span className="metric-icon">
                 <MetricIcon kind="counter" />
               </span>
               <span className="metric-text">{device.counterValue}</span>
-            </div>
+            </button>
             <div className="device-metric full">
               <span className="metric-icon">
                 <MetricIcon kind="buttons" />
@@ -3439,7 +3462,7 @@ export default function App() {
         </article>
       );
     });
-  }, [adminData?.virtualDevices, formatTs, language, nowEpochMs, openVirtualControlModal, t]);
+  }, [adminData?.virtualDevices, busyKey, formatTs, language, nowEpochMs, openCounterResetModal, openVirtualControlModal, t]);
 
   const adminFeedRows = useMemo(() => {
     if (adminVisibleFeed.length === 0) {
@@ -3885,13 +3908,16 @@ export default function App() {
                     <input
                       className="input"
                       type="number"
-                      step="0.1"
+                      step="0.01"
+                      min="0"
+                      max="3.3"
                       value={studentVirtualPatch.brightness ?? 0}
                       onChange={(event) => {
-                        const next = Number.isFinite(event.target.valueAsNumber)
+                        const raw = Number.isFinite(event.target.valueAsNumber)
                           ? event.target.valueAsNumber
                           : (studentVirtualPatch.brightness ?? 0);
-                        setStudentVirtualField('brightness', next);
+                        const next = Math.min(3.3, Math.max(0, raw));
+                        setStudentVirtualField('brightness', Number(next.toFixed(2)));
                       }}
                     />
                   </label>
@@ -4482,13 +4508,16 @@ export default function App() {
                 <input
                   className="input"
                   type="number"
-                  step="0.1"
+                  step="0.01"
+                  min="0"
+                  max="3.3"
                   value={virtualControlPatch.brightness ?? 0}
                   onChange={(event) => {
-                    const next = Number.isFinite(event.target.valueAsNumber)
+                    const raw = Number.isFinite(event.target.valueAsNumber)
                       ? event.target.valueAsNumber
                       : (virtualControlPatch.brightness ?? 0);
-                    setModalVirtualField('brightness', next);
+                    const next = Math.min(3.3, Math.max(0, raw));
+                    setModalVirtualField('brightness', Number(next.toFixed(2)));
                   }}
                 />
               </label>
@@ -4522,7 +4551,7 @@ export default function App() {
         </div>
       ) : null}
 
-      {counterResetDeviceId ? (
+      {counterResetTarget ? (
         <div className="event-modal-backdrop" onClick={closeCounterResetModal}>
           <div className="event-modal counter-reset-modal" onClick={(event) => event.stopPropagation()}>
             <div className="panel-header">
@@ -4532,7 +4561,7 @@ export default function App() {
               </button>
             </div>
             <p>
-              {t('counterResetDialogBody')} <strong>{counterResetDeviceId}</strong>?
+              {t('counterResetDialogBody')} <strong>{counterResetTarget.deviceId}</strong>?
             </p>
             <div className="event-modal-actions">
               <button

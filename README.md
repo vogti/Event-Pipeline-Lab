@@ -43,6 +43,9 @@ Event-Pipeline-Lab/
         V2__json_columns_to_text.sql
         V3__phase2_auth_task_group.sql
         V4__app_settings_time_format_24h.sql
+        V5__virtual_devices.sql
+        V6__virtual_device_brightness_voltage.sql
+        V7__reconcile_groups_and_virtual_devices_to_physical_devices.sql
       static/admin-test.html
     Dockerfile
     build.gradle
@@ -132,12 +135,35 @@ npm --prefix frontend run dev
 Vite runs on `http://localhost:5173` and proxies `/api` + `/ws` to backend.
 For one-command stack startup, prefer Docker Compose.
 
-## Default Phase 2 Credentials (dev seed)
+## Default Credentials
 
 - Admin: `admin` / `admin123`
-- Student groups: `epld01..epld12` / `1234`
 
-Seed data is created by Flyway migration `V3__phase2_auth_task_group.sql`.
+Student group accounts are **not** pre-seeded with fixed PINs anymore.
+They are provisioned automatically when a physical device is first discovered via MQTT.
+
+## Strict Device Provisioning Procedure
+
+1. Physical device sends first MQTT message (for example `epld/epld07/status/heartbeat`).
+2. Backend auto-creates (if missing):
+   - Student account `epld07` (group `epld07`, enabled)
+   - Random 4-digit PIN (for first creation only)
+   - Virtual device `eplvd07` mapped to `epld07`
+3. Admin retrieves or changes PIN:
+   - UI: device settings modal in admin device page
+   - API:
+
+```bash
+ADMIN_TOKEN=$(docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST http://backend:8080/api/auth/login -H 'Content-Type: application/json' -d '{"username":"admin","pin":"admin123"}' | sed -n 's/.*"sessionToken":"\([^"]*\)".*/\1/p')
+docker run --rm --network epl_default curlimages/curl:8.12.1 -sS http://backend:8080/api/admin/devices/epld07/pin -H "X-EPL-Session: ${ADMIN_TOKEN}"
+docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST http://backend:8080/api/admin/devices/epld07/pin -H "X-EPL-Session: ${ADMIN_TOKEN}" -H 'Content-Type: application/json' -d '{"pin":"1234"}'
+```
+
+Flyway migration `V7__reconcile_groups_and_virtual_devices_to_physical_devices.sql` enforces strict alignment on deployment updates:
+
+- removes student groups/virtual devices without a discovered physical `epldNN...`
+- creates missing student groups/virtual devices for discovered physical devices
+- normalizes account-to-group mapping (`username == group_key`)
 
 ## MQTT Ingestion Test
 
@@ -166,6 +192,10 @@ docker run --rm --network epl_default curlimages/curl:8.12.1 -sS http://backend:
 docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST http://backend:8080/api/admin/task/activate -H "X-EPL-Session: ${ADMIN_TOKEN}" -H 'Content-Type: application/json' -d '{"taskId":"task_commands"}'
 
 # Student login + bootstrap
+# ensure physical device epld01 is discovered at least once
+docker compose exec -T mosquitto mosquitto_pub -h localhost -t epld/epld01/status/heartbeat -m '{"online":true}'
+# ensure PIN first (replace 1234 as needed)
+docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST http://backend:8080/api/admin/devices/epld01/pin -H "X-EPL-Session: ${ADMIN_TOKEN}" -H 'Content-Type: application/json' -d '{"pin":"1234"}'
 STUDENT_TOKEN=$(docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST http://backend:8080/api/auth/login -H 'Content-Type: application/json' -d '{"username":"epld01","pin":"1234"}' | sed -n 's/.*"sessionToken":"\([^"]*\)".*/\1/p')
 docker run --rm --network epl_default curlimages/curl:8.12.1 -sS http://backend:8080/api/student/bootstrap -H "X-EPL-Session: ${STUDENT_TOKEN}"
 

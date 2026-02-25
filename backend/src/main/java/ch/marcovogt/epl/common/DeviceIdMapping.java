@@ -6,14 +6,18 @@ import java.util.regex.Pattern;
 
 public final class DeviceIdMapping {
 
-    private static final Pattern EPLD_PATTERN = Pattern.compile("^epld(\\d{2})$");
-    private static final Pattern EPLVD_PATTERN = Pattern.compile("^eplvd(\\d{2})$");
+    private static final Pattern EPLD_PATTERN = Pattern.compile("^epld(\\d+)$");
+    private static final Pattern EPLVD_PATTERN = Pattern.compile("^eplvd(\\d+)$");
 
     private DeviceIdMapping() {
     }
 
     public static boolean isVirtualDeviceId(String deviceId) {
         return parseVirtualSuffix(deviceId).isPresent();
+    }
+
+    public static boolean isPhysicalDeviceId(String deviceId) {
+        return parsePhysicalSuffix(deviceId).isPresent();
     }
 
     public static Optional<String> groupKeyForDevice(String deviceId) {
@@ -37,11 +41,29 @@ public final class DeviceIdMapping {
         }
 
         int index = Integer.parseInt(matcher.group(1));
-        if (index < 1 || index > 10) {
+        if (index < 1) {
             return Optional.empty();
         }
 
         return Optional.of("eplvd" + matcher.group(1));
+    }
+
+    private static Optional<String> parsePhysicalSuffix(String deviceId) {
+        if (deviceId == null) {
+            return Optional.empty();
+        }
+
+        Matcher matcher = EPLD_PATTERN.matcher(deviceId);
+        if (!matcher.matches()) {
+            return Optional.empty();
+        }
+
+        int index = Integer.parseInt(matcher.group(1));
+        if (index < 1) {
+            return Optional.empty();
+        }
+
+        return Optional.of(matcher.group(1));
     }
 
     private static Optional<String> parseVirtualSuffix(String deviceId) {
@@ -55,7 +77,7 @@ public final class DeviceIdMapping {
         }
 
         int index = Integer.parseInt(matcher.group(1));
-        if (index < 1 || index > 10) {
+        if (index < 1) {
             return Optional.empty();
         }
 

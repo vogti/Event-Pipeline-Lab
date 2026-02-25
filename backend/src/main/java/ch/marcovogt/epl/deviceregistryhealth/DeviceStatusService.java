@@ -25,6 +25,7 @@ public class DeviceStatusService {
     private static final Logger log = LoggerFactory.getLogger(DeviceStatusService.class);
 
     private final DeviceStatusRepository deviceStatusRepository;
+    private final DeviceDiscoveryProvisioningService deviceDiscoveryProvisioningService;
     private final ObjectMapper objectMapper;
     private final AdminWebSocketBroadcaster adminWebSocketBroadcaster;
     private final RealtimeSyncService realtimeSyncService;
@@ -33,12 +34,14 @@ public class DeviceStatusService {
 
     public DeviceStatusService(
             DeviceStatusRepository deviceStatusRepository,
+            DeviceDiscoveryProvisioningService deviceDiscoveryProvisioningService,
             ObjectMapper objectMapper,
             AdminWebSocketBroadcaster adminWebSocketBroadcaster,
             RealtimeSyncService realtimeSyncService,
             @Value("${epl.device.offline-timeout:PT25S}") Duration offlineTimeout
     ) {
         this.deviceStatusRepository = deviceStatusRepository;
+        this.deviceDiscoveryProvisioningService = deviceDiscoveryProvisioningService;
         this.objectMapper = objectMapper;
         this.adminWebSocketBroadcaster = adminWebSocketBroadcaster;
         this.realtimeSyncService = realtimeSyncService;
@@ -52,6 +55,8 @@ public class DeviceStatusService {
         if (deviceId == null || deviceId.isBlank() || "unknown".equals(deviceId)) {
             return null;
         }
+
+        deviceDiscoveryProvisioningService.ensureProvisionedForPhysicalDevice(deviceId);
 
         DeviceStatus status = deviceStatusRepository.findById(deviceId)
                 .orElseGet(() -> new DeviceStatus(deviceId));
