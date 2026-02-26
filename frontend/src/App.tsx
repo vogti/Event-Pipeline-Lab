@@ -3312,20 +3312,18 @@ export default function App() {
               ) : null}
 
               {adminPage === 'groupsTasks' ? (
-                <AdminGroupsTasksSection
-                  t={t}
-                  tasks={adminData.tasks}
-                  groups={adminData.groups}
-                  taskLabel={(task) => taskTitle(task, language)}
-                  taskDescriptionLabel={(task) => taskDescription(task, language)}
-                  onActivateTask={activateTask}
-                  isTaskActivationBusy={(taskId) => busyKey === `activate-${taskId}`}
-                  formatTs={formatTs}
-                />
-              ) : null}
-
-              {adminPage === 'pipeline' ? (
                 <>
+                  <AdminGroupsTasksSection
+                    t={t}
+                    tasks={adminData.tasks}
+                    groups={adminData.groups}
+                    taskLabel={(task) => taskTitle(task, language)}
+                    taskDescriptionLabel={(task) => taskDescription(task, language)}
+                    onActivateTask={activateTask}
+                    isTaskActivationBusy={(taskId) => busyKey === `activate-${taskId}`}
+                    formatTs={formatTs}
+                  />
+
                   <PipelineTaskConfigSection
                     t={t}
                     tasks={adminData.tasks}
@@ -3345,52 +3343,54 @@ export default function App() {
                     formatTs={formatTs}
                   />
 
-                  <PipelineBuilderSection
-                    t={t}
-                    title={t('pipelineBuilder')}
-                    view={adminPipelineDraft ?? adminPipeline}
-                    groupOptions={adminData.groups.map((group) => group.groupKey)}
-                    selectedGroupKey={adminPipelineGroupKey}
-                    onSelectGroup={selectAdminPipelineGroup}
-                    draftProcessing={adminPipelineDraft?.processing ?? adminPipeline?.processing ?? null}
-                    onChangeSlotBlock={changeAdminPipelineSlot}
-                    onInputModeChange={changeAdminPipelineInputMode}
-                    onDeviceScopeChange={changeAdminPipelineDeviceScope}
-                    onIngestFiltersChange={changeAdminPipelineIngestFilters}
-                    onScenarioOverlaysChange={changeAdminPipelineScenarioOverlays}
-                    onSinkTargetsChange={changeAdminPipelineSinkTargets}
-                    onSinkGoalChange={changeAdminPipelineSinkGoal}
-                    logModeStatus={adminPipelineLogModeStatus}
-                    logModeStatusBusy={busyKey === 'admin-pipeline-log-status'}
-                    onRefreshLogModeStatus={refreshAdminPipelineLogModeStatus}
-                    logReplayFromOffset={adminPipelineReplayFromOffset}
-                    onLogReplayFromOffsetChange={setAdminPipelineReplayFromOffset}
-                    logReplayMaxRecords={adminPipelineReplayMaxRecords}
-                    onLogReplayMaxRecordsChange={setAdminPipelineReplayMaxRecords}
-                    onLogReplay={replayAdminPipelineLog}
-                    logReplayBusy={busyKey === 'admin-pipeline-log-replay'}
-                    logReplayResult={adminPipelineReplayResult}
-                    onSave={saveAdminPipeline}
-                    saveBusy={busyKey === 'admin-pipeline' || busyKey === 'admin-pipeline-load'}
-                    onResetState={() => {
-                      void controlAdminPipelineState('RESET_STATE');
-                    }}
-                    onRestartStateLost={() => {
-                      void controlAdminPipelineState('RESTART_STATE_LOST');
-                    }}
-                    onRestartStateRetained={() => {
-                      void controlAdminPipelineState('RESTART_STATE_RETAINED');
-                    }}
-                    stateControlBusy={busyKey === 'admin-pipeline-state'}
-                    formatTs={formatTs}
-                  />
-
                   <PipelineCompareSection
                     t={t}
                     rows={adminPipelineCompareRows}
                     formatTs={formatTs}
                   />
                 </>
+              ) : null}
+
+              {adminPage === 'pipeline' ? (
+                <PipelineBuilderSection
+                  t={t}
+                  title={t('pipelineBuilder')}
+                  view={adminPipelineDraft ?? adminPipeline}
+                  groupOptions={adminData.groups.map((group) => group.groupKey)}
+                  selectedGroupKey={adminPipelineGroupKey}
+                  onSelectGroup={selectAdminPipelineGroup}
+                  draftProcessing={adminPipelineDraft?.processing ?? adminPipeline?.processing ?? null}
+                  onChangeSlotBlock={changeAdminPipelineSlot}
+                  onInputModeChange={changeAdminPipelineInputMode}
+                  onDeviceScopeChange={changeAdminPipelineDeviceScope}
+                  onIngestFiltersChange={changeAdminPipelineIngestFilters}
+                  onScenarioOverlaysChange={changeAdminPipelineScenarioOverlays}
+                  onSinkTargetsChange={changeAdminPipelineSinkTargets}
+                  onSinkGoalChange={changeAdminPipelineSinkGoal}
+                  logModeStatus={adminPipelineLogModeStatus}
+                  logModeStatusBusy={busyKey === 'admin-pipeline-log-status'}
+                  onRefreshLogModeStatus={refreshAdminPipelineLogModeStatus}
+                  logReplayFromOffset={adminPipelineReplayFromOffset}
+                  onLogReplayFromOffsetChange={setAdminPipelineReplayFromOffset}
+                  logReplayMaxRecords={adminPipelineReplayMaxRecords}
+                  onLogReplayMaxRecordsChange={setAdminPipelineReplayMaxRecords}
+                  onLogReplay={replayAdminPipelineLog}
+                  logReplayBusy={busyKey === 'admin-pipeline-log-replay'}
+                  logReplayResult={adminPipelineReplayResult}
+                  onSave={saveAdminPipeline}
+                  saveBusy={busyKey === 'admin-pipeline' || busyKey === 'admin-pipeline-load'}
+                  onResetState={() => {
+                    void controlAdminPipelineState('RESET_STATE');
+                  }}
+                  onRestartStateLost={() => {
+                    void controlAdminPipelineState('RESTART_STATE_LOST');
+                  }}
+                  onRestartStateRetained={() => {
+                    void controlAdminPipelineState('RESTART_STATE_RETAINED');
+                  }}
+                  stateControlBusy={busyKey === 'admin-pipeline-state'}
+                  formatTs={formatTs}
+                />
               ) : null}
 
               {adminPage === 'devices' ? (

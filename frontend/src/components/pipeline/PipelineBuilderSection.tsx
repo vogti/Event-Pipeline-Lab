@@ -1,3 +1,4 @@
+import { Fragment, useState, type DragEvent } from 'react';
 import type { I18nKey } from '../../i18n';
 import type {
   PipelineLogModeStatus,
@@ -15,6 +16,9 @@ import {
   withScenarioValue
 } from '../../app/pipeline-scenarios';
 import { PipelineObservabilitySection } from './PipelineObservabilitySection';
+
+const DND_BLOCK_TYPE = 'application/x-epl-pipeline-block';
+const DND_SOURCE_SLOT = 'application/x-epl-source-slot';
 
 interface PipelineBuilderSectionProps {
   t: (key: I18nKey) => string;
@@ -136,9 +140,11 @@ export function PipelineBuilderSection({
   saveBusy,
   formatTs
 }: PipelineBuilderSectionProps) {
+  const [dragOverSlotIndex, setDragOverSlotIndex] = useState<number | null>(null);
+
   if (!view) {
     return (
-      <section className="panel panel-animate">
+      <section className="panel panel-animate full-width">
         <header className="panel-header">
           <h3>{title}</h3>
         </header>
@@ -149,7 +155,7 @@ export function PipelineBuilderSection({
 
   if (!view.permissions.visible) {
     return (
-      <section className="panel panel-animate">
+      <section className="panel panel-animate full-width">
         <header className="panel-header">
           <h3>{title}</h3>
         </header>
@@ -180,9 +186,109 @@ export function PipelineBuilderSection({
     }
     return [scenarioBadgeLabel(t, definition.key, value)];
   });
+  const processingSlots = Array.from({ length: processing.slotCount }, (_, slotIndex) => {
+    const slot = processing.slots.find((entry) => entry.index === slotIndex);
+    return {
+      index: slotIndex,
+      blockType: slot?.blockType ?? 'NONE'
+    };
+  });
+  const libraryBlockOptions = blockOptions.filter((entry) => entry !== 'NONE');
+
+  const setSlotBlockType = (slotIndex: number, nextBlockType: string) => {
+    if (!view.permissions.processingEditable) {
+      return;
+    }
+    if (!blockOptions.includes(nextBlockType)) {
+      return;
+    }
+    onChangeSlotBlock(slotIndex, nextBlockType);
+  };
+
+  const setDragPayload = (event: DragEvent<HTMLElement>, blockType: string, sourceSlotIndex: number | null) => {
+    event.dataTransfer.setData(DND_BLOCK_TYPE, blockType);
+    event.dataTransfer.setData('text/plain', blockType);
+    event.dataTransfer.setData(DND_SOURCE_SLOT, sourceSlotIndex === null ? '' : String(sourceSlotIndex));
+    event.dataTransfer.effectAllowed = sourceSlotIndex === null ? 'copyMove' : 'move';
+  };
+
+  const readDragBlockType = (event: DragEvent<HTMLElement>): string | null => {
+    const fromCustom = event.dataTransfer.getData(DND_BLOCK_TYPE);
+    const fromText = event.dataTransfer.getData('text/plain');
+    const blockType = (fromCustom || fromText || '').trim();
+    if (!blockType || !blockOptions.includes(blockType)) {
+      return null;
+    }
+    return blockType;
+  };
+
+  const readSourceSlotIndex = (event: DragEvent<HTMLElement>): number | null => {
+    const raw = event.dataTransfer.getData(DND_SOURCE_SLOT).trim();
+    if (!raw) {
+      return null;
+    }
+    const parsed = Number.parseInt(raw, 10);
+    if (!Number.isFinite(parsed) || parsed < 0 || parsed >= processingSlots.length) {
+      return null;
+    }
+    return parsed;
+  };
+
+  const placeInFirstAvailableSlot = (blockType: string) => {
+    if (!view.permissions.processingEditable) {
+      return;
+    }
+    const emptySlot = processingSlots.find((slot) => slot.blockType === 'NONE');
+    const targetSlot = emptySlot ?? processingSlots[0];
+    if (!targetSlot) {
+      return;
+    }
+    setSlotBlockType(targetSlot.index, blockType);
+  };
+
+  const onSlotDragOver = (event: DragEvent<HTMLDivElement>, slotIndex: number) => {
+    if (!view.permissions.processingEditable) {
+      return;
+    }
+    const dragBlockType = readDragBlockType(event);
+    if (!dragBlockType) {
+      return;
+    }
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    if (dragOverSlotIndex !== slotIndex) {
+      setDragOverSlotIndex(slotIndex);
+    }
+  };
+
+  const onSlotDrop = (event: DragEvent<HTMLDivElement>, slotIndex: number) => {
+    if (!view.permissions.processingEditable) {
+      return;
+    }
+    const dragBlockType = readDragBlockType(event);
+    if (!dragBlockType) {
+      return;
+    }
+    event.preventDefault();
+    setDragOverSlotIndex(null);
+
+    const sourceSlotIndex = readSourceSlotIndex(event);
+    if (sourceSlotIndex === null) {
+      setSlotBlockType(slotIndex, dragBlockType);
+      return;
+    }
+    if (sourceSlotIndex === slotIndex) {
+      return;
+    }
+
+    const sourceBlockType = processingSlots[sourceSlotIndex]?.blockType ?? 'NONE';
+    const targetBlockType = processingSlots[slotIndex]?.blockType ?? 'NONE';
+    setSlotBlockType(slotIndex, sourceBlockType);
+    setSlotBlockType(sourceSlotIndex, targetBlockType);
+  };
 
   return (
-    <section className="panel panel-animate pipeline-builder">
+    <section className="panel panel-animate pipeline-builder full-width">
       <header className="panel-header">
         <h3>{title}</h3>
         <div className="pipeline-builder-actions">
@@ -417,37 +523,99 @@ export function PipelineBuilderSection({
           {!view.permissions.inputEditable ? <p className="muted">{t('pipelineReadOnlyTask')}</p> : null}
         </article>
 
-        <article className="pipeline-column">
+        <article className="pipeline-column pipeline-processing-column">
           <h4>{t('pipelineProcessing')}</h4>
-          <div className="pipeline-slot-list">
-            {Array.from({ length: processing.slotCount }).map((_, slotIndex) => {
-              const slot =
-                processing.slots.find((entry) => entry.index === slotIndex) ?? {
-                  index: slotIndex,
-                  blockType: 'NONE',
-                  config: {}
-                };
-              return (
-                <label className="stack pipeline-field" key={slotIndex}>
-                  <span>
-                    {t('pipelineSlot')} {slotIndex + 1}
-                  </span>
-                  <select
-                    className="input"
-                    value={slot.blockType}
-                    onChange={(event) => onChangeSlotBlock(slotIndex, event.target.value)}
+          <div className="pipeline-builder-workbench">
+            <section className="pipeline-block-library">
+              <header className="pipeline-block-library-header">
+                <strong>{t('pipelineAllowedBlocks')}</strong>
+              </header>
+              <div className="pipeline-block-library-list">
+                {libraryBlockOptions.map((blockType) => (
+                  <button
+                    key={blockType}
+                    type="button"
+                    className="pipeline-library-chip"
                     disabled={!view.permissions.processingEditable}
+                    draggable={view.permissions.processingEditable}
+                    onDragStart={(event) => setDragPayload(event, blockType, null)}
+                    onDragEnd={() => setDragOverSlotIndex(null)}
+                    onClick={() => placeInFirstAvailableSlot(blockType)}
                   >
-                    {blockOptions.map((blockType) => (
-                      <option key={blockType} value={blockType}>
-                        {blockType}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              );
-            })}
+                    <span className="mono">{blockType}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section className="pipeline-flow-board" onDragLeave={() => setDragOverSlotIndex(null)}>
+              <div className="pipeline-flow-node endpoint">
+                <span className="pipeline-flow-node-title">{t('pipelineInput')}</span>
+              </div>
+              {processingSlots.map((slot) => {
+                const isEmpty = slot.blockType === 'NONE';
+                const isDropTarget = dragOverSlotIndex === slot.index;
+                return (
+                  <Fragment key={slot.index}>
+                    <div className="pipeline-flow-connector" aria-hidden="true">
+                      <span className="pipeline-flow-arrow">→</span>
+                    </div>
+                    <div
+                      className={`pipeline-flow-node slot ${isEmpty ? 'empty' : 'filled'} ${
+                        isDropTarget ? 'drag-over' : ''
+                      }`}
+                      draggable={view.permissions.processingEditable && !isEmpty}
+                      onDragStart={(event) => {
+                        if (isEmpty) {
+                          event.preventDefault();
+                          return;
+                        }
+                        setDragPayload(event, slot.blockType, slot.index);
+                      }}
+                      onDragEnd={() => setDragOverSlotIndex(null)}
+                      onDragOver={(event) => onSlotDragOver(event, slot.index)}
+                      onDrop={(event) => onSlotDrop(event, slot.index)}
+                    >
+                      <header className="pipeline-flow-node-header">
+                        <span className="chip">
+                          {t('pipelineSlot')} {slot.index + 1}
+                        </span>
+                        {view.permissions.processingEditable ? (
+                          <button
+                            type="button"
+                            className="button tiny ghost"
+                            onClick={() => setSlotBlockType(slot.index, 'NONE')}
+                          >
+                            ×
+                          </button>
+                        ) : null}
+                      </header>
+                      <strong className="mono">{slot.blockType}</strong>
+                      <select
+                        className="input pipeline-slot-select"
+                        value={slot.blockType}
+                        onChange={(event) => setSlotBlockType(slot.index, event.target.value)}
+                        disabled={!view.permissions.processingEditable}
+                      >
+                        {blockOptions.map((blockType) => (
+                          <option key={blockType} value={blockType}>
+                            {blockType}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </Fragment>
+                );
+              })}
+              <div className="pipeline-flow-connector" aria-hidden="true">
+                <span className="pipeline-flow-arrow">→</span>
+              </div>
+              <div className="pipeline-flow-node endpoint">
+                <span className="pipeline-flow-node-title">{t('pipelineSink')}</span>
+              </div>
+            </section>
           </div>
+          {!view.permissions.processingEditable ? <p className="muted">{t('pipelineReadOnlyTask')}</p> : null}
         </article>
 
         <article className="pipeline-column">
