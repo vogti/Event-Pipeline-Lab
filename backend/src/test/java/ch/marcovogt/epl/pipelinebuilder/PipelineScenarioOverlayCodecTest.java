@@ -48,7 +48,7 @@ class PipelineScenarioOverlayCodecTest {
 
     @Test
     void normalizeShouldRejectOutOfRangeValuesWhenStrict() {
-        assertThatThrownBy(() -> PipelineScenarioOverlayCodec.normalize(List.of("delay:3000ms"), true))
+        assertThatThrownBy(() -> PipelineScenarioOverlayCodec.normalize(List.of("delay:20000ms"), true))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(error -> {
                     ResponseStatusException ex = (ResponseStatusException) error;
@@ -64,6 +64,6 @@ class PipelineScenarioOverlayCodecTest {
                 false
         );
 
-        assertThat(normalized).containsExactly("duplicates:30%", "drops:20%");
+        assertThat(normalized).containsExactly("duplicates:99%", "drops:99%");
     }
 }

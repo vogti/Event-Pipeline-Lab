@@ -46,6 +46,13 @@ export function AdminPageNav({ t, adminPage, onChangePage }: AdminPageNavProps) 
         {t('groupsTasks')}
       </button>
       <button
+        className={`button tiny ${adminPage === 'scenarios' ? 'active' : 'secondary'}`}
+        type="button"
+        onClick={() => onChangePage('scenarios')}
+      >
+        {t('scenarioPage')}
+      </button>
+      <button
         className={`button tiny ${adminPage === 'pipeline' ? 'active' : 'secondary'}`}
         type="button"
         onClick={() => onChangePage('pipeline')}

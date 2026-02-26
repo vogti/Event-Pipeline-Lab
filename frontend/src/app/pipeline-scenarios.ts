@@ -13,7 +13,7 @@ export const PIPELINE_SCENARIO_DEFINITIONS: PipelineScenarioDefinition[] = [
   {
     key: 'duplicates',
     min: 1,
-    max: 30,
+    max: 100,
     step: 1,
     defaultValue: 10,
     unit: '%'
@@ -21,15 +21,15 @@ export const PIPELINE_SCENARIO_DEFINITIONS: PipelineScenarioDefinition[] = [
   {
     key: 'delay',
     min: 50,
-    max: 1500,
-    step: 50,
+    max: 10000,
+    step: 100,
     defaultValue: 300,
     unit: 'ms'
   },
   {
     key: 'drops',
     min: 1,
-    max: 20,
+    max: 100,
     step: 1,
     defaultValue: 5,
     unit: '%'
@@ -37,7 +37,7 @@ export const PIPELINE_SCENARIO_DEFINITIONS: PipelineScenarioDefinition[] = [
   {
     key: 'out_of_order',
     min: 1,
-    max: 30,
+    max: 100,
     step: 1,
     defaultValue: 10,
     unit: '%'
@@ -162,4 +162,3 @@ export function withScenarioValue(
 export function scenarioDefaultValue(key: PipelineScenarioKey): number {
   return DEF_BY_KEY.get(key)?.defaultValue ?? 1;
 }
-

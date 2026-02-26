@@ -25,10 +25,10 @@ public final class PipelineScenarioOverlayCodec {
     private static final String TYPE_DROPS = "drops";
     private static final String TYPE_OUT_OF_ORDER = "out_of_order";
 
-    private static final int MAX_DUPLICATES_PERCENT = 30;
-    private static final int MAX_DELAY_MS = 1500;
-    private static final int MAX_DROPS_PERCENT = 20;
-    private static final int MAX_OUT_OF_ORDER_PERCENT = 30;
+    private static final int MAX_DUPLICATES_PERCENT = 100;
+    private static final int MAX_DELAY_MS = 10_000;
+    private static final int MAX_DROPS_PERCENT = 100;
+    private static final int MAX_OUT_OF_ORDER_PERCENT = 100;
 
     private PipelineScenarioOverlayCodec() {
     }

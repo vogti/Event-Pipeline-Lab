@@ -205,6 +205,10 @@
   padding: 0.4rem 0.5rem;
 }
 
+.pipeline-scenario-description {
+  margin: 0;
+}
+
 .pipeline-scenario-controls {
   align-items: center;
   display: grid;

@@ -39,6 +39,7 @@ export type AdminPage =
   | 'virtualDevices'
   | 'feed'
   | 'groupsTasks'
+  | 'scenarios'
   | 'pipeline'
   | 'systemStatus'
   | 'settings';

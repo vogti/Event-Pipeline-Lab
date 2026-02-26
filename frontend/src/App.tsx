@@ -102,6 +102,7 @@ import { AppModals } from './components/AppModals';
 import { PipelineBuilderSection } from './components/pipeline/PipelineBuilderSection';
 import { PipelineTaskConfigSection } from './components/pipeline/PipelineTaskConfigSection';
 import { PipelineCompareSection } from './components/pipeline/PipelineCompareSection';
+import { PipelineScenariosSection } from './components/pipeline/PipelineScenariosSection';
 import { useAdminSystemStatusPolling } from './hooks/useAdminSystemStatusPolling';
 import { useRealtimeSync } from './hooks/useRealtimeSync';
 import {
@@ -3338,7 +3339,6 @@ export default function App() {
                     onToggleVisibleToStudents={changeTaskPipelineVisibleToStudents}
                     onSlotCountChange={changeTaskPipelineSlotCount}
                     onToggleAllowedBlock={toggleTaskPipelineAllowedBlock}
-                    onScenarioOverlaysChange={changeTaskPipelineScenarioOverlays}
                     onSave={saveAdminTaskPipelineConfig}
                     formatTs={formatTs}
                   />
@@ -3349,6 +3349,30 @@ export default function App() {
                     formatTs={formatTs}
                   />
                 </>
+              ) : null}
+
+              {adminPage === 'scenarios' ? (
+                <PipelineScenariosSection
+                  t={t}
+                  tasks={adminData.tasks}
+                  selectedTaskId={adminPipelineTaskId}
+                  taskLabel={(task) => taskTitle(task, language)}
+                  taskConfig={adminTaskPipelineConfigDraft ?? adminTaskPipelineConfig}
+                  taskBusy={
+                    busyKey === 'admin-task-pipeline-config' ||
+                    busyKey === 'admin-task-pipeline-config-load'
+                  }
+                  onSelectTask={selectAdminPipelineTask}
+                  onTaskScenarioOverlaysChange={changeTaskPipelineScenarioOverlays}
+                  onSaveTaskScenarios={saveAdminTaskPipelineConfig}
+                  pipelineView={adminPipelineDraft ?? adminPipeline}
+                  groupOptions={adminData.groups.map((group) => group.groupKey)}
+                  selectedGroupKey={adminPipelineGroupKey}
+                  onSelectGroup={selectAdminPipelineGroup}
+                  pipelineBusy={busyKey === 'admin-pipeline' || busyKey === 'admin-pipeline-load'}
+                  onPipelineScenarioOverlaysChange={changeAdminPipelineScenarioOverlays}
+                  onSavePipelineScenarios={saveAdminPipeline}
+                />
               ) : null}
 
               {adminPage === 'pipeline' ? (
@@ -3364,7 +3388,6 @@ export default function App() {
                   onInputModeChange={changeAdminPipelineInputMode}
                   onDeviceScopeChange={changeAdminPipelineDeviceScope}
                   onIngestFiltersChange={changeAdminPipelineIngestFilters}
-                  onScenarioOverlaysChange={changeAdminPipelineScenarioOverlays}
                   onSinkTargetsChange={changeAdminPipelineSinkTargets}
                   onSinkGoalChange={changeAdminPipelineSinkGoal}
                   logModeStatus={adminPipelineLogModeStatus}
