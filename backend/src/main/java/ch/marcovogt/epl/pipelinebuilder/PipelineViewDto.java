@@ -9,6 +9,7 @@ public record PipelineViewDto(
         PipelineProcessingSection processing,
         PipelineSinkSection sink,
         PipelinePermissions permissions,
+        PipelineObservabilityDto observability,
         long revision,
         Instant updatedAt,
         String updatedBy

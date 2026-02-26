@@ -4,6 +4,8 @@ import ch.marcovogt.epl.deviceregistryhealth.DeviceStatus;
 import ch.marcovogt.epl.deviceregistryhealth.DeviceStatusDto;
 import ch.marcovogt.epl.deviceregistryhealth.DeviceStatusService;
 import ch.marcovogt.epl.eventfeedquery.EventFeedService;
+import ch.marcovogt.epl.pipelinebuilder.PipelineObservabilityUpdateDto;
+import ch.marcovogt.epl.pipelinebuilder.PipelineStateService;
 import ch.marcovogt.epl.realtimewebsocket.AdminWebSocketBroadcaster;
 import ch.marcovogt.epl.realtimewebsocket.RealtimeSyncService;
 import java.time.Clock;
@@ -24,6 +26,7 @@ public class EventIngestionService {
     private final EventFeedService eventFeedService;
     private final AdminWebSocketBroadcaster adminWebSocketBroadcaster;
     private final RealtimeSyncService realtimeSyncService;
+    private final PipelineStateService pipelineStateService;
     private final Clock clock;
 
     public EventIngestionService(
@@ -32,7 +35,8 @@ public class EventIngestionService {
             DeviceStatusService deviceStatusService,
             EventFeedService eventFeedService,
             AdminWebSocketBroadcaster adminWebSocketBroadcaster,
-            RealtimeSyncService realtimeSyncService
+            RealtimeSyncService realtimeSyncService,
+            PipelineStateService pipelineStateService
     ) {
         this.canonicalEventNormalizer = canonicalEventNormalizer;
         this.canonicalEventRepository = canonicalEventRepository;
@@ -40,6 +44,7 @@ public class EventIngestionService {
         this.eventFeedService = eventFeedService;
         this.adminWebSocketBroadcaster = adminWebSocketBroadcaster;
         this.realtimeSyncService = realtimeSyncService;
+        this.pipelineStateService = pipelineStateService;
         this.clock = Clock.systemUTC();
     }
 
@@ -54,6 +59,15 @@ public class EventIngestionService {
         eventFeedService.appendToLiveBuffer(eventDto);
         adminWebSocketBroadcaster.broadcastEvent(eventDto);
         realtimeSyncService.broadcastEventToStudents(eventDto);
+
+        try {
+            PipelineObservabilityUpdateDto observabilityUpdate = pipelineStateService.recordObservabilityEvent(eventDto);
+            if (observabilityUpdate != null) {
+                realtimeSyncService.broadcastPipelineObservability(observabilityUpdate);
+            }
+        } catch (Exception ex) {
+            log.warn("Failed to update pipeline observability for event {}: {}", eventDto.id(), ex.getMessage());
+        }
 
         DeviceStatus status = deviceStatusService.upsertFromInbound(
                 saved,

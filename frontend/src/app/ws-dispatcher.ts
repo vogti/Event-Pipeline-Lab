@@ -3,6 +3,7 @@ import type {
   CanonicalEvent,
   DeviceStatus,
   GroupConfig,
+  PipelineObservabilityUpdate,
   PipelineView,
   PresenceUser,
   TaskCapabilities,
@@ -24,7 +25,8 @@ export type WsEventType =
   | 'settings.updated'
   | 'device.status.updated'
   | 'admin.groups.updated'
-  | 'pipeline.state.updated';
+  | 'pipeline.state.updated'
+  | 'pipeline.observability.updated';
 
 export interface WsPayloadByType {
   'event.feed.append': CanonicalEvent;
@@ -38,6 +40,7 @@ export interface WsPayloadByType {
   'device.status.updated': DeviceStatus;
   'admin.groups.updated': unknown;
   'pipeline.state.updated': PipelineView;
+  'pipeline.observability.updated': PipelineObservabilityUpdate;
 }
 
 export type KnownWsEnvelope<K extends WsEventType = WsEventType> = {
@@ -147,6 +150,12 @@ export function dispatchWsEnvelope(
       handlers['pipeline.state.updated']?.(
         envelope.payload as WsPayloadByType['pipeline.state.updated'],
         toKnownEnvelope(envelope, 'pipeline.state.updated')
+      );
+      return true;
+    case 'pipeline.observability.updated':
+      handlers['pipeline.observability.updated']?.(
+        envelope.payload as WsPayloadByType['pipeline.observability.updated'],
+        toKnownEnvelope(envelope, 'pipeline.observability.updated')
       );
       return true;
     default:

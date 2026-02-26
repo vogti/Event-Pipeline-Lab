@@ -1,5 +1,5 @@
 import type { I18nKey } from '../../i18n';
-import type { PipelineProcessingSection, PipelineView } from '../../types';
+import type { PipelineProcessingSection, PipelineView, TimestampValue } from '../../types';
 import {
   buildPipelineScenarioOverlays,
   parsePipelineScenarioOverlays,
@@ -8,6 +8,7 @@ import {
   type PipelineScenarioKey,
   withScenarioValue
 } from '../../app/pipeline-scenarios';
+import { PipelineObservabilitySection } from './PipelineObservabilitySection';
 
 interface PipelineBuilderSectionProps {
   t: (key: I18nKey) => string;
@@ -26,6 +27,7 @@ interface PipelineBuilderSectionProps {
   onSinkGoalChange?: (nextValue: string) => void;
   onSave: () => void;
   saveBusy: boolean;
+  formatTs: (value: TimestampValue) => string;
 }
 
 function listToMultiline(value: string[]): string {
@@ -71,7 +73,8 @@ export function PipelineBuilderSection({
   onSinkTargetsChange,
   onSinkGoalChange,
   onSave,
-  saveBusy
+  saveBusy,
+  formatTs
 }: PipelineBuilderSectionProps) {
   if (!view) {
     return (
@@ -325,6 +328,12 @@ export function PipelineBuilderSection({
           {!view.permissions.sinkEditable ? <p className="muted">{t('pipelineReadOnlyTask')}</p> : null}
         </article>
       </div>
+
+      <PipelineObservabilitySection
+        t={t}
+        observability={view.observability}
+        formatTs={formatTs}
+      />
     </section>
   );
 }

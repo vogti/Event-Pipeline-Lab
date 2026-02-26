@@ -8,6 +8,7 @@ import ch.marcovogt.epl.common.DeviceIdMapping;
 import ch.marcovogt.epl.deviceregistryhealth.DeviceStatusDto;
 import ch.marcovogt.epl.eventingestionnormalization.CanonicalEventDto;
 import ch.marcovogt.epl.groupcollaborationsync.GroupConfigDto;
+import ch.marcovogt.epl.pipelinebuilder.PipelineObservabilityUpdateDto;
 import ch.marcovogt.epl.pipelinebuilder.PipelineViewDto;
 import ch.marcovogt.epl.taskscenarioengine.TaskCapabilities;
 import ch.marcovogt.epl.taskscenarioengine.TaskDefinition;
@@ -118,5 +119,10 @@ public class RealtimeSyncService {
         for (PipelineViewDto view : views) {
             broadcastPipelineState(view);
         }
+    }
+
+    public void broadcastPipelineObservability(PipelineObservabilityUpdateDto update) {
+        studentBroadcaster.broadcastToGroup(update.groupKey(), "pipeline.observability.updated", update);
+        adminBroadcaster.broadcast("pipeline.observability.updated", update);
     }
 }

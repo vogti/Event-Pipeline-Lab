@@ -52,6 +52,12 @@ function createPipelineView(): PipelineView {
       allowedProcessingBlocks: ['FILTER_DEVICE_TOPIC'],
       slotCount: 2
     },
+    observability: {
+      sampleEvery: 10,
+      maxSamplesPerBlock: 120,
+      observedEvents: 0,
+      blocks: []
+    },
     revision: 1,
     updatedAt: '2026-01-01T10:00:00Z',
     updatedBy: 'tester'
@@ -143,6 +149,38 @@ describe('ws dispatcher', () => {
     expect(onPipeline).toHaveBeenCalledWith(view, {
       type: 'pipeline.state.updated',
       payload: view,
+      ts: null
+    });
+  });
+
+  it('dispatches pipeline.observability.updated to matching handler', () => {
+    const update = {
+      taskId: 'task_intro',
+      groupKey: 'epld01',
+      observability: {
+        sampleEvery: 10,
+        maxSamplesPerBlock: 120,
+        observedEvents: 3,
+        blocks: []
+      }
+    };
+    const onObservability = vi.fn();
+    const handled = dispatchWsEnvelope(
+      {
+        type: 'pipeline.observability.updated',
+        payload: update,
+        ts: null
+      },
+      {
+        'pipeline.observability.updated': onObservability
+      }
+    );
+
+    expect(handled).toBe(true);
+    expect(onObservability).toHaveBeenCalledTimes(1);
+    expect(onObservability).toHaveBeenCalledWith(update, {
+      type: 'pipeline.observability.updated',
+      payload: update,
       ts: null
     });
   });

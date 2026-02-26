@@ -36,6 +36,7 @@ import type {
   CanonicalEvent,
   DeviceStatus,
   LanguageMode,
+  PipelineObservabilityUpdate,
   PipelineView,
   PresenceUser,
   TaskDefinitionPayload,
@@ -71,7 +72,9 @@ interface UseRealtimeSyncParams {
   setTimeFormat24h: Dispatch<SetStateAction<boolean>>;
   selectedAdminPipelineGroupKeyRef: MutableRefObject<string>;
   onStudentPipelineUpdated: (view: PipelineView) => void;
+  onStudentPipelineObservabilityUpdated: (update: PipelineObservabilityUpdate) => void;
   onAdminPipelineUpdated: (view: PipelineView) => void;
+  onAdminPipelineObservabilityUpdated: (update: PipelineObservabilityUpdate, selectedGroupKey: string) => void;
   onAdminPipelineObserved: (view: PipelineView, selectedGroupKey: string) => void;
 }
 
@@ -103,7 +106,9 @@ export function useRealtimeSync({
   setTimeFormat24h,
   selectedAdminPipelineGroupKeyRef,
   onStudentPipelineUpdated,
+  onStudentPipelineObservabilityUpdated,
   onAdminPipelineUpdated,
+  onAdminPipelineObservabilityUpdated,
   onAdminPipelineObserved
 }: UseRealtimeSyncParams): void {
   useEffect(() => {
@@ -417,6 +422,9 @@ export function useRealtimeSync({
       },
       'pipeline.state.updated': (view) => {
         onStudentPipelineUpdated(view);
+      },
+      'pipeline.observability.updated': (update) => {
+        onStudentPipelineObservabilityUpdated(update);
       }
     };
 
@@ -488,6 +496,10 @@ export function useRealtimeSync({
         if (view.groupKey === selectedGroupKey) {
           onAdminPipelineUpdated(view);
         }
+      },
+      'pipeline.observability.updated': (update) => {
+        const selectedGroupKey = selectedAdminPipelineGroupKeyRef.current;
+        onAdminPipelineObservabilityUpdated(update, selectedGroupKey);
       }
     };
 
@@ -580,7 +592,9 @@ export function useRealtimeSync({
     flushDeferredAdminFeedEvents,
     markFeedEventsRecent,
     onAdminPipelineObserved,
+    onAdminPipelineObservabilityUpdated,
     onAdminPipelineUpdated,
+    onStudentPipelineObservabilityUpdated,
     onStudentPipelineUpdated,
     queueDeferredAdminFeedEvents,
     refreshAdminGroups,

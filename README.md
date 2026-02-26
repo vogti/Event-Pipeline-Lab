@@ -96,10 +96,10 @@ PBV is implemented in staged increments to keep lecture reliability high.
 3. **Stage 3 (implemented)**  
    - Scenario engine controls in PBV (duplicates/delay/drop/out-of-order)  
    - Student transparency badges for active disturbances
-4. **Stage 4**  
+4. **Stage 4 (implemented)**  
    - Block-level observability counters/latency/backlog  
    - Sample-event inspector + transform diff view (bounded ring buffers)
-5. **Stage 5**  
+5. **Stage 5 (next)**  
    - Stateful block introspection (window/dedup store size, TTL, reset)  
    - Restart semantics (state lost vs retained simulation)
 6. **Stage 6**  
@@ -244,7 +244,7 @@ docker run --rm --network epl_default curlimages/curl:8.12.1 -sS http://backend:
 docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST http://backend:8080/api/admin/system-status/events/reset -H "X-EPL-Session: ${ADMIN_TOKEN}" -H 'Content-Type: application/json' -d '{"confirm":true}'
 ```
 
-## Pipeline Builder API (Stage 1-3)
+## Pipeline Builder API (Stage 1-4)
 
 ```bash
 # Student: load own group pipeline for active task
@@ -288,6 +288,11 @@ docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST \
   -H 'Content-Type: application/json' \
   -d '{"taskId":"task_intro","visibleToStudents":true,"slotCount":5,"allowedProcessingBlocks":["FILTER_DEVICE_TOPIC","PARSE_VALIDATE","ROUTE"],"scenarioOverlays":["duplicates:10%","delay:300ms","drops:5%","out_of_order:10%"]}'
 ```
+
+Realtime events:
+
+- `pipeline.state.updated` (full PBV view on config/state changes)
+- `pipeline.observability.updated` (high-frequency observability snapshots per task/group)
 
 ## System Data Export / Import
 

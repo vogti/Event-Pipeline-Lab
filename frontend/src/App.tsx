@@ -7,6 +7,7 @@ import type {
   DeviceCommandType,
   EventCategory,
   LanguageMode,
+  PipelineObservabilityUpdate,
   PipelineCompareRow,
   PipelineProcessingSection,
   TaskPipelineConfig,
@@ -1023,6 +1024,21 @@ export default function App() {
     setStudentPipelineDraft(view.processing);
   }, []);
 
+  const applyStudentPipelineObservabilityFromWs = useCallback((update: PipelineObservabilityUpdate) => {
+    setStudentPipeline((previous) => {
+      if (!previous) {
+        return previous;
+      }
+      if (previous.groupKey !== update.groupKey || previous.taskId !== update.taskId) {
+        return previous;
+      }
+      return {
+        ...previous,
+        observability: update.observability
+      };
+    });
+  }, []);
+
   const applyAdminPipelineFromWs = useCallback((view: PipelineView) => {
     setAdminPipeline((previous) => {
       if (
@@ -1037,6 +1053,39 @@ export default function App() {
     });
     setAdminPipelineDraft(view);
   }, []);
+
+  const applyAdminPipelineObservabilityFromWs = useCallback(
+    (update: PipelineObservabilityUpdate, selectedGroupKey: string) => {
+      if (update.groupKey !== selectedGroupKey) {
+        return;
+      }
+      setAdminPipeline((previous) => {
+        if (!previous) {
+          return previous;
+        }
+        if (previous.groupKey !== update.groupKey || previous.taskId !== update.taskId) {
+          return previous;
+        }
+        return {
+          ...previous,
+          observability: update.observability
+        };
+      });
+      setAdminPipelineDraft((previous) => {
+        if (!previous) {
+          return previous;
+        }
+        if (previous.groupKey !== update.groupKey || previous.taskId !== update.taskId) {
+          return previous;
+        }
+        return {
+          ...previous,
+          observability: update.observability
+        };
+      });
+    },
+    []
+  );
 
   const applyAdminPipelineObservedFromWs = useCallback((view: PipelineView, selectedGroupKey: string) => {
     setAdminPipelineCompareRows((previous) => {
@@ -1094,7 +1143,9 @@ export default function App() {
     setTimeFormat24h,
     selectedAdminPipelineGroupKeyRef: adminPipelineGroupKeyRef,
     onStudentPipelineUpdated: applyStudentPipelineFromWs,
+    onStudentPipelineObservabilityUpdated: applyStudentPipelineObservabilityFromWs,
     onAdminPipelineUpdated: applyAdminPipelineFromWs,
+    onAdminPipelineObservabilityUpdated: applyAdminPipelineObservabilityFromWs,
     onAdminPipelineObserved: applyAdminPipelineObservedFromWs
   });
 
@@ -2973,6 +3024,7 @@ export default function App() {
               onChangeSlotBlock={changeStudentPipelineSlot}
               onSave={saveStudentPipeline}
               saveBusy={busyKey === 'student-pipeline'}
+              formatTs={formatTs}
             />
 
             <StudentPresenceSection
@@ -3153,6 +3205,7 @@ export default function App() {
                     onSinkGoalChange={changeAdminPipelineSinkGoal}
                     onSave={saveAdminPipeline}
                     saveBusy={busyKey === 'admin-pipeline' || busyKey === 'admin-pipeline-load'}
+                    formatTs={formatTs}
                   />
 
                   <PipelineCompareSection

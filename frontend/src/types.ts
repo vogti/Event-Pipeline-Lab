@@ -228,6 +228,42 @@ export interface PipelinePermissions {
   slotCount: number;
 }
 
+export interface PipelineSampleEvent {
+  traceId: string;
+  observedAt: TimestampValue;
+  ingestTs: TimestampValue;
+  deviceTs: TimestampValue;
+  deviceId: string;
+  topic: string;
+  inputEventType: string;
+  outputEventType: string | null;
+  dropped: boolean;
+  dropReason: string | null;
+  inputPayloadJson: string;
+  outputPayloadJson: string | null;
+}
+
+export interface PipelineBlockObservability {
+  slotIndex: number;
+  blockType: string;
+  inCount: number;
+  outCount: number;
+  dropCount: number;
+  errorCount: number;
+  latencyP50Ms: number;
+  latencyP95Ms: number;
+  backlogDepth: number;
+  dropReasons: Record<string, number>;
+  samples: PipelineSampleEvent[];
+}
+
+export interface PipelineObservability {
+  sampleEvery: number;
+  maxSamplesPerBlock: number;
+  observedEvents: number;
+  blocks: PipelineBlockObservability[];
+}
+
 export interface PipelineView {
   taskId: string;
   groupKey: string;
@@ -235,9 +271,16 @@ export interface PipelineView {
   processing: PipelineProcessingSection;
   sink: PipelineSinkSection;
   permissions: PipelinePermissions;
+  observability: PipelineObservability;
   revision: number;
   updatedAt: TimestampValue;
   updatedBy: string;
+}
+
+export interface PipelineObservabilityUpdate {
+  taskId: string;
+  groupKey: string;
+  observability: PipelineObservability;
 }
 
 export interface PipelineCompareRow {

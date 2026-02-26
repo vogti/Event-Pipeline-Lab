@@ -1,6 +1,8 @@
 package ch.marcovogt.epl.pipelinebuilder;
 
 import ch.marcovogt.epl.authsession.SessionPrincipal;
+import ch.marcovogt.epl.common.DeviceIdMapping;
+import ch.marcovogt.epl.eventingestionnormalization.CanonicalEventDto;
 import ch.marcovogt.epl.taskscenarioengine.PipelineTaskConfig;
 import ch.marcovogt.epl.taskscenarioengine.TaskDefinition;
 import ch.marcovogt.epl.taskscenarioengine.TaskStateService;
@@ -30,16 +32,19 @@ public class PipelineStateService {
 
     private final PipelineStateRepository pipelineStateRepository;
     private final TaskStateService taskStateService;
+    private final PipelineObservabilityService pipelineObservabilityService;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
     public PipelineStateService(
             PipelineStateRepository pipelineStateRepository,
             TaskStateService taskStateService,
+            PipelineObservabilityService pipelineObservabilityService,
             ObjectMapper objectMapper
     ) {
         this.pipelineStateRepository = pipelineStateRepository;
         this.taskStateService = taskStateService;
+        this.pipelineObservabilityService = pipelineObservabilityService;
         this.objectMapper = objectMapper;
         this.clock = Clock.systemUTC();
     }
@@ -63,6 +68,11 @@ public class PipelineStateService {
                 ? loadOrCreate(task.id(), PipelineOwnerType.ADMIN_GLOBAL, GLOBAL_OWNER_KEY, defaults)
                 : null;
         PipelineStatePayload effective = effectivePayload(config, groupPayload, globalState, defaults);
+        PipelineObservabilityDto observability = pipelineObservabilityService.snapshot(
+                task.id(),
+                normalizedGroupKey,
+                effective.processing()
+        );
 
         return new PipelineViewDto(
                 task.id(),
@@ -79,6 +89,7 @@ public class PipelineStateService {
                         config.allowedProcessingBlocks(),
                         config.slotCount()
                 ),
+                observability,
                 effectiveRevision(groupState, globalState),
                 effectiveUpdatedAt(groupState, globalState),
                 effectiveUpdatedBy(groupState, globalState)
@@ -111,6 +122,7 @@ public class PipelineStateService {
                 current.sink()
         );
         persist(groupState, nextPayload, principal.displayName());
+        pipelineObservabilityService.reset(task.id(), groupKey);
 
         return getStudentViewForGroup(groupKey);
     }
@@ -129,6 +141,11 @@ public class PipelineStateService {
                 ? loadOrCreate(task.id(), PipelineOwnerType.ADMIN_GLOBAL, GLOBAL_OWNER_KEY, defaults)
                 : null;
         PipelineStatePayload effective = effectivePayload(config, groupPayload, globalState, defaults);
+        PipelineObservabilityDto observability = pipelineObservabilityService.snapshot(
+                task.id(),
+                normalizedGroupKey,
+                effective.processing()
+        );
 
         return new PipelineViewDto(
                 task.id(),
@@ -145,6 +162,7 @@ public class PipelineStateService {
                         PipelineBlockLibrary.allBlocks(),
                         config.slotCount()
                 ),
+                observability,
                 effectiveRevision(groupState, globalState),
                 effectiveUpdatedAt(groupState, globalState),
                 effectiveUpdatedBy(groupState, globalState)
@@ -175,6 +193,7 @@ public class PipelineStateService {
                     groupCurrent.sink()
             );
             persist(groupState, updatedGroup, principal.username());
+            pipelineObservabilityService.reset(task.id(), groupKey);
             return getAdminView(groupKey);
         }
 
@@ -197,8 +216,41 @@ public class PipelineStateService {
                 groupCurrent.sink()
         );
         persist(groupState, updatedGroup, principal.username());
+        pipelineObservabilityService.reset(task.id(), groupKey);
 
         return getAdminView(groupKey);
+    }
+
+    @Transactional
+    public PipelineObservabilityUpdateDto recordObservabilityEvent(CanonicalEventDto eventDto) {
+        String resolvedGroupKey = eventDto.groupKey();
+        if (resolvedGroupKey == null || resolvedGroupKey.isBlank()) {
+            resolvedGroupKey = DeviceIdMapping.groupKeyForDevice(eventDto.deviceId()).orElse(null);
+        }
+        if (resolvedGroupKey == null || resolvedGroupKey.isBlank()) {
+            return null;
+        }
+
+        String groupKey = normalizeGroupKey(resolvedGroupKey);
+        TaskDefinition task = taskStateService.getActiveTask();
+        PipelineTaskConfig config = task.pipeline();
+        PipelineStatePayload defaults = defaultPayload(config);
+
+        PipelineState groupState = loadOrCreate(task.id(), PipelineOwnerType.GROUP, groupKey, defaults);
+        PipelineStatePayload groupPayload = deserializeOrDefault(groupState.getStateJson(), defaults);
+
+        PipelineState globalState = config.lecturerMode()
+                ? loadOrCreate(task.id(), PipelineOwnerType.ADMIN_GLOBAL, GLOBAL_OWNER_KEY, defaults)
+                : null;
+        PipelineStatePayload effective = effectivePayload(config, groupPayload, globalState, defaults);
+
+        pipelineObservabilityService.recordEvent(task.id(), groupKey, effective.processing(), eventDto);
+        PipelineObservabilityDto observability = pipelineObservabilityService.snapshot(
+                task.id(),
+                groupKey,
+                effective.processing()
+        );
+        return new PipelineObservabilityUpdateDto(task.id(), groupKey, observability);
     }
 
     @Transactional
