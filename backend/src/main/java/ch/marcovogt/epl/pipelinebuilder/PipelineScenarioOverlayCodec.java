@@ -19,16 +19,23 @@ public final class PipelineScenarioOverlayCodec {
             Pattern.compile("^(drop|drops)\\s*:\\s*(\\d+)\\s*%?$", Pattern.CASE_INSENSITIVE);
     private static final Pattern OUT_OF_ORDER_PATTERN =
             Pattern.compile("^(out[_-]?of[_-]?order|out_of_order)\\s*:\\s*(\\d+)\\s*%?$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern REORDER_BUFFER_PATTERN =
+            Pattern.compile(
+                    "^(reorder[_-]?buffer|reorder_buffer|out[_-]?of[_-]?order[_-]?buffer|out_of_order_buffer)\\s*:\\s*(\\d+)\\s*ms?$",
+                    Pattern.CASE_INSENSITIVE
+            );
 
     private static final String TYPE_DUPLICATES = "duplicates";
     private static final String TYPE_DELAY = "delay";
     private static final String TYPE_DROPS = "drops";
     private static final String TYPE_OUT_OF_ORDER = "out_of_order";
+    private static final String TYPE_REORDER_BUFFER = "reorder_buffer";
 
     private static final int MAX_DUPLICATES_PERCENT = 100;
     private static final int MAX_DELAY_MS = 10_000;
     private static final int MAX_DROPS_PERCENT = 100;
     private static final int MAX_OUT_OF_ORDER_PERCENT = 100;
+    private static final int MAX_REORDER_BUFFER_MS = 10_000;
 
     private PipelineScenarioOverlayCodec() {
     }
@@ -68,6 +75,7 @@ public final class PipelineScenarioOverlayCodec {
         appendIfPresent(normalized, render(values, TYPE_DELAY));
         appendIfPresent(normalized, render(values, TYPE_DROPS));
         appendIfPresent(normalized, render(values, TYPE_OUT_OF_ORDER));
+        appendIfPresent(normalized, render(values, TYPE_REORDER_BUFFER));
         return List.copyOf(normalized);
     }
 
@@ -88,6 +96,7 @@ public final class PipelineScenarioOverlayCodec {
             case TYPE_DELAY -> TYPE_DELAY + ":" + value + "ms";
             case TYPE_DROPS -> TYPE_DROPS + ":" + value + "%";
             case TYPE_OUT_OF_ORDER -> TYPE_OUT_OF_ORDER + ":" + value + "%";
+            case TYPE_REORDER_BUFFER -> TYPE_REORDER_BUFFER + ":" + value + "ms";
             default -> null;
         };
     }
@@ -98,6 +107,7 @@ public final class PipelineScenarioOverlayCodec {
             case TYPE_DELAY -> MAX_DELAY_MS;
             case TYPE_DROPS -> MAX_DROPS_PERCENT;
             case TYPE_OUT_OF_ORDER -> MAX_OUT_OF_ORDER_PERCENT;
+            case TYPE_REORDER_BUFFER -> MAX_REORDER_BUFFER_MS;
             default -> 0;
         };
 
@@ -129,7 +139,11 @@ public final class PipelineScenarioOverlayCodec {
         if (parsed != null) {
             return parsed;
         }
-        return parseWithPattern(entry, OUT_OF_ORDER_PATTERN, TYPE_OUT_OF_ORDER);
+        parsed = parseWithPattern(entry, OUT_OF_ORDER_PATTERN, TYPE_OUT_OF_ORDER);
+        if (parsed != null) {
+            return parsed;
+        }
+        return parseWithPattern(entry, REORDER_BUFFER_PATTERN, TYPE_REORDER_BUFFER);
     }
 
     private static ParsedScenario parseWithPattern(String entry, Pattern pattern, String normalizedType) {

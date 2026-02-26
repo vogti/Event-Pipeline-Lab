@@ -12,13 +12,15 @@ describe('pipeline-scenarios', () => {
         'duplicates:12%',
         'delay:450ms',
         'drop:7%',
-        'out-of-order:9%'
+        'out-of-order:9%',
+        'reorder-buffer:1200ms'
       ])
     ).toEqual({
       duplicates: 12,
       delay: 450,
       drops: 7,
-      out_of_order: 9
+      out_of_order: 9,
+      reorder_buffer: 1200
     });
   });
 
@@ -27,9 +29,10 @@ describe('pipeline-scenarios', () => {
       buildPipelineScenarioOverlays({
         delay: 320,
         out_of_order: 5,
-        duplicates: 10
+        duplicates: 10,
+        reorder_buffer: 800
       })
-    ).toEqual(['duplicates:10%', 'delay:320ms', 'out_of_order:5%']);
+    ).toEqual(['duplicates:10%', 'delay:320ms', 'out_of_order:5%', 'reorder_buffer:800ms']);
   });
 
   it('handles set and unset helpers', () => {
@@ -40,4 +43,3 @@ describe('pipeline-scenarios', () => {
     expect(second).toEqual({});
   });
 });
-

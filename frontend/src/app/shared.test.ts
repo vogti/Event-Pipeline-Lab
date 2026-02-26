@@ -7,6 +7,7 @@ import {
   mergeIpAddressCache,
   mergeEventsBounded,
   mergeTelemetrySnapshotCache,
+  nextFeedScenarioReleaseAt,
   timestampToEpochMillis,
   tryParsePayload
 } from './shared';
@@ -65,6 +66,48 @@ describe('shared helpers', () => {
     expect(disturbedA.length).toBeGreaterThan(0);
     expect(disturbedA.length).not.toBe(events.length);
     expect(disturbedA.some((event) => event.id.includes('::dup'))).toBe(true);
+  });
+
+  it('holds delayed events until their release time', () => {
+    const baseTs = Date.parse('2026-01-01T10:00:00Z');
+    const events = [
+      createEvent({ id: 'delayed-a', ingestTs: '2026-01-01T10:00:00Z' }),
+      createEvent({ id: 'delayed-b', ingestTs: '2026-01-01T10:00:01Z' })
+    ];
+
+    const beforeRelease = applyFeedScenarioDisturbances(events, ['delay:1000ms'], baseTs - 1);
+    expect(beforeRelease).toEqual([]);
+
+    const afterRelease = applyFeedScenarioDisturbances(events, ['delay:1000ms'], baseTs + 2500);
+    expect(afterRelease.length).toBeGreaterThan(0);
+  });
+
+  it('reports next release timestamp for pending delayed events', () => {
+    const baseTs = Date.parse('2026-01-01T10:00:00Z');
+    const events = [createEvent({ id: 'pending-a', ingestTs: '2026-01-01T10:00:00Z' })];
+
+    const nextRelease = nextFeedScenarioReleaseAt(events, ['delay:1000ms'], baseTs);
+    expect(nextRelease).not.toBeNull();
+    expect(nextRelease).toBeGreaterThan(baseTs);
+  });
+
+  it('uses reorder buffer window to scramble visible order for out-of-order overlays', () => {
+    const events = [
+      createEvent({ id: 'ooo-a', ingestTs: '2026-01-01T10:00:00Z' }),
+      createEvent({ id: 'ooo-b', ingestTs: '2026-01-01T10:00:01Z' }),
+      createEvent({ id: 'ooo-c', ingestTs: '2026-01-01T10:00:02Z' })
+    ];
+
+    const disturbed = applyFeedScenarioDisturbances(
+      events,
+      ['out_of_order:100%', 'reorder_buffer:1500ms'],
+      Date.parse('2026-01-01T10:00:10Z')
+    );
+    const naturalNewestFirst = [...events]
+      .sort((left, right) => (Date.parse(right.ingestTs as string) - Date.parse(left.ingestTs as string)))
+      .map((event) => event.id);
+
+    expect(disturbed.map((event) => event.id)).not.toEqual(naturalNewestFirst);
   });
 
   it('parses escaped payload JSON used by devices', () => {

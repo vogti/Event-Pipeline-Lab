@@ -1,4 +1,9 @@
-export type PipelineScenarioKey = 'duplicates' | 'delay' | 'drops' | 'out_of_order';
+export type PipelineScenarioKey =
+  | 'duplicates'
+  | 'delay'
+  | 'drops'
+  | 'out_of_order'
+  | 'reorder_buffer';
 
 export interface PipelineScenarioDefinition {
   key: PipelineScenarioKey;
@@ -41,6 +46,14 @@ export const PIPELINE_SCENARIO_DEFINITIONS: PipelineScenarioDefinition[] = [
     step: 1,
     defaultValue: 10,
     unit: '%'
+  },
+  {
+    key: 'reorder_buffer',
+    min: 100,
+    max: 10000,
+    step: 100,
+    defaultValue: 1000,
+    unit: 'ms'
   }
 ];
 
@@ -50,6 +63,8 @@ const DUPLICATES_REGEX = /^(duplicates?)\s*:\s*(\d+)\s*%?$/i;
 const DELAY_REGEX = /^(delay)\s*:\s*(\d+)\s*ms?$/i;
 const DROPS_REGEX = /^(drop|drops)\s*:\s*(\d+)\s*%?$/i;
 const OUT_OF_ORDER_REGEX = /^(out[_-]?of[_-]?order|out_of_order)\s*:\s*(\d+)\s*%?$/i;
+const REORDER_BUFFER_REGEX =
+  /^(reorder[_-]?buffer|reorder_buffer|out[_-]?of[_-]?order[_-]?buffer|out_of_order_buffer)\s*:\s*(\d+)\s*ms?$/i;
 
 function clampScenarioValue(key: PipelineScenarioKey, value: number): number {
   const definition = DEF_BY_KEY.get(key);
@@ -82,6 +97,10 @@ function parseToken(raw: string): [PipelineScenarioKey, number] | null {
   match = trimmed.match(OUT_OF_ORDER_REGEX);
   if (match) {
     return ['out_of_order', Number.parseInt(match[2] ?? '0', 10)];
+  }
+  match = trimmed.match(REORDER_BUFFER_REGEX);
+  if (match) {
+    return ['reorder_buffer', Number.parseInt(match[2] ?? '0', 10)];
   }
   return null;
 }

@@ -34,6 +34,7 @@ import {
   mergeEventsBounded,
   clampFeed,
   applyFeedScenarioDisturbances,
+  nextFeedScenarioReleaseAt,
   ipAddressToHref,
   findIpAddress,
   extractIpAddressFromDeviceStatus,
@@ -206,6 +207,7 @@ export default function App() {
   const [eventDetailsViewMode, setEventDetailsViewMode] = useState<EventDetailsViewMode>('rendered');
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [nowEpochMs, setNowEpochMs] = useState<number>(() => Date.now());
+  const [feedDisturbanceClockMs, setFeedDisturbanceClockMs] = useState<number>(() => Date.now());
   const [counterResetTarget, setCounterResetTarget] = useState<CounterResetTarget | null>(null);
   const [resetEventsModalOpen, setResetEventsModalOpen] = useState(false);
   const [pinEditorDeviceId, setPinEditorDeviceId] = useState<string | null>(null);
@@ -2465,37 +2467,107 @@ export default function App() {
     }
   };
 
-  const studentVisibleFeed = useMemo(() => {
+  const disturbanceNowEpochMs = useMemo(
+    () => Math.max(feedDisturbanceClockMs, Date.now()),
+    [feedDisturbanceClockMs]
+  );
+
+  const studentDisturbedFeedSource = useMemo(() => {
     if (!studentData) {
       return [];
     }
-
-    const sourceFeed = applyFeedScenarioDisturbances(
+    return applyFeedScenarioDisturbances(
       studentData.feed,
-      feedScenarioConfig?.scenarioOverlays
+      feedScenarioConfig?.scenarioOverlays,
+      disturbanceNowEpochMs
     );
+  }, [disturbanceNowEpochMs, feedScenarioConfig?.scenarioOverlays, studentData]);
 
-    return sourceFeed.filter((event) => {
+  const studentNextDisturbanceReleaseAt = useMemo(() => {
+    if (!studentData) {
+      return null;
+    }
+    return nextFeedScenarioReleaseAt(
+      studentData.feed,
+      feedScenarioConfig?.scenarioOverlays,
+      disturbanceNowEpochMs
+    );
+  }, [disturbanceNowEpochMs, feedScenarioConfig?.scenarioOverlays, studentData]);
+
+  const studentVisibleFeed = useMemo(() => {
+    return studentDisturbedFeedSource.filter((event) => {
       if (!studentShowInternal && (event.isInternal || isTelemetryEvent(event))) {
         return false;
       }
       return feedMatchesTopic(event, studentTopicFilter);
     });
-  }, [feedScenarioConfig?.scenarioOverlays, studentData, studentShowInternal, studentTopicFilter]);
+  }, [studentDisturbedFeedSource, studentShowInternal, studentTopicFilter]);
 
-  const adminVisibleFeed = useMemo(() => {
+  const adminDisturbedFeedSource = useMemo(() => {
     if (!adminData || session?.role !== 'ADMIN' || adminPage !== 'feed') {
       return [];
     }
+    if (adminShowUndisturbedFeed) {
+      return adminData.events;
+    }
+    return applyFeedScenarioDisturbances(
+      adminData.events,
+      feedScenarioConfig?.scenarioOverlays,
+      disturbanceNowEpochMs
+    );
+  }, [
+    adminData,
+    adminPage,
+    adminShowUndisturbedFeed,
+    disturbanceNowEpochMs,
+    feedScenarioConfig?.scenarioOverlays,
+    session?.role
+  ]);
 
-    const sourceFeed = adminShowUndisturbedFeed
-      ? adminData.events
-      : applyFeedScenarioDisturbances(
-          adminData.events,
-          feedScenarioConfig?.scenarioOverlays
-        );
+  const adminNextDisturbanceReleaseAt = useMemo(() => {
+    if (!adminData || session?.role !== 'ADMIN' || adminPage !== 'feed' || adminShowUndisturbedFeed) {
+      return null;
+    }
+    return nextFeedScenarioReleaseAt(
+      adminData.events,
+      feedScenarioConfig?.scenarioOverlays,
+      disturbanceNowEpochMs
+    );
+  }, [
+    adminData,
+    adminPage,
+    adminShowUndisturbedFeed,
+    disturbanceNowEpochMs,
+    feedScenarioConfig?.scenarioOverlays,
+    session?.role
+  ]);
 
-    return sourceFeed.filter((event) => {
+  const nextDisturbanceReleaseAt = useMemo(() => {
+    const candidates = [studentNextDisturbanceReleaseAt, adminNextDisturbanceReleaseAt].filter(
+      (value): value is number => value !== null
+    );
+    if (candidates.length === 0) {
+      return null;
+    }
+    return Math.min(...candidates);
+  }, [adminNextDisturbanceReleaseAt, studentNextDisturbanceReleaseAt]);
+
+  useEffect(() => {
+    if (nextDisturbanceReleaseAt === null) {
+      return;
+    }
+    const now = Date.now();
+    const waitMs = Math.max(25, nextDisturbanceReleaseAt - now);
+    const timerId = window.setTimeout(() => {
+      setFeedDisturbanceClockMs(Date.now());
+    }, waitMs);
+    return () => {
+      window.clearTimeout(timerId);
+    };
+  }, [nextDisturbanceReleaseAt]);
+
+  const adminVisibleFeed = useMemo(() => {
+    return adminDisturbedFeedSource.filter((event) => {
       if (!adminIncludeInternal && (event.isInternal || isTelemetryEvent(event))) {
         return false;
       }
@@ -2512,14 +2584,10 @@ export default function App() {
     });
   }, [
     adminCategoryFilter,
-    adminData,
     adminDeviceFilter,
+    adminDisturbedFeedSource,
     adminIncludeInternal,
-    adminPage,
-    adminShowUndisturbedFeed,
-    adminTopicFilter,
-    feedScenarioConfig?.scenarioOverlays,
-    session?.role
+    adminTopicFilter
   ]);
 
   const studentFeedValues = useMemo(() => {
@@ -3415,7 +3483,6 @@ export default function App() {
                   onToggleAllowedBlock={toggleTaskPipelineAllowedBlock}
                   onScenarioOverlaysChange={changeTaskPipelineScenarioOverlays}
                   onSaveTaskConfig={saveAdminTaskPipelineConfig}
-                  formatTs={formatTs}
                 />
               ) : null}
 

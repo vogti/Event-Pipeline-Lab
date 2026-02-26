@@ -18,6 +18,8 @@ function scenarioLabelKey(key: PipelineScenarioKey): I18nKey {
       return 'pipelineScenarioDrops';
     case 'out_of_order':
       return 'pipelineScenarioOutOfOrder';
+    case 'reorder_buffer':
+      return 'pipelineScenarioReorderBuffer';
     default:
       return 'pipelineScenarioDuplicates';
   }
@@ -33,6 +35,8 @@ function scenarioDescriptionKey(key: PipelineScenarioKey): I18nKey {
       return 'pipelineScenarioDropsDesc';
     case 'out_of_order':
       return 'pipelineScenarioOutOfOrderDesc';
+    case 'reorder_buffer':
+      return 'pipelineScenarioReorderBufferDesc';
     default:
       return 'pipelineScenarioDuplicatesDesc';
   }

@@ -201,21 +201,49 @@ function withScenarioFlag(event: CanonicalEvent, flag: string): string {
   return `${raw};${flag}`;
 }
 
-function applyFeedScenarioDisturbances(
+interface FeedScenarioDisturbanceResult {
+  events: CanonicalEvent[];
+  nextReleaseAt: number | null;
+}
+
+function buildFeedScenarioDisturbances(
   events: CanonicalEvent[],
-  scenarioOverlays: string[] | null | undefined
-): CanonicalEvent[] {
+  scenarioOverlays: string[] | null | undefined,
+  nowEpochMs: number = Date.now()
+): FeedScenarioDisturbanceResult {
   const scenarios = parsePipelineScenarioOverlays(scenarioOverlays);
   const duplicatesPct = scenarios.duplicates ?? 0;
   const delayMs = scenarios.delay ?? 0;
   const dropsPct = scenarios.drops ?? 0;
   const outOfOrderPct = scenarios.out_of_order ?? 0;
+  const reorderBufferMs =
+    outOfOrderPct > 0
+      ? Math.max(0, scenarios.reorder_buffer ?? 1000)
+      : 0;
 
-  if (duplicatesPct <= 0 && delayMs <= 0 && dropsPct <= 0 && outOfOrderPct <= 0) {
-    return events;
+  if (
+    duplicatesPct <= 0 &&
+    delayMs <= 0 &&
+    dropsPct <= 0 &&
+    outOfOrderPct <= 0
+  ) {
+    return { events, nextReleaseAt: null };
   }
 
-  const transformed: Array<{ event: CanonicalEvent; sortTs: number }> = [];
+  const effectiveNowEpochMs = Number.isFinite(nowEpochMs) ? nowEpochMs : Date.now();
+  const visible: Array<{ event: CanonicalEvent; sortTs: number }> = [];
+  let nextReleaseAt: number | null = null;
+
+  const addIfReleased = (event: CanonicalEvent, releaseAt: number, sortTs: number): void => {
+    if (releaseAt <= effectiveNowEpochMs) {
+      visible.push({ event, sortTs });
+      return;
+    }
+    if (nextReleaseAt === null || releaseAt < nextReleaseAt) {
+      nextReleaseAt = releaseAt;
+    }
+  };
+
   for (const event of events) {
     const ingestEpoch = timestampToEpochMillis(event.ingestTs) ?? Number.MIN_SAFE_INTEGER;
     const eventId = event.id;
@@ -225,34 +253,36 @@ function applyFeedScenarioDisturbances(
     }
 
     const delayOffset = delayMs > 0 ? hashRange(eventId, 'delay', 0, delayMs) : 0;
-    const outOfOrderOffset =
-      outOfOrderPct > 0 && hashPct(eventId, 'ooo') < outOfOrderPct
-        ? hashRange(eventId, 'ooodelta', -Math.max(200, Math.floor(delayMs / 2)), Math.max(200, Math.floor(delayMs / 2)))
+    const reorderOffset =
+      outOfOrderPct > 0 && reorderBufferMs > 0 && hashPct(eventId, 'ooo') < outOfOrderPct
+        ? hashRange(eventId, 'ooodelta', -reorderBufferMs, reorderBufferMs)
         : 0;
-    const effectiveTs = ingestEpoch + delayOffset + outOfOrderOffset;
+    const releaseAt = ingestEpoch + delayOffset + reorderBufferMs + reorderOffset;
 
-    transformed.push({
-      event: {
+    addIfReleased(
+      {
         ...event,
         scenarioFlags: withScenarioFlag(event, 'disturbed')
       },
-      sortTs: effectiveTs
-    });
+      releaseAt,
+      releaseAt
+    );
 
     if (duplicatesPct > 0 && hashPct(eventId, 'duplicate') < duplicatesPct) {
-      const duplicateTs = effectiveTs + hashRange(eventId, 'dup_shift', 10, 350);
-      transformed.push({
-        event: {
+      const duplicateReleaseAt = releaseAt + hashRange(eventId, 'dup_shift', 10, 350);
+      addIfReleased(
+        {
           ...event,
           id: `${event.id}::dup`,
           scenarioFlags: withScenarioFlag(event, 'duplicate')
         },
-        sortTs: duplicateTs
-      });
+        duplicateReleaseAt,
+        duplicateReleaseAt
+      );
     }
   }
 
-  return transformed
+  const transformed = visible
     .sort((left, right) => {
       if (left.sortTs === right.sortTs) {
         return right.event.id.localeCompare(left.event.id);
@@ -261,6 +291,24 @@ function applyFeedScenarioDisturbances(
     })
     .map((entry) => entry.event)
     .slice(0, MAX_FEED_EVENTS);
+
+  return { events: transformed, nextReleaseAt };
+}
+
+function applyFeedScenarioDisturbances(
+  events: CanonicalEvent[],
+  scenarioOverlays: string[] | null | undefined,
+  nowEpochMs?: number
+): CanonicalEvent[] {
+  return buildFeedScenarioDisturbances(events, scenarioOverlays, nowEpochMs).events;
+}
+
+function nextFeedScenarioReleaseAt(
+  events: CanonicalEvent[],
+  scenarioOverlays: string[] | null | undefined,
+  nowEpochMs?: number
+): number | null {
+  return buildFeedScenarioDisturbances(events, scenarioOverlays, nowEpochMs).nextReleaseAt;
 }
 
 function isLikelyEpochTimestamp(value: number): boolean {
@@ -1552,6 +1600,7 @@ export {
   mergeEventsBounded,
   clampFeed,
   applyFeedScenarioDisturbances,
+  nextFeedScenarioReleaseAt,
   isLikelyEpochTimestamp,
   isCounterEvent,
   extractCounterValueFromPayload,
@@ -1629,5 +1678,6 @@ export type {
   MqttComposerMode,
   MqttComposerTargetType,
   MqttComposerTemplate,
-  MqttEventDraft
+  MqttEventDraft,
+  FeedScenarioDisturbanceResult
 };
