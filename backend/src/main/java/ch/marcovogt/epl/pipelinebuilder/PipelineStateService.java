@@ -181,7 +181,7 @@ public class PipelineStateService {
         PipelineState globalState = loadOrCreate(task.id(), PipelineOwnerType.ADMIN_GLOBAL, GLOBAL_OWNER_KEY, defaults);
         PipelineStatePayload globalCurrent = deserializeOrDefault(globalState.getStateJson(), defaults);
 
-        PipelineInputSection input = normalizeInput(request.input(), config, globalCurrent.input());
+        PipelineInputSection input = normalizeInput(request.input(), config, globalCurrent.input(), true);
         PipelineSinkSection sink = normalizeSink(request.sink(), globalCurrent.sink());
 
         PipelineStatePayload updatedGlobal = new PipelineStatePayload(
@@ -250,7 +250,7 @@ public class PipelineStateService {
             PipelineStatePayload defaults
     ) {
         if (!config.lecturerMode() || globalState == null) {
-            return groupPayload;
+            return new PipelineStatePayload(defaults.input(), groupPayload.processing(), defaults.sink());
         }
         PipelineStatePayload globalPayload = deserializeOrDefault(globalState.getStateJson(), defaults);
         return new PipelineStatePayload(globalPayload.input(), groupPayload.processing(), globalPayload.sink());
@@ -314,7 +314,7 @@ public class PipelineStateService {
                 config.inputMode(),
                 config.deviceScope(),
                 config.ingestFilters(),
-                config.scenarioOverlays()
+                PipelineScenarioOverlayCodec.normalize(config.scenarioOverlays(), false)
         );
         PipelineProcessingSection processing = normalizeProcessing(
                 new PipelineProcessingSection("CONSTRAINED", config.slotCount(), List.of()),
@@ -332,7 +332,7 @@ public class PipelineStateService {
             if (parsed == null) {
                 return defaults;
             }
-            PipelineInputSection input = normalizeInput(parsed.input(), null, defaults.input());
+            PipelineInputSection input = normalizeInput(parsed.input(), null, defaults.input(), false);
             PipelineProcessingSection processing = normalizeProcessing(
                     parsed.processing(),
                     defaults.processing().slotCount(),
@@ -359,6 +359,15 @@ public class PipelineStateService {
             PipelineTaskConfig taskConfig,
             PipelineInputSection fallback
     ) {
+        return normalizeInput(source, taskConfig, fallback, false);
+    }
+
+    private PipelineInputSection normalizeInput(
+            PipelineInputSection source,
+            PipelineTaskConfig taskConfig,
+            PipelineInputSection fallback,
+            boolean strictScenarios
+    ) {
         PipelineInputSection base = source == null ? fallback : source;
         if (base == null) {
             String defaultMode = taskConfig == null ? "LIVE_MQTT" : taskConfig.inputMode();
@@ -376,7 +385,7 @@ public class PipelineStateService {
                 mode,
                 scope,
                 sanitizeStringList(base.ingestFilters(), 20),
-                sanitizeStringList(base.scenarioOverlays(), 20)
+                PipelineScenarioOverlayCodec.normalize(base.scenarioOverlays(), strictScenarios)
         );
     }
 

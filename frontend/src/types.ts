@@ -37,6 +37,7 @@ export interface TaskPipelineConfig {
   visibleToStudents: boolean;
   slotCount: number;
   allowedProcessingBlocks: string[];
+  scenarioOverlays: string[];
   availableProcessingBlocks: string[];
   minSlotCount: number;
   maxSlotCount: number;

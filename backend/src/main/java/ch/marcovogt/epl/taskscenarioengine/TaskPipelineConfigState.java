@@ -23,6 +23,9 @@ public class TaskPipelineConfigState {
     @Column(name = "allowed_processing_blocks_json", nullable = false, columnDefinition = "text")
     private String allowedProcessingBlocksJson;
 
+    @Column(name = "scenario_overlays_json", columnDefinition = "text")
+    private String scenarioOverlaysJson;
+
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
@@ -59,6 +62,14 @@ public class TaskPipelineConfigState {
 
     public void setAllowedProcessingBlocksJson(String allowedProcessingBlocksJson) {
         this.allowedProcessingBlocksJson = allowedProcessingBlocksJson;
+    }
+
+    public String getScenarioOverlaysJson() {
+        return scenarioOverlaysJson;
+    }
+
+    public void setScenarioOverlaysJson(String scenarioOverlaysJson) {
+        this.scenarioOverlaysJson = scenarioOverlaysJson;
     }
 
     public Instant getUpdatedAt() {

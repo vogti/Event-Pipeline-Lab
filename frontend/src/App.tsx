@@ -1366,7 +1366,7 @@ export default function App() {
     });
   }, []);
 
-  const changeAdminPipelineScenarioOverlays = useCallback((raw: string) => {
+  const changeAdminPipelineScenarioOverlays = useCallback((scenarioOverlays: string[]) => {
     setAdminPipelineDraft((previous) => {
       if (!previous) {
         return previous;
@@ -1375,7 +1375,7 @@ export default function App() {
         ...previous,
         input: {
           ...previous.input,
-          scenarioOverlays: parsePipelineListInput(raw)
+          scenarioOverlays
         }
       };
     });
@@ -1460,6 +1460,18 @@ export default function App() {
     });
   }, []);
 
+  const changeTaskPipelineScenarioOverlays = useCallback((scenarioOverlays: string[]) => {
+    setAdminTaskPipelineConfigDraft((previous) => {
+      if (!previous) {
+        return previous;
+      }
+      return {
+        ...previous,
+        scenarioOverlays
+      };
+    });
+  }, []);
+
   const saveAdminTaskPipelineConfig = async () => {
     if (!token || !adminTaskPipelineConfigDraft) {
       return;
@@ -1473,7 +1485,8 @@ export default function App() {
         adminTaskPipelineConfigDraft.taskId,
         adminTaskPipelineConfigDraft.visibleToStudents,
         adminTaskPipelineConfigDraft.slotCount,
-        adminTaskPipelineConfigDraft.allowedProcessingBlocks
+        adminTaskPipelineConfigDraft.allowedProcessingBlocks,
+        adminTaskPipelineConfigDraft.scenarioOverlays
       );
       setAdminTaskPipelineConfig(updated);
       setAdminTaskPipelineConfigDraft(updated);
@@ -3118,6 +3131,7 @@ export default function App() {
                     onToggleVisibleToStudents={changeTaskPipelineVisibleToStudents}
                     onSlotCountChange={changeTaskPipelineSlotCount}
                     onToggleAllowedBlock={toggleTaskPipelineAllowedBlock}
+                    onScenarioOverlaysChange={changeTaskPipelineScenarioOverlays}
                     onSave={saveAdminTaskPipelineConfig}
                     formatTs={formatTs}
                   />

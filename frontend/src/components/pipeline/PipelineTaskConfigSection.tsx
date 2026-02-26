@@ -1,5 +1,13 @@
 import type { I18nKey } from '../../i18n';
 import type { TaskInfo, TaskPipelineConfig, TimestampValue } from '../../types';
+import {
+  buildPipelineScenarioOverlays,
+  parsePipelineScenarioOverlays,
+  PIPELINE_SCENARIO_DEFINITIONS,
+  scenarioDefaultValue,
+  type PipelineScenarioKey,
+  withScenarioValue
+} from '../../app/pipeline-scenarios';
 
 interface PipelineTaskConfigSectionProps {
   t: (key: I18nKey) => string;
@@ -12,8 +20,24 @@ interface PipelineTaskConfigSectionProps {
   onToggleVisibleToStudents: (visible: boolean) => void;
   onSlotCountChange: (slotCount: number) => void;
   onToggleAllowedBlock: (blockType: string, enabled: boolean) => void;
+  onScenarioOverlaysChange: (scenarioOverlays: string[]) => void;
   onSave: () => void;
   formatTs: (value: TimestampValue) => string;
+}
+
+function scenarioLabelKey(key: PipelineScenarioKey): I18nKey {
+  switch (key) {
+    case 'duplicates':
+      return 'pipelineScenarioDuplicates';
+    case 'delay':
+      return 'pipelineScenarioDelay';
+    case 'drops':
+      return 'pipelineScenarioDrops';
+    case 'out_of_order':
+      return 'pipelineScenarioOutOfOrder';
+    default:
+      return 'pipelineScenarioDuplicates';
+  }
 }
 
 export function PipelineTaskConfigSection({
@@ -27,9 +51,12 @@ export function PipelineTaskConfigSection({
   onToggleVisibleToStudents,
   onSlotCountChange,
   onToggleAllowedBlock,
+  onScenarioOverlaysChange,
   onSave,
   formatTs
 }: PipelineTaskConfigSectionProps) {
+  const scenarioValues = parsePipelineScenarioOverlays(config?.scenarioOverlays ?? []);
+
   return (
     <section className="panel panel-animate pipeline-task-config">
       <header className="panel-header">
@@ -95,6 +122,77 @@ export function PipelineTaskConfigSection({
                   <span className="mono">{block}</span>
                 </label>
               ))}
+            </div>
+          </div>
+
+          <div className="stack pipeline-field">
+            <span>{t('pipelineScenarioOverlays')}</span>
+            <div className="pipeline-scenario-editor">
+              {PIPELINE_SCENARIO_DEFINITIONS.map((definition) => {
+                const activeValue = scenarioValues[definition.key];
+                const enabled = typeof activeValue === 'number' && activeValue > 0;
+                const value = activeValue ?? scenarioDefaultValue(definition.key);
+                return (
+                  <div className="pipeline-scenario-row" key={definition.key}>
+                    <label className="checkbox-inline">
+                      <input
+                        type="checkbox"
+                        checked={enabled}
+                        onChange={(event) => {
+                          const nextValues = withScenarioValue(
+                            scenarioValues,
+                            definition.key,
+                            event.target.checked ? value : null
+                          );
+                          onScenarioOverlaysChange(buildPipelineScenarioOverlays(nextValues));
+                        }}
+                      />
+                      <span>{t(scenarioLabelKey(definition.key))}</span>
+                    </label>
+                    <div className="pipeline-scenario-controls">
+                      <input
+                        className="input"
+                        type="range"
+                        min={definition.min}
+                        max={definition.max}
+                        step={definition.step}
+                        value={value}
+                        onChange={(event) => {
+                          const nextRaw = Number.parseInt(event.target.value, 10);
+                          const nextValue = Number.isFinite(nextRaw) ? nextRaw : value;
+                          const nextValues = withScenarioValue(
+                            scenarioValues,
+                            definition.key,
+                            enabled ? nextValue : null
+                          );
+                          onScenarioOverlaysChange(buildPipelineScenarioOverlays(nextValues));
+                        }}
+                        disabled={!enabled}
+                      />
+                      <input
+                        className="input pipeline-scenario-number"
+                        type="number"
+                        min={definition.min}
+                        max={definition.max}
+                        step={definition.step}
+                        value={value}
+                        onChange={(event) => {
+                          const nextRaw = Number.parseInt(event.target.value, 10);
+                          const nextValue = Number.isFinite(nextRaw) ? nextRaw : value;
+                          const nextValues = withScenarioValue(
+                            scenarioValues,
+                            definition.key,
+                            enabled ? nextValue : null
+                          );
+                          onScenarioOverlaysChange(buildPipelineScenarioOverlays(nextValues));
+                        }}
+                        disabled={!enabled}
+                      />
+                      <span className="muted">{definition.unit}</span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 

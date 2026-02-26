@@ -231,7 +231,8 @@ export const api = {
     taskId: string,
     visibleToStudents: boolean,
     slotCount: number,
-    allowedProcessingBlocks: string[]
+    allowedProcessingBlocks: string[],
+    scenarioOverlays: string[]
   ): Promise<TaskPipelineConfig> {
     return request<TaskPipelineConfig>(
       '/api/admin/task-pipeline-config',
@@ -241,7 +242,8 @@ export const api = {
           taskId,
           visibleToStudents,
           slotCount,
-          allowedProcessingBlocks
+          allowedProcessingBlocks,
+          scenarioOverlays
         })
       },
       token

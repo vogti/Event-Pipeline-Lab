@@ -1,5 +1,13 @@
 import type { I18nKey } from '../../i18n';
 import type { PipelineProcessingSection, PipelineView } from '../../types';
+import {
+  buildPipelineScenarioOverlays,
+  parsePipelineScenarioOverlays,
+  PIPELINE_SCENARIO_DEFINITIONS,
+  scenarioDefaultValue,
+  type PipelineScenarioKey,
+  withScenarioValue
+} from '../../app/pipeline-scenarios';
 
 interface PipelineBuilderSectionProps {
   t: (key: I18nKey) => string;
@@ -13,7 +21,7 @@ interface PipelineBuilderSectionProps {
   onInputModeChange?: (nextMode: string) => void;
   onDeviceScopeChange?: (nextScope: string) => void;
   onIngestFiltersChange?: (nextValue: string) => void;
-  onScenarioOverlaysChange?: (nextValue: string) => void;
+  onScenarioOverlaysChange?: (nextValue: string[]) => void;
   onSinkTargetsChange?: (nextValue: string) => void;
   onSinkGoalChange?: (nextValue: string) => void;
   onSave: () => void;
@@ -22,6 +30,29 @@ interface PipelineBuilderSectionProps {
 
 function listToMultiline(value: string[]): string {
   return value.join('\n');
+}
+
+function scenarioLabelKey(key: PipelineScenarioKey): I18nKey {
+  switch (key) {
+    case 'duplicates':
+      return 'pipelineScenarioDuplicates';
+    case 'delay':
+      return 'pipelineScenarioDelay';
+    case 'drops':
+      return 'pipelineScenarioDrops';
+    case 'out_of_order':
+      return 'pipelineScenarioOutOfOrder';
+    default:
+      return 'pipelineScenarioDuplicates';
+  }
+}
+
+function scenarioBadgeLabel(t: (key: I18nKey) => string, key: PipelineScenarioKey, value: number): string {
+  const base = t(scenarioLabelKey(key));
+  if (key === 'delay') {
+    return `${base} ${value}ms`;
+  }
+  return `${base} ${value}%`;
 }
 
 export function PipelineBuilderSection({
@@ -68,6 +99,14 @@ export function PipelineBuilderSection({
   const blockOptions = ['NONE', ...view.permissions.allowedProcessingBlocks.filter((entry) => entry !== 'NONE')];
   const hasEditableSection =
     view.permissions.processingEditable || view.permissions.inputEditable || view.permissions.sinkEditable;
+  const scenarioValues = parsePipelineScenarioOverlays(view.input.scenarioOverlays);
+  const activeScenarioBadges = PIPELINE_SCENARIO_DEFINITIONS.flatMap((definition) => {
+    const value = scenarioValues[definition.key];
+    if (!value) {
+      return [];
+    }
+    return [scenarioBadgeLabel(t, definition.key, value)];
+  });
 
   return (
     <section className="panel panel-animate pipeline-builder">
@@ -136,13 +175,94 @@ export function PipelineBuilderSection({
           </label>
           <label className="stack pipeline-field">
             <span>{t('pipelineScenarioOverlays')}</span>
-            <textarea
-              className="input"
-              value={listToMultiline(view.input.scenarioOverlays)}
-              onChange={(event) => onScenarioOverlaysChange?.(event.target.value)}
-              disabled={!view.permissions.inputEditable}
-              rows={3}
-            />
+            {view.permissions.inputEditable ? (
+              <div className="pipeline-scenario-editor">
+                {PIPELINE_SCENARIO_DEFINITIONS.map((definition) => {
+                  const activeValue = scenarioValues[definition.key];
+                  const enabled = typeof activeValue === 'number' && activeValue > 0;
+                  const value = activeValue ?? scenarioDefaultValue(definition.key);
+                  return (
+                    <div className="pipeline-scenario-row" key={definition.key}>
+                      <label className="checkbox-inline">
+                        <input
+                          type="checkbox"
+                          checked={enabled}
+                          onChange={(event) => {
+                            if (!onScenarioOverlaysChange) {
+                              return;
+                            }
+                            const nextValues = withScenarioValue(
+                              scenarioValues,
+                              definition.key,
+                              event.target.checked ? value : null
+                            );
+                            onScenarioOverlaysChange(buildPipelineScenarioOverlays(nextValues));
+                          }}
+                        />
+                        <span>{t(scenarioLabelKey(definition.key))}</span>
+                      </label>
+                      <div className="pipeline-scenario-controls">
+                        <input
+                          className="input"
+                          type="range"
+                          min={definition.min}
+                          max={definition.max}
+                          step={definition.step}
+                          value={value}
+                          onChange={(event) => {
+                            if (!onScenarioOverlaysChange) {
+                              return;
+                            }
+                            const nextRaw = Number.parseInt(event.target.value, 10);
+                            const nextValue = Number.isFinite(nextRaw) ? nextRaw : value;
+                            const nextValues = withScenarioValue(
+                              scenarioValues,
+                              definition.key,
+                              enabled ? nextValue : null
+                            );
+                            onScenarioOverlaysChange(buildPipelineScenarioOverlays(nextValues));
+                          }}
+                          disabled={!enabled}
+                        />
+                        <input
+                          className="input pipeline-scenario-number"
+                          type="number"
+                          min={definition.min}
+                          max={definition.max}
+                          step={definition.step}
+                          value={value}
+                          onChange={(event) => {
+                            if (!onScenarioOverlaysChange) {
+                              return;
+                            }
+                            const nextRaw = Number.parseInt(event.target.value, 10);
+                            const nextValue = Number.isFinite(nextRaw) ? nextRaw : value;
+                            const nextValues = withScenarioValue(
+                              scenarioValues,
+                              definition.key,
+                              enabled ? nextValue : null
+                            );
+                            onScenarioOverlaysChange(buildPipelineScenarioOverlays(nextValues));
+                          }}
+                          disabled={!enabled}
+                        />
+                        <span className="muted">{definition.unit}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : activeScenarioBadges.length > 0 ? (
+              <div className="chip-row">
+                {activeScenarioBadges.map((label) => (
+                  <span className="chip warn" key={label}>
+                    {label}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="muted">{t('pipelineScenarioNone')}</p>
+            )}
           </label>
           {!view.permissions.inputEditable ? <p className="muted">{t('pipelineReadOnlyTask')}</p> : null}
         </article>

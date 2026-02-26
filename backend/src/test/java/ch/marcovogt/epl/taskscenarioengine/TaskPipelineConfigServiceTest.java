@@ -38,6 +38,7 @@ class TaskPipelineConfigServiceTest {
         override.setVisibleToStudents(false);
         override.setSlotCount(6);
         override.setAllowedProcessingBlocksJson("[\"dedup\",\"UNKNOWN\",\"route\",\"dedup\",\"none\"]");
+        override.setScenarioOverlaysJson("[\"delay:400ms\",\"duplicates:12%\"]");
         when(repository.findById("task_test")).thenReturn(Optional.of(override));
 
         TaskDefinition overridden = service.applyOverrides(baselineTaskDefinition());
@@ -45,6 +46,7 @@ class TaskPipelineConfigServiceTest {
         assertThat(overridden.pipeline().visibleToStudents()).isFalse();
         assertThat(overridden.pipeline().slotCount()).isEqualTo(6);
         assertThat(overridden.pipeline().allowedProcessingBlocks()).containsExactly("DEDUP", "ROUTE");
+        assertThat(overridden.pipeline().scenarioOverlays()).containsExactly("duplicates:12%", "delay:400ms");
         assertThat(overridden.pipeline().lecturerMode()).isTrue();
         assertThat(overridden.pipeline().inputMode()).isEqualTo("LIVE_MQTT");
     }
@@ -56,12 +58,29 @@ class TaskPipelineConfigServiceTest {
         override.setVisibleToStudents(true);
         override.setSlotCount(5);
         override.setAllowedProcessingBlocksJson("[]");
+        override.setScenarioOverlaysJson("[]");
         when(repository.findById("task_test")).thenReturn(Optional.of(override));
 
         TaskDefinition overridden = service.applyOverrides(baselineTaskDefinition());
 
         assertThat(overridden.pipeline().allowedProcessingBlocks())
                 .containsExactly("FILTER_DEVICE_TOPIC", "PARSE_VALIDATE", "ROUTE");
+        assertThat(overridden.pipeline().scenarioOverlays()).isEmpty();
+    }
+
+    @Test
+    void applyOverridesShouldKeepBaselineScenariosWhenScenarioOverrideIsMissing() {
+        TaskPipelineConfigState override = new TaskPipelineConfigState();
+        override.setTaskId("task_test");
+        override.setVisibleToStudents(true);
+        override.setSlotCount(5);
+        override.setAllowedProcessingBlocksJson("[\"route\"]");
+        override.setScenarioOverlaysJson(null);
+        when(repository.findById("task_test")).thenReturn(Optional.of(override));
+
+        TaskDefinition overridden = service.applyOverrides(taskDefinitionWithBaselineScenario());
+
+        assertThat(overridden.pipeline().scenarioOverlays()).containsExactly("delay:300ms");
     }
 
     @Test
@@ -79,12 +98,14 @@ class TaskPipelineConfigServiceTest {
                 false,
                 4,
                 List.of("parse_validate", "route", "route"),
+                List.of("delay:250ms", "drop:4%"),
                 "admin"
         );
 
         assertThat(updated.visibleToStudents()).isFalse();
         assertThat(updated.slotCount()).isEqualTo(4);
         assertThat(updated.allowedProcessingBlocks()).containsExactly("PARSE_VALIDATE", "ROUTE");
+        assertThat(updated.scenarioOverlays()).containsExactly("delay:250ms", "drops:4%");
         assertThat(updated.overrideActive()).isTrue();
         assertThat(updated.availableProcessingBlocks()).doesNotContain(PipelineBlockLibrary.NONE);
         assertThat(updated.updatedBy()).isEqualTo("admin");
@@ -98,6 +119,7 @@ class TaskPipelineConfigServiceTest {
                 true,
                 5,
                 List.of("ROUTE", "NOT_A_BLOCK"),
+                List.of(),
                 "admin"
         ))
                 .isInstanceOf(ResponseStatusException.class)
@@ -115,6 +137,7 @@ class TaskPipelineConfigServiceTest {
                 true,
                 7,
                 List.of("ROUTE"),
+                List.of(),
                 "admin"
         ))
                 .isInstanceOf(ResponseStatusException.class)
@@ -142,6 +165,29 @@ class TaskPipelineConfigServiceTest {
                         "GROUP_DEVICES",
                         List.of(),
                         List.of(),
+                        List.of("DEVICE_CONTROL"),
+                        "Goal"
+                )
+        );
+    }
+
+    private TaskDefinition taskDefinitionWithBaselineScenario() {
+        return new TaskDefinition(
+                "task_test",
+                "Task",
+                "Task",
+                "Description",
+                "Description",
+                new TaskCapabilities(false, false, false, false, List.of(), List.of()),
+                new PipelineTaskConfig(
+                        true,
+                        true,
+                        5,
+                        List.of("FILTER_DEVICE_TOPIC", "PARSE_VALIDATE", "ROUTE"),
+                        "LIVE_MQTT",
+                        "GROUP_DEVICES",
+                        List.of(),
+                        List.of("delay:300ms"),
                         List.of("DEVICE_CONTROL"),
                         "Goal"
                 )

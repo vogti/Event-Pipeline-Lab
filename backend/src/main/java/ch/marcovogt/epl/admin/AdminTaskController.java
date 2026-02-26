@@ -90,6 +90,7 @@ public class AdminTaskController {
                 body.visibleToStudents(),
                 body.slotCount(),
                 body.allowedProcessingBlocks(),
+                body.scenarioOverlays(),
                 principal.username()
         );
 
@@ -100,7 +101,8 @@ public class AdminTaskController {
                         "taskId", updated.taskId(),
                         "visibleToStudents", updated.visibleToStudents(),
                         "slotCount", updated.slotCount(),
-                        "allowedBlocks", updated.allowedProcessingBlocks()
+                        "allowedBlocks", updated.allowedProcessingBlocks(),
+                        "scenarioOverlays", updated.scenarioOverlays()
                 )
         );
 

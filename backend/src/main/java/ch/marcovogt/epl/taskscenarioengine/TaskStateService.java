@@ -102,6 +102,7 @@ public class TaskStateService {
             boolean visibleToStudents,
             int slotCount,
             List<String> allowedProcessingBlocks,
+            List<String> scenarioOverlays,
             String actor
     ) {
         TaskDefinition baseline = taskCatalog.findById(taskId)
@@ -111,6 +112,7 @@ public class TaskStateService {
                 visibleToStudents,
                 slotCount,
                 allowedProcessingBlocks,
+                scenarioOverlays,
                 actor
         );
     }

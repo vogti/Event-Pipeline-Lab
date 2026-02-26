@@ -11,6 +11,7 @@ public record UpdateTaskPipelineConfigRequest(
         @NotBlank String taskId,
         boolean visibleToStudents,
         @Min(4) @Max(6) int slotCount,
-        @NotNull @NotEmpty List<String> allowedProcessingBlocks
+        @NotNull @NotEmpty List<String> allowedProcessingBlocks,
+        @NotNull List<String> scenarioOverlays
 ) {
 }

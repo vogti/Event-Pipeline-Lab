@@ -52,6 +52,7 @@ Event-Pipeline-Lab/
         V8__cleanup_virtual_rows_from_device_status.sql
         V9__pipeline_builder_state.sql
         V10__task_pipeline_config.sql
+        V11__task_pipeline_config_scenarios.sql
     Dockerfile
     build.gradle
     settings.gradle
@@ -92,7 +93,7 @@ PBV is implemented in staged increments to keep lecture reliability high.
    - Task editor controls for allowed block presets/ranges  
    - Better admin compare view across groups  
    - Explicit PBV visibility toggle per task
-3. **Stage 3 (next)**  
+3. **Stage 3 (implemented)**  
    - Scenario engine controls in PBV (duplicates/delay/drop/out-of-order)  
    - Student transparency badges for active disturbances
 4. **Stage 4**  
@@ -243,7 +244,7 @@ docker run --rm --network epl_default curlimages/curl:8.12.1 -sS http://backend:
 docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST http://backend:8080/api/admin/system-status/events/reset -H "X-EPL-Session: ${ADMIN_TOKEN}" -H 'Content-Type: application/json' -d '{"confirm":true}'
 ```
 
-## Pipeline Builder API (Stage 1-2)
+## Pipeline Builder API (Stage 1-3)
 
 ```bash
 # Student: load own group pipeline for active task
@@ -280,12 +281,12 @@ docker run --rm --network epl_default curlimages/curl:8.12.1 -sS \
   "http://backend:8080/api/admin/task-pipeline-config?taskId=task_intro" \
   -H "X-EPL-Session: ${ADMIN_TOKEN}"
 
-# Admin: update PBV task config (visibility + slot range + allowed blocks)
+# Admin: update PBV task config (visibility + slot range + allowed blocks + scenarios)
 docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST \
   http://backend:8080/api/admin/task-pipeline-config \
   -H "X-EPL-Session: ${ADMIN_TOKEN}" \
   -H 'Content-Type: application/json' \
-  -d '{"taskId":"task_intro","visibleToStudents":true,"slotCount":5,"allowedProcessingBlocks":["FILTER_DEVICE_TOPIC","PARSE_VALIDATE","ROUTE"]}'
+  -d '{"taskId":"task_intro","visibleToStudents":true,"slotCount":5,"allowedProcessingBlocks":["FILTER_DEVICE_TOPIC","PARSE_VALIDATE","ROUTE"],"scenarioOverlays":["duplicates:10%","delay:300ms","drops:5%","out_of_order:10%"]}'
 ```
 
 ## System Data Export / Import

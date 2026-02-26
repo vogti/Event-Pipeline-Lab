@@ -78,6 +78,7 @@ class TaskStateServiceTest {
                 true,
                 5,
                 List.of("ROUTE"),
+                List.of("delay:300ms"),
                 List.of("ROUTE"),
                 4,
                 6,
@@ -86,7 +87,7 @@ class TaskStateServiceTest {
                 null,
                 "admin"
         );
-        when(taskPipelineConfigService.update(any(), anyBoolean(), anyInt(), any(), any()))
+        when(taskPipelineConfigService.update(any(), anyBoolean(), anyInt(), any(), any(), any()))
                 .thenReturn(expected);
 
         TaskPipelineConfigDto result = service.updateTaskPipelineConfig(
@@ -94,11 +95,12 @@ class TaskStateServiceTest {
                 true,
                 5,
                 List.of("ROUTE"),
+                List.of("delay:300ms"),
                 "admin"
         );
 
         ArgumentCaptor<TaskDefinition> taskCaptor = ArgumentCaptor.forClass(TaskDefinition.class);
-        verify(taskPipelineConfigService).update(taskCaptor.capture(), anyBoolean(), anyInt(), any(), any());
+        verify(taskPipelineConfigService).update(taskCaptor.capture(), anyBoolean(), anyInt(), any(), any(), any());
         assertThat(taskCaptor.getValue().id()).isEqualTo("task_intro");
         assertThat(taskCaptor.getValue().pipeline().slotCount()).isEqualTo(5);
         assertThat(result).isEqualTo(expected);

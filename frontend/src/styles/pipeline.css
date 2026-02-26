@@ -36,6 +36,30 @@
   gap: 0.3rem;
 }
 
+.pipeline-scenario-editor {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.pipeline-scenario-row {
+  border: 1px solid rgba(72, 118, 148, 0.22);
+  border-radius: 10px;
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.4rem 0.5rem;
+}
+
+.pipeline-scenario-controls {
+  align-items: center;
+  display: grid;
+  gap: 0.4rem;
+  grid-template-columns: 1fr 82px auto;
+}
+
+.pipeline-scenario-number {
+  min-width: 0;
+}
+
 .pipeline-task-config .panel-header {
   align-items: center;
   display: flex;

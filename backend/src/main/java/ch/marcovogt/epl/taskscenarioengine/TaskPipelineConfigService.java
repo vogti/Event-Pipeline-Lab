@@ -1,6 +1,7 @@
 package ch.marcovogt.epl.taskscenarioengine;
 
 import ch.marcovogt.epl.pipelinebuilder.PipelineBlockLibrary;
+import ch.marcovogt.epl.pipelinebuilder.PipelineScenarioOverlayCodec;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
@@ -41,6 +42,10 @@ public class TaskPipelineConfigService {
 
         PipelineTaskConfig base = definition.pipeline();
         List<String> allowedBlocks = normalizeAllowedBlocks(parseAllowedBlocks(override.getAllowedProcessingBlocksJson()));
+        String rawScenarioOverlays = override.getScenarioOverlaysJson();
+        List<String> scenarioOverlays = rawScenarioOverlays == null
+                ? normalizeScenarioOverlays(base.scenarioOverlays())
+                : normalizeScenarioOverlays(parseScenarioOverlays(rawScenarioOverlays));
         int slotCount = clampSlotCount(override.getSlotCount());
         PipelineTaskConfig overridden = new PipelineTaskConfig(
                 override.isVisibleToStudents(),
@@ -50,7 +55,7 @@ public class TaskPipelineConfigService {
                 base.inputMode(),
                 base.deviceScope(),
                 base.ingestFilters(),
-                base.scenarioOverlays(),
+                scenarioOverlays,
                 base.sinkTargets(),
                 base.sinkGoal()
         );
@@ -75,6 +80,7 @@ public class TaskPipelineConfigService {
                 pipeline.visibleToStudents(),
                 clampSlotCount(pipeline.slotCount()),
                 normalizeAllowedBlocks(pipeline.allowedProcessingBlocks()),
+                normalizeScenarioOverlays(pipeline.scenarioOverlays()),
                 availableBlocks(),
                 MIN_SLOT_COUNT,
                 MAX_SLOT_COUNT,
@@ -91,10 +97,12 @@ public class TaskPipelineConfigService {
             boolean visibleToStudents,
             int slotCount,
             List<String> allowedProcessingBlocks,
+            List<String> scenarioOverlays,
             String actor
     ) {
         int normalizedSlotCount = clampSlotCountStrict(slotCount);
         List<String> normalizedAllowedBlocks = normalizeAllowedBlocksStrict(allowedProcessingBlocks);
+        List<String> normalizedScenarioOverlays = normalizeScenarioOverlaysStrict(scenarioOverlays);
 
         TaskPipelineConfigState state = repository.findById(baselineDefinition.id())
                 .orElseGet(() -> {
@@ -106,6 +114,7 @@ public class TaskPipelineConfigService {
         state.setVisibleToStudents(visibleToStudents);
         state.setSlotCount(normalizedSlotCount);
         state.setAllowedProcessingBlocksJson(serializeAllowedBlocks(normalizedAllowedBlocks));
+        state.setScenarioOverlaysJson(serializeScenarioOverlays(normalizedScenarioOverlays));
         state.setUpdatedAt(Instant.now(clock));
         state.setUpdatedBy(actor == null || actor.isBlank() ? "system" : actor);
         repository.save(state);
@@ -127,9 +136,30 @@ public class TaskPipelineConfigService {
         }
     }
 
+    private List<String> parseScenarioOverlays(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return List.of();
+        }
+        try {
+            @SuppressWarnings("unchecked")
+            List<String> parsed = objectMapper.readValue(raw, List.class);
+            return parsed == null ? List.of() : parsed;
+        } catch (JsonProcessingException ex) {
+            return List.of();
+        }
+    }
+
     private String serializeAllowedBlocks(List<String> allowedBlocks) {
         try {
             return objectMapper.writeValueAsString(allowedBlocks);
+        } catch (JsonProcessingException ex) {
+            return "[]";
+        }
+    }
+
+    private String serializeScenarioOverlays(List<String> scenarioOverlays) {
+        try {
+            return objectMapper.writeValueAsString(scenarioOverlays);
         } catch (JsonProcessingException ex) {
             return "[]";
         }
@@ -218,5 +248,16 @@ public class TaskPipelineConfigService {
             throw new ResponseStatusException(BAD_REQUEST, "Unknown block types: " + String.join(", ", unknown));
         }
         return normalized;
+    }
+
+    private List<String> normalizeScenarioOverlays(List<String> raw) {
+        return PipelineScenarioOverlayCodec.normalize(raw, false);
+    }
+
+    private List<String> normalizeScenarioOverlaysStrict(List<String> raw) {
+        if (raw == null) {
+            return List.of();
+        }
+        return PipelineScenarioOverlayCodec.normalize(raw, true);
     }
 }
