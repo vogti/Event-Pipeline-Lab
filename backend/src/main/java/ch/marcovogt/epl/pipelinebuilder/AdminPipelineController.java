@@ -50,6 +50,12 @@ public class AdminPipelineController {
         return pipelineStateService.getAdminView(groupKey);
     }
 
+    @GetMapping("/compare")
+    public List<PipelineCompareRowDto> comparePipelines(HttpServletRequest request) {
+        requestAuth.requireRole(request, AppRole.ADMIN);
+        return pipelineStateService.compareForActiveTask(authService.listStudentGroupKeys());
+    }
+
     @PostMapping
     public PipelineViewDto updatePipeline(
             HttpServletRequest request,

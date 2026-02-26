@@ -36,6 +36,18 @@
   gap: 0.3rem;
 }
 
+.pipeline-task-config .panel-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.pipeline-block-checks {
+  display: grid;
+  gap: 0.35rem 0.75rem;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+
 @media (max-width: 980px) {
   .pipeline-grid {
     grid-template-columns: 1fr;

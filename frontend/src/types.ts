@@ -32,6 +32,20 @@ export interface TaskInfo {
   active: boolean;
 }
 
+export interface TaskPipelineConfig {
+  taskId: string;
+  visibleToStudents: boolean;
+  slotCount: number;
+  allowedProcessingBlocks: string[];
+  availableProcessingBlocks: string[];
+  minSlotCount: number;
+  maxSlotCount: number;
+  lecturerMode: boolean;
+  overrideActive: boolean;
+  updatedAt: TimestampValue;
+  updatedBy: string | null;
+}
+
 export interface TaskCapabilities {
   canViewRoomEvents: boolean;
   canSendDeviceCommands: boolean;
@@ -223,6 +237,15 @@ export interface PipelineView {
   revision: number;
   updatedAt: TimestampValue;
   updatedBy: string;
+}
+
+export interface PipelineCompareRow {
+  taskId: string;
+  groupKey: string;
+  revision: number;
+  updatedAt: TimestampValue;
+  updatedBy: string;
+  slotBlocks: string[];
 }
 
 export interface StudentBootstrap {

@@ -72,6 +72,7 @@ interface UseRealtimeSyncParams {
   selectedAdminPipelineGroupKeyRef: MutableRefObject<string>;
   onStudentPipelineUpdated: (view: PipelineView) => void;
   onAdminPipelineUpdated: (view: PipelineView) => void;
+  onAdminPipelineObserved: (view: PipelineView, selectedGroupKey: string) => void;
 }
 
 export function useRealtimeSync({
@@ -102,7 +103,8 @@ export function useRealtimeSync({
   setTimeFormat24h,
   selectedAdminPipelineGroupKeyRef,
   onStudentPipelineUpdated,
-  onAdminPipelineUpdated
+  onAdminPipelineUpdated,
+  onAdminPipelineObserved
 }: UseRealtimeSyncParams): void {
   useEffect(() => {
     if (!session || !token) {
@@ -481,10 +483,11 @@ export function useRealtimeSync({
         setErrorMessage(String(payload));
       },
       'pipeline.state.updated': (view) => {
-        if (view.groupKey !== selectedAdminPipelineGroupKeyRef.current) {
-          return;
+        const selectedGroupKey = selectedAdminPipelineGroupKeyRef.current;
+        onAdminPipelineObserved(view, selectedGroupKey);
+        if (view.groupKey === selectedGroupKey) {
+          onAdminPipelineUpdated(view);
         }
-        onAdminPipelineUpdated(view);
       }
     };
 
@@ -576,6 +579,7 @@ export function useRealtimeSync({
     adminPauseRef,
     flushDeferredAdminFeedEvents,
     markFeedEventsRecent,
+    onAdminPipelineObserved,
     onAdminPipelineUpdated,
     onStudentPipelineUpdated,
     queueDeferredAdminFeedEvents,

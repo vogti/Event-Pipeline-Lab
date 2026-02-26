@@ -7,7 +7,9 @@ import type {
   DeviceCommandType,
   EventCategory,
   LanguageMode,
+  PipelineCompareRow,
   PipelineProcessingSection,
+  TaskPipelineConfig,
   PipelineView,
   SystemDataImportVerifyResponse,
   SystemDataPart,
@@ -95,6 +97,8 @@ import { StudentCommandsSection } from './components/student/StudentCommandsSect
 import { StudentVirtualDeviceSection } from './components/student/StudentVirtualDeviceSection';
 import { AppModals } from './components/AppModals';
 import { PipelineBuilderSection } from './components/pipeline/PipelineBuilderSection';
+import { PipelineTaskConfigSection } from './components/pipeline/PipelineTaskConfigSection';
+import { PipelineCompareSection } from './components/pipeline/PipelineCompareSection';
 import { useAdminSystemStatusPolling } from './hooks/useAdminSystemStatusPolling';
 import { useRealtimeSync } from './hooks/useRealtimeSync';
 import {
@@ -126,6 +130,16 @@ function setPipelineSlotBlock(
     ...processing,
     slots: nextSlots.sort((a, b) => a.index - b.index)
   };
+}
+
+function toggleStringInList(values: string[], value: string, enabled: boolean): string[] {
+  if (enabled) {
+    if (values.includes(value)) {
+      return values;
+    }
+    return [...values, value];
+  }
+  return values.filter((entry) => entry !== value);
 }
 
 export default function App() {
@@ -161,6 +175,10 @@ export default function App() {
   const [adminPipeline, setAdminPipeline] = useState<PipelineView | null>(null);
   const [adminPipelineDraft, setAdminPipelineDraft] = useState<PipelineView | null>(null);
   const [adminPipelineGroupKey, setAdminPipelineGroupKey] = useState('');
+  const [adminPipelineTaskId, setAdminPipelineTaskId] = useState('');
+  const [adminTaskPipelineConfig, setAdminTaskPipelineConfig] = useState<TaskPipelineConfig | null>(null);
+  const [adminTaskPipelineConfigDraft, setAdminTaskPipelineConfigDraft] = useState<TaskPipelineConfig | null>(null);
+  const [adminPipelineCompareRows, setAdminPipelineCompareRows] = useState<PipelineCompareRow[]>([]);
   const [studentVirtualPatch, setStudentVirtualPatch] = useState<VirtualDevicePatch | null>(null);
   const [virtualControlDeviceId, setVirtualControlDeviceId] = useState<string | null>(null);
   const [virtualControlPatch, setVirtualControlPatch] = useState<VirtualDevicePatch | null>(null);
@@ -399,6 +417,10 @@ export default function App() {
     setAdminPipeline(null);
     setAdminPipelineDraft(null);
     setAdminPipelineGroupKey('');
+    setAdminPipelineTaskId('');
+    setAdminTaskPipelineConfig(null);
+    setAdminTaskPipelineConfigDraft(null);
+    setAdminPipelineCompareRows([]);
     adminPipelineGroupKeyRef.current = '';
     setStudentVirtualPatch(null);
     setVirtualControlDeviceId(null);
@@ -488,6 +510,42 @@ export default function App() {
     [token]
   );
 
+  const loadAdminTaskPipelineConfig = useCallback(
+    async (taskId: string) => {
+      if (!token || !taskId) {
+        setAdminTaskPipelineConfig(null);
+        setAdminTaskPipelineConfigDraft(null);
+        return;
+      }
+
+      setBusyKey('admin-task-pipeline-config-load');
+      setErrorMessage(null);
+      try {
+        const config = await api.adminTaskPipelineConfig(token, taskId);
+        setAdminTaskPipelineConfig(config);
+        setAdminTaskPipelineConfigDraft(config);
+      } catch (error) {
+        setErrorMessage(toErrorMessage(error));
+      } finally {
+        setBusyKey(null);
+      }
+    },
+    [token]
+  );
+
+  const loadAdminPipelineCompare = useCallback(async () => {
+    if (!token) {
+      setAdminPipelineCompareRows([]);
+      return;
+    }
+    try {
+      const rows = await api.adminPipelineCompare(token);
+      setAdminPipelineCompareRows(rows);
+    } catch (error) {
+      reportBackgroundError('adminPipelineCompare', error);
+    }
+  }, [reportBackgroundError, token]);
+
   const loadDashboards = useCallback(async (auth: AuthMe, activeToken: string) => {
     if (auth.role === 'STUDENT') {
       const [bootstrap, pipeline] = await Promise.all([
@@ -542,16 +600,30 @@ export default function App() {
     setAdminPage('dashboard');
 
     const initialGroupKey = groups[0]?.groupKey ?? '';
+    const initialTaskId = tasks.find((task) => task.active)?.id ?? tasks[0]?.id ?? '';
     setAdminPipelineGroupKey(initialGroupKey);
+    setAdminPipelineTaskId(initialTaskId);
     adminPipelineGroupKeyRef.current = initialGroupKey;
-    if (initialGroupKey) {
-      const pipeline = await api.adminPipeline(activeToken, initialGroupKey);
-      setAdminPipeline(pipeline);
-      setAdminPipelineDraft(pipeline);
-    } else {
-      setAdminPipeline(null);
-      setAdminPipelineDraft(null);
-    }
+
+    const pipelinePromise = initialGroupKey
+      ? api.adminPipeline(activeToken, initialGroupKey)
+      : Promise.resolve<PipelineView | null>(null);
+    const taskConfigPromise = initialTaskId
+      ? api.adminTaskPipelineConfig(activeToken, initialTaskId)
+      : Promise.resolve<TaskPipelineConfig | null>(null);
+    const comparePromise = api.adminPipelineCompare(activeToken);
+
+    const [pipeline, taskConfig, compareRows] = await Promise.all([
+      pipelinePromise,
+      taskConfigPromise,
+      comparePromise
+    ]);
+
+    setAdminPipeline(pipeline);
+    setAdminPipelineDraft(pipeline);
+    setAdminTaskPipelineConfig(taskConfig);
+    setAdminTaskPipelineConfigDraft(taskConfig);
+    setAdminPipelineCompareRows(compareRows);
   }, []);
 
   useEffect(() => {
@@ -637,11 +709,16 @@ export default function App() {
     () => (adminData?.groups ?? []).map((group) => group.groupKey).join('|'),
     [adminData?.groups]
   );
+  const adminTaskIdsSignature = useMemo(
+    () => (adminData?.tasks ?? []).map((task) => task.id).join('|'),
+    [adminData?.tasks]
+  );
   const adminTaskActivitySignature = useMemo(
     () => (adminData?.tasks ?? []).map((task) => `${task.id}:${task.active}`).join('|'),
     [adminData?.tasks]
   );
   const adminGroups = useMemo(() => adminData?.groups ?? [], [adminData?.groups]);
+  const adminTasks = useMemo(() => adminData?.tasks ?? [], [adminData?.tasks]);
   const hasAdminData = adminData !== null;
 
   useEffect(() => {
@@ -662,6 +739,21 @@ export default function App() {
   }, [adminGroupKeysSignature, adminGroups, adminPipelineGroupKey, loadAdminPipelineForGroup]);
 
   useEffect(() => {
+    const taskIds = adminTasks.map((task) => task.id);
+    if (taskIds.length === 0) {
+      setAdminPipelineTaskId('');
+      setAdminTaskPipelineConfig(null);
+      setAdminTaskPipelineConfigDraft(null);
+      return;
+    }
+    if (!adminPipelineTaskId || !taskIds.includes(adminPipelineTaskId)) {
+      const activeTaskId = adminTasks.find((task) => task.active)?.id ?? taskIds[0];
+      setAdminPipelineTaskId(activeTaskId);
+      void loadAdminTaskPipelineConfig(activeTaskId);
+    }
+  }, [adminTaskIdsSignature, adminTasks, adminPipelineTaskId, loadAdminTaskPipelineConfig]);
+
+  useEffect(() => {
     if (!token || session?.role !== 'ADMIN' || !adminPipelineGroupKey || !hasAdminData) {
       return;
     }
@@ -673,6 +765,27 @@ export default function App() {
     adminPipelineGroupKey,
     adminTaskActivitySignature,
     loadAdminPipelineForGroup
+  ]);
+
+  useEffect(() => {
+    if (!token || session?.role !== 'ADMIN' || !adminPipelineTaskId || !hasAdminData) {
+      return;
+    }
+    void loadAdminTaskPipelineConfig(adminPipelineTaskId);
+  }, [token, session?.role, adminPipelineTaskId, hasAdminData, loadAdminTaskPipelineConfig]);
+
+  useEffect(() => {
+    if (!token || session?.role !== 'ADMIN' || !hasAdminData) {
+      return;
+    }
+    void loadAdminPipelineCompare();
+  }, [
+    token,
+    session?.role,
+    hasAdminData,
+    adminGroupKeysSignature,
+    adminTaskActivitySignature,
+    loadAdminPipelineCompare
   ]);
 
   useEffect(() => {
@@ -925,6 +1038,34 @@ export default function App() {
     setAdminPipelineDraft(view);
   }, []);
 
+  const applyAdminPipelineObservedFromWs = useCallback((view: PipelineView, selectedGroupKey: string) => {
+    setAdminPipelineCompareRows((previous) => {
+      const nextRow: PipelineCompareRow = {
+        taskId: view.taskId,
+        groupKey: view.groupKey,
+        revision: view.revision,
+        updatedAt: view.updatedAt,
+        updatedBy: view.updatedBy,
+        slotBlocks: Array.from({ length: view.processing.slotCount }).map((_, index) => {
+          const slot = view.processing.slots.find((entry) => entry.index === index);
+          return slot?.blockType ?? 'NONE';
+        })
+      };
+
+      const existingIndex = previous.findIndex((row) => row.groupKey === view.groupKey);
+      const next = existingIndex >= 0
+        ? previous.map((row, index) => (index === existingIndex ? nextRow : row))
+        : [...previous, nextRow];
+
+      return [...next].sort((left, right) => left.groupKey.localeCompare(right.groupKey));
+    });
+
+    if (view.groupKey === selectedGroupKey) {
+      setAdminPipeline(view);
+      setAdminPipelineDraft(view);
+    }
+  }, []);
+
   useRealtimeSync({
     session,
     token,
@@ -953,7 +1094,8 @@ export default function App() {
     setTimeFormat24h,
     selectedAdminPipelineGroupKeyRef: adminPipelineGroupKeyRef,
     onStudentPipelineUpdated: applyStudentPipelineFromWs,
-    onAdminPipelineUpdated: applyAdminPipelineFromWs
+    onAdminPipelineUpdated: applyAdminPipelineFromWs,
+    onAdminPipelineObserved: applyAdminPipelineObservedFromWs
   });
 
   const adminPhysicalDeviceIds = useMemo(() => {
@@ -1269,6 +1411,88 @@ export default function App() {
     });
   }, []);
 
+  const selectAdminPipelineTask = useCallback(
+    (taskId: string) => {
+      setAdminPipelineTaskId(taskId);
+      void loadAdminTaskPipelineConfig(taskId);
+    },
+    [loadAdminTaskPipelineConfig]
+  );
+
+  const changeTaskPipelineVisibleToStudents = useCallback((visible: boolean) => {
+    setAdminTaskPipelineConfigDraft((previous) => {
+      if (!previous) {
+        return previous;
+      }
+      return {
+        ...previous,
+        visibleToStudents: visible
+      };
+    });
+  }, []);
+
+  const changeTaskPipelineSlotCount = useCallback((slotCount: number) => {
+    setAdminTaskPipelineConfigDraft((previous) => {
+      if (!previous) {
+        return previous;
+      }
+      const clamped = Math.max(previous.minSlotCount, Math.min(previous.maxSlotCount, Math.round(slotCount)));
+      return {
+        ...previous,
+        slotCount: clamped
+      };
+    });
+  }, []);
+
+  const toggleTaskPipelineAllowedBlock = useCallback((blockType: string, enabled: boolean) => {
+    setAdminTaskPipelineConfigDraft((previous) => {
+      if (!previous) {
+        return previous;
+      }
+      const nextAllowed = toggleStringInList(previous.allowedProcessingBlocks, blockType, enabled);
+      if (nextAllowed.length === 0) {
+        return previous;
+      }
+      return {
+        ...previous,
+        allowedProcessingBlocks: nextAllowed
+      };
+    });
+  }, []);
+
+  const saveAdminTaskPipelineConfig = async () => {
+    if (!token || !adminTaskPipelineConfigDraft) {
+      return;
+    }
+
+    setBusyKey('admin-task-pipeline-config');
+    setErrorMessage(null);
+    try {
+      const updated = await api.updateAdminTaskPipelineConfig(
+        token,
+        adminTaskPipelineConfigDraft.taskId,
+        adminTaskPipelineConfigDraft.visibleToStudents,
+        adminTaskPipelineConfigDraft.slotCount,
+        adminTaskPipelineConfigDraft.allowedProcessingBlocks
+      );
+      setAdminTaskPipelineConfig(updated);
+      setAdminTaskPipelineConfigDraft(updated);
+      setInfoMessage(t('pipelineTaskConfigSaved'));
+
+      const activeTaskId = adminData?.tasks.find((task) => task.active)?.id ?? '';
+      if (activeTaskId && activeTaskId === updated.taskId) {
+        if (adminPipelineGroupKey) {
+          await loadAdminPipelineForGroup(adminPipelineGroupKey);
+        }
+        await loadAdminPipelineCompare();
+      }
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
   const sendStudentCommand = async (command: DeviceCommandType, on?: boolean) => {
     if (!token || !session || session.role !== 'STUDENT' || !session.groupKey) {
       return;
@@ -1311,6 +1535,8 @@ export default function App() {
           tasks: nextTasks
         };
       });
+      setAdminPipelineTaskId(task.id);
+      void loadAdminTaskPipelineConfig(task.id);
       setInfoMessage(t('taskUpdated'));
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
@@ -2877,24 +3103,50 @@ export default function App() {
               ) : null}
 
               {adminPage === 'pipeline' ? (
-                <PipelineBuilderSection
-                  t={t}
-                  title={t('pipelineBuilder')}
-                  view={adminPipelineDraft ?? adminPipeline}
-                  groupOptions={adminData.groups.map((group) => group.groupKey)}
-                  selectedGroupKey={adminPipelineGroupKey}
-                  onSelectGroup={selectAdminPipelineGroup}
-                  draftProcessing={adminPipelineDraft?.processing ?? adminPipeline?.processing ?? null}
-                  onChangeSlotBlock={changeAdminPipelineSlot}
-                  onInputModeChange={changeAdminPipelineInputMode}
-                  onDeviceScopeChange={changeAdminPipelineDeviceScope}
-                  onIngestFiltersChange={changeAdminPipelineIngestFilters}
-                  onScenarioOverlaysChange={changeAdminPipelineScenarioOverlays}
-                  onSinkTargetsChange={changeAdminPipelineSinkTargets}
-                  onSinkGoalChange={changeAdminPipelineSinkGoal}
-                  onSave={saveAdminPipeline}
-                  saveBusy={busyKey === 'admin-pipeline' || busyKey === 'admin-pipeline-load'}
-                />
+                <>
+                  <PipelineTaskConfigSection
+                    t={t}
+                    tasks={adminData.tasks}
+                    selectedTaskId={adminPipelineTaskId}
+                    taskLabel={(task) => taskTitle(task, language)}
+                    config={adminTaskPipelineConfigDraft ?? adminTaskPipelineConfig}
+                    busy={
+                      busyKey === 'admin-task-pipeline-config' ||
+                      busyKey === 'admin-task-pipeline-config-load'
+                    }
+                    onSelectTask={selectAdminPipelineTask}
+                    onToggleVisibleToStudents={changeTaskPipelineVisibleToStudents}
+                    onSlotCountChange={changeTaskPipelineSlotCount}
+                    onToggleAllowedBlock={toggleTaskPipelineAllowedBlock}
+                    onSave={saveAdminTaskPipelineConfig}
+                    formatTs={formatTs}
+                  />
+
+                  <PipelineBuilderSection
+                    t={t}
+                    title={t('pipelineBuilder')}
+                    view={adminPipelineDraft ?? adminPipeline}
+                    groupOptions={adminData.groups.map((group) => group.groupKey)}
+                    selectedGroupKey={adminPipelineGroupKey}
+                    onSelectGroup={selectAdminPipelineGroup}
+                    draftProcessing={adminPipelineDraft?.processing ?? adminPipeline?.processing ?? null}
+                    onChangeSlotBlock={changeAdminPipelineSlot}
+                    onInputModeChange={changeAdminPipelineInputMode}
+                    onDeviceScopeChange={changeAdminPipelineDeviceScope}
+                    onIngestFiltersChange={changeAdminPipelineIngestFilters}
+                    onScenarioOverlaysChange={changeAdminPipelineScenarioOverlays}
+                    onSinkTargetsChange={changeAdminPipelineSinkTargets}
+                    onSinkGoalChange={changeAdminPipelineSinkGoal}
+                    onSave={saveAdminPipeline}
+                    saveBusy={busyKey === 'admin-pipeline' || busyKey === 'admin-pipeline-load'}
+                  />
+
+                  <PipelineCompareSection
+                    t={t}
+                    rows={adminPipelineCompareRows}
+                    formatTs={formatTs}
+                  />
+                </>
               ) : null}
 
               {adminPage === 'devices' ? (

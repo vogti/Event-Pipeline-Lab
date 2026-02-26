@@ -14,8 +14,10 @@ import type {
   GroupOverview,
   LanguageMode,
   PipelineInputSection,
+  PipelineCompareRow,
   PipelineProcessingSection,
   PipelineSinkSection,
+  TaskPipelineConfig,
   PipelineView,
   StudentBootstrap,
   TaskInfo,
@@ -214,6 +216,36 @@ export const api = {
 
   adminTasks(token: string): Promise<TaskInfo[]> {
     return request<TaskInfo[]>('/api/admin/tasks', undefined, token);
+  },
+
+  adminTaskPipelineConfig(token: string, taskId: string): Promise<TaskPipelineConfig> {
+    return request<TaskPipelineConfig>(
+      withQuery('/api/admin/task-pipeline-config', { taskId }),
+      undefined,
+      token
+    );
+  },
+
+  updateAdminTaskPipelineConfig(
+    token: string,
+    taskId: string,
+    visibleToStudents: boolean,
+    slotCount: number,
+    allowedProcessingBlocks: string[]
+  ): Promise<TaskPipelineConfig> {
+    return request<TaskPipelineConfig>(
+      '/api/admin/task-pipeline-config',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          taskId,
+          visibleToStudents,
+          slotCount,
+          allowedProcessingBlocks
+        })
+      },
+      token
+    );
   },
 
   activateTask(token: string, taskId: string): Promise<TaskInfo> {
@@ -419,6 +451,14 @@ export const api = {
   adminPipeline(token: string, groupKey: string): Promise<PipelineView> {
     return request<PipelineView>(
       withQuery('/api/admin/pipeline', { groupKey }),
+      undefined,
+      token
+    );
+  },
+
+  adminPipelineCompare(token: string): Promise<PipelineCompareRow[]> {
+    return request<PipelineCompareRow[]>(
+      '/api/admin/pipeline/compare',
       undefined,
       token
     );

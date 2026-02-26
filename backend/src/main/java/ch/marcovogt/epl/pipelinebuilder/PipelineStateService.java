@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.IntStream;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -215,6 +216,31 @@ public class PipelineStateService {
     @Transactional(readOnly = true)
     public boolean activeTaskLecturerMode() {
         return taskStateService.getActiveTask().pipeline().lecturerMode();
+    }
+
+    @Transactional
+    public List<PipelineCompareRowDto> compareForActiveTask(List<String> groupKeys) {
+        List<PipelineCompareRowDto> rows = new ArrayList<>();
+        for (PipelineViewDto view : listStudentViewsForGroups(groupKeys)) {
+            List<String> slotBlocks = IntStream.range(0, view.processing().slotCount())
+                    .mapToObj(index -> view.processing().slots().stream()
+                            .filter(slot -> slot.index() == index)
+                            .findFirst()
+                            .map(PipelineSlot::blockType)
+                            .orElse(PipelineBlockLibrary.NONE))
+                    .toList();
+
+            rows.add(new PipelineCompareRowDto(
+                    view.taskId(),
+                    view.groupKey(),
+                    view.revision(),
+                    view.updatedAt(),
+                    view.updatedBy(),
+                    slotBlocks
+            ));
+        }
+        rows.sort((left, right) -> left.groupKey().compareToIgnoreCase(right.groupKey()));
+        return rows;
     }
 
     private PipelineStatePayload effectivePayload(

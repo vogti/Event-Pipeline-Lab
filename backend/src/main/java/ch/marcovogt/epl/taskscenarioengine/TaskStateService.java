@@ -27,11 +27,17 @@ public class TaskStateService {
 
     private final TaskStateRepository taskStateRepository;
     private final TaskCatalog taskCatalog;
+    private final TaskPipelineConfigService taskPipelineConfigService;
     private final Clock clock;
 
-    public TaskStateService(TaskStateRepository taskStateRepository, TaskCatalog taskCatalog) {
+    public TaskStateService(
+            TaskStateRepository taskStateRepository,
+            TaskCatalog taskCatalog,
+            TaskPipelineConfigService taskPipelineConfigService
+    ) {
         this.taskStateRepository = taskStateRepository;
         this.taskCatalog = taskCatalog;
+        this.taskPipelineConfigService = taskPipelineConfigService;
         this.clock = Clock.systemUTC();
     }
 
@@ -39,6 +45,7 @@ public class TaskStateService {
     public List<TaskInfoDto> listTasksWithActive() {
         String activeTaskId = getActiveTask().id();
         return taskCatalog.all().stream()
+                .map(taskPipelineConfigService::applyOverrides)
                 .map(task -> TaskInfoDto.from(task, task.id().equals(activeTaskId)))
                 .toList();
     }
@@ -51,8 +58,9 @@ public class TaskStateService {
 
     @Transactional(readOnly = true)
     public TaskDefinition getActiveTask() {
-        return taskCatalog.findById(loadOrCreateState().getActiveTaskId())
+        TaskDefinition base = taskCatalog.findById(loadOrCreateState().getActiveTaskId())
                 .orElseGet(() -> taskCatalog.findById(taskCatalog.defaultTaskId()).orElseThrow());
+        return taskPipelineConfigService.applyOverrides(base);
     }
 
     @Transactional
@@ -65,7 +73,7 @@ public class TaskStateService {
         state.setUpdatedAt(Instant.now(clock));
         state.setUpdatedBy(actor);
         taskStateRepository.save(state);
-        return definition;
+        return taskPipelineConfigService.applyOverrides(definition);
     }
 
     @Transactional(readOnly = true)
@@ -79,6 +87,38 @@ public class TaskStateService {
     @Transactional(readOnly = true)
     public TaskCapabilities currentStudentCapabilities() {
         return getActiveTask().studentCapabilities();
+    }
+
+    @Transactional(readOnly = true)
+    public TaskDefinition getTaskById(String taskId) {
+        TaskDefinition base = taskCatalog.findById(taskId)
+                .orElseThrow(() -> new ResponseStatusException(BAD_REQUEST, "Unknown task id: " + taskId));
+        return taskPipelineConfigService.applyOverrides(base);
+    }
+
+    @Transactional
+    public TaskPipelineConfigDto updateTaskPipelineConfig(
+            String taskId,
+            boolean visibleToStudents,
+            int slotCount,
+            List<String> allowedProcessingBlocks,
+            String actor
+    ) {
+        TaskDefinition baseline = taskCatalog.findById(taskId)
+                .orElseThrow(() -> new ResponseStatusException(BAD_REQUEST, "Unknown task id: " + taskId));
+        return taskPipelineConfigService.update(
+                baseline,
+                visibleToStudents,
+                slotCount,
+                allowedProcessingBlocks,
+                actor
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public TaskPipelineConfigDto getTaskPipelineConfig(String taskId) {
+        TaskDefinition resolved = getTaskById(taskId);
+        return taskPipelineConfigService.getConfig(resolved);
     }
 
     private TaskState loadOrCreateState() {
