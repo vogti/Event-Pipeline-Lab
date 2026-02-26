@@ -144,6 +144,40 @@ export interface ResetEventsResponse {
   resetAt: TimestampValue;
 }
 
+export type SystemDataPart =
+  | 'APP_SETTINGS'
+  | 'TASK_STATE'
+  | 'GROUP_STATE'
+  | 'AUTH_ACCOUNTS'
+  | 'DEVICE_STATUS'
+  | 'VIRTUAL_DEVICE_STATE'
+  | 'EVENT_DATA';
+
+export interface SystemDataTransferDocument {
+  schemaVersion: number;
+  exportedAt: TimestampValue;
+  parts: Record<string, unknown>;
+}
+
+export interface SystemDataImportPartInfo {
+  part: SystemDataPart;
+  rowCount: number;
+}
+
+export interface SystemDataImportVerifyResponse {
+  valid: boolean;
+  schemaVersion: number | null;
+  exportedAt: TimestampValue;
+  availableParts: SystemDataImportPartInfo[];
+  errors: string[];
+  warnings: string[];
+}
+
+export interface SystemDataImportApplyResponse {
+  importedAt: TimestampValue;
+  importedParts: SystemDataImportPartInfo[];
+}
+
 export interface StudentBootstrap {
   me: AuthMe;
   activeTask: TaskInfo;

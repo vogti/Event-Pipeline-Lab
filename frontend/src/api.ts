@@ -6,6 +6,10 @@ import type {
   DeviceCommandType,
   DevicePinInfo,
   ResetEventsResponse,
+  SystemDataImportApplyResponse,
+  SystemDataImportVerifyResponse,
+  SystemDataPart,
+  SystemDataTransferDocument,
   DeviceStatus,
   GroupConfig,
   GroupOverview,
@@ -234,6 +238,46 @@ export const api = {
 
   adminSystemStatus(token: string): Promise<AdminSystemStatus> {
     return request<AdminSystemStatus>('/api/admin/system-status', undefined, token);
+  },
+
+  adminExportSystemData(token: string, parts: SystemDataPart[]): Promise<SystemDataTransferDocument> {
+    return request<SystemDataTransferDocument>(
+      '/api/admin/system-status/export',
+      {
+        method: 'POST',
+        body: JSON.stringify({ parts })
+      },
+      token
+    );
+  },
+
+  adminVerifySystemDataImport(
+    token: string,
+    document: SystemDataTransferDocument
+  ): Promise<SystemDataImportVerifyResponse> {
+    return request<SystemDataImportVerifyResponse>(
+      '/api/admin/system-status/import/verify',
+      {
+        method: 'POST',
+        body: JSON.stringify({ document })
+      },
+      token
+    );
+  },
+
+  adminApplySystemDataImport(
+    token: string,
+    document: SystemDataTransferDocument,
+    selectedParts: SystemDataPart[]
+  ): Promise<SystemDataImportApplyResponse> {
+    return request<SystemDataImportApplyResponse>(
+      '/api/admin/system-status/import/apply',
+      {
+        method: 'POST',
+        body: JSON.stringify({ document, selectedParts })
+      },
+      token
+    );
   },
 
   adminResetEvents(token: string): Promise<ResetEventsResponse> {

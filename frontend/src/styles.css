@@ -852,6 +852,60 @@ textarea {
   color: #355268;
 }
 
+.system-transfer-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.system-transfer-card {
+  align-content: start;
+}
+
+.system-transfer-parts {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.system-transfer-part {
+  justify-content: flex-start;
+}
+
+.system-transfer-file {
+  display: grid;
+  gap: 0.3rem;
+  color: #385367;
+  font-size: 0.86rem;
+}
+
+.system-transfer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.system-transfer-verify {
+  display: grid;
+  gap: 0.4rem;
+  padding-top: 0.15rem;
+  border-top: 1px solid rgba(45, 68, 84, 0.1);
+}
+
+.system-transfer-errors,
+.system-transfer-warnings {
+  margin: 0.2rem 0 0;
+  padding-left: 1rem;
+  font-size: 0.8rem;
+}
+
+.system-transfer-errors {
+  color: #8e2a2a;
+}
+
+.system-transfer-warnings {
+  color: #785717;
+}
+
 .feed-panel {
   overflow: hidden;
 }
@@ -1072,6 +1126,10 @@ textarea {
   }
 
   .system-status-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .system-transfer-grid {
     grid-template-columns: 1fr;
   }
 

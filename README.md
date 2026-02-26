@@ -212,6 +212,44 @@ docker run --rm --network epl_default curlimages/curl:8.12.1 -sS http://backend:
 docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST http://backend:8080/api/admin/system-status/events/reset -H "X-EPL-Session: ${ADMIN_TOKEN}" -H 'Content-Type: application/json' -d '{"confirm":true}'
 ```
 
+## System Data Export / Import
+
+UI path:
+
+- `System Status` -> `Data export` / `Data import`
+- Select which sections should be exported/imported.
+- Import flow is 2-step: `Verify import` first, then `Import selected`.
+
+CLI example (requires `jq`):
+
+```bash
+# Export selected sections to a JSON file
+docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST \
+  http://backend:8080/api/admin/system-status/export \
+  -H "X-EPL-Session: ${ADMIN_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d '{"parts":["APP_SETTINGS","TASK_STATE","GROUP_STATE","AUTH_ACCOUNTS","DEVICE_STATUS","VIRTUAL_DEVICE_STATE","EVENT_DATA"]}' \
+  > /tmp/epl-system-export.json
+
+# Verify an import file
+jq -n --slurpfile doc /tmp/epl-system-export.json '{document:$doc[0]}' > /tmp/epl-system-import-verify.json
+docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST \
+  http://backend:8080/api/admin/system-status/import/verify \
+  -H "X-EPL-Session: ${ADMIN_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  --data-binary @/tmp/epl-system-import-verify.json
+
+# Apply selected sections from an import file
+jq -n --slurpfile doc /tmp/epl-system-export.json \
+  '{document:$doc[0],selectedParts:["APP_SETTINGS","TASK_STATE","GROUP_STATE"]}' \
+  > /tmp/epl-system-import-apply.json
+docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST \
+  http://backend:8080/api/admin/system-status/import/apply \
+  -H "X-EPL-Session: ${ADMIN_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  --data-binary @/tmp/epl-system-import-apply.json
+```
+
 ## WebSocket Channels
 
 - Admin: `ws://localhost:8080/ws/admin?token=<adminSessionToken>`

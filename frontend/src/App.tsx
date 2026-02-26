@@ -12,6 +12,9 @@ import {
   type GroupOverview,
   type LanguageMode,
   type PresenceUser,
+  type SystemDataImportVerifyResponse,
+  type SystemDataPart,
+  type SystemDataTransferDocument,
   type SystemStatusEventRatePoint,
   type TimestampValue,
   type TaskCapabilities,
@@ -25,6 +28,15 @@ import { type I18nKey, type Language, resolveLanguageFromMode, taskDescription, 
 const TOKEN_STORAGE_KEY = 'epl.sessionToken';
 const LANGUAGE_STORAGE_KEY = 'epl.languageOverride';
 const MAX_FEED_EVENTS = 200;
+const SYSTEM_DATA_PART_ORDER: SystemDataPart[] = [
+  'APP_SETTINGS',
+  'TASK_STATE',
+  'GROUP_STATE',
+  'AUTH_ACCOUNTS',
+  'DEVICE_STATUS',
+  'VIRTUAL_DEVICE_STATE',
+  'EVENT_DATA'
+];
 
 interface StudentViewData {
   activeTask: TaskInfo;
@@ -97,6 +109,39 @@ const CATEGORY_OPTIONS: Array<EventCategory | 'ALL'> = [
   'COMMAND',
   'ACK'
 ];
+
+function createSystemDataPartSelection(defaultChecked: boolean): Record<SystemDataPart, boolean> {
+  const next = {} as Record<SystemDataPart, boolean>;
+  for (const part of SYSTEM_DATA_PART_ORDER) {
+    next[part] = defaultChecked;
+  }
+  return next;
+}
+
+function selectedSystemDataParts(selection: Record<SystemDataPart, boolean>): SystemDataPart[] {
+  return SYSTEM_DATA_PART_ORDER.filter((part) => selection[part]);
+}
+
+function systemDataPartLabel(part: SystemDataPart, t: (key: I18nKey) => string): string {
+  switch (part) {
+    case 'APP_SETTINGS':
+      return t('partAppSettings');
+    case 'TASK_STATE':
+      return t('partTaskState');
+    case 'GROUP_STATE':
+      return t('partGroupState');
+    case 'AUTH_ACCOUNTS':
+      return t('partAuthAccounts');
+    case 'DEVICE_STATUS':
+      return t('partDeviceStatus');
+    case 'VIRTUAL_DEVICE_STATE':
+      return t('partVirtualDeviceState');
+    case 'EVENT_DATA':
+      return t('partEventData');
+    default:
+      return part;
+  }
+}
 
 function MetricIcon({ kind }: { kind: MetricIconKind }) {
   if (kind === 'temperature') {
@@ -1566,6 +1611,15 @@ export default function App() {
   const [pinEditorLoading, setPinEditorLoading] = useState(false);
   const [adminPage, setAdminPage] = useState<AdminPage>('dashboard');
   const [recentFeedEventIds, setRecentFeedEventIds] = useState<Record<string, true>>({});
+  const [systemDataExportSelection, setSystemDataExportSelection] = useState<Record<SystemDataPart, boolean>>(
+    () => createSystemDataPartSelection(true)
+  );
+  const [systemDataImportFileName, setSystemDataImportFileName] = useState('');
+  const [systemDataImportDocument, setSystemDataImportDocument] = useState<SystemDataTransferDocument | null>(null);
+  const [systemDataImportVerify, setSystemDataImportVerify] = useState<SystemDataImportVerifyResponse | null>(null);
+  const [systemDataImportSelection, setSystemDataImportSelection] = useState<Record<SystemDataPart, boolean>>(
+    () => createSystemDataPartSelection(false)
+  );
 
   const studentPauseRef = useRef(studentFeedPaused);
   const adminPauseRef = useRef(adminFeedPaused);
@@ -1767,6 +1821,11 @@ export default function App() {
     setPinEditorValue('');
     setPinEditorLoading(false);
     setAdminPage('dashboard');
+    setSystemDataExportSelection(createSystemDataPartSelection(true));
+    setSystemDataImportFileName('');
+    setSystemDataImportDocument(null);
+    setSystemDataImportVerify(null);
+    setSystemDataImportSelection(createSystemDataPartSelection(false));
     adminDataRef.current = null;
     deferredAdminFeedRef.current = [];
     clearRecentFeedHighlights();
@@ -3137,6 +3196,156 @@ export default function App() {
     }
   };
 
+  const toggleSystemDataExportPart = useCallback((part: SystemDataPart, checked: boolean) => {
+    setSystemDataExportSelection((previous) => {
+      if (previous[part] === checked) {
+        return previous;
+      }
+      return {
+        ...previous,
+        [part]: checked
+      };
+    });
+  }, []);
+
+  const toggleSystemDataImportPart = useCallback((part: SystemDataPart, checked: boolean) => {
+    setSystemDataImportSelection((previous) => {
+      if (previous[part] === checked) {
+        return previous;
+      }
+      return {
+        ...previous,
+        [part]: checked
+      };
+    });
+  }, []);
+
+  const handleSystemImportFileChange = useCallback(async (file: File) => {
+    try {
+      const raw = await file.text();
+      const parsed = JSON.parse(raw) as SystemDataTransferDocument;
+      setSystemDataImportFileName(file.name);
+      setSystemDataImportDocument(parsed);
+      setSystemDataImportVerify(null);
+      setSystemDataImportSelection(createSystemDataPartSelection(false));
+      setInfoMessage(null);
+      setErrorMessage(null);
+    } catch (error) {
+      setSystemDataImportFileName(file.name);
+      setSystemDataImportDocument(null);
+      setSystemDataImportVerify(null);
+      setSystemDataImportSelection(createSystemDataPartSelection(false));
+      setErrorMessage(toErrorMessage(error));
+    }
+  }, []);
+
+  const exportSystemData = async () => {
+    if (!token || !session || session.role !== 'ADMIN') {
+      return;
+    }
+    if (selectedSystemDataExportParts.length === 0) {
+      setErrorMessage(t('systemDataSelectAtLeastOne'));
+      return;
+    }
+
+    setBusyKey('admin-system-export');
+    setErrorMessage(null);
+
+    try {
+      const exportDocument = await api.adminExportSystemData(token, selectedSystemDataExportParts);
+      const exportJson = JSON.stringify(exportDocument, null, 2);
+      const blob = new Blob([exportJson], { type: 'application/json' });
+      const safeStamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const fileName = `epl-export-${safeStamp}.json`;
+      const objectUrl = URL.createObjectURL(blob);
+      const link = window.document.createElement('a');
+      link.href = objectUrl;
+      link.download = fileName;
+      window.document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+      setInfoMessage(`${t('systemDataExportDone')}: ${fileName}`);
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const verifySystemImport = async () => {
+    if (!token || !session || session.role !== 'ADMIN') {
+      return;
+    }
+    if (!systemDataImportDocument) {
+      setErrorMessage(t('systemDataImportNoFile'));
+      return;
+    }
+
+    setBusyKey('admin-system-import-verify');
+    setErrorMessage(null);
+
+    try {
+      const verified = await api.adminVerifySystemDataImport(token, systemDataImportDocument);
+      setSystemDataImportVerify(verified);
+
+      const selected = createSystemDataPartSelection(false);
+      for (const entry of verified.availableParts) {
+        selected[entry.part] = true;
+      }
+      setSystemDataImportSelection(selected);
+
+      if (verified.valid) {
+        setInfoMessage(t('systemDataImportValid'));
+      } else {
+        setErrorMessage(verified.errors.join(' | ') || t('systemDataImportInvalid'));
+      }
+    } catch (error) {
+      setSystemDataImportVerify(null);
+      setSystemDataImportSelection(createSystemDataPartSelection(false));
+      setErrorMessage(toErrorMessage(error));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const applySystemImport = async () => {
+    if (!token || !session || session.role !== 'ADMIN') {
+      return;
+    }
+    if (!systemDataImportDocument || !systemDataImportVerify || !systemDataImportVerify.valid) {
+      setErrorMessage(t('systemDataImportInvalid'));
+      return;
+    }
+    if (selectedSystemDataImportParts.length === 0) {
+      setErrorMessage(t('systemDataSelectAtLeastOne'));
+      return;
+    }
+    if (!window.confirm(t('systemDataImportConfirm'))) {
+      return;
+    }
+
+    setBusyKey('admin-system-import-apply');
+    setErrorMessage(null);
+
+    try {
+      const imported = await api.adminApplySystemDataImport(
+        token,
+        systemDataImportDocument,
+        selectedSystemDataImportParts
+      );
+      const summary = imported.importedParts
+        .map((entry) => `${systemDataPartLabel(entry.part, t)} (${entry.rowCount})`)
+        .join(', ');
+      setInfoMessage(`${t('systemDataImportDone')}: ${summary}`);
+      await refreshAdminData();
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
   const studentVisibleFeed = useMemo(() => {
     if (!studentData) {
       return [];
@@ -3263,6 +3472,22 @@ export default function App() {
     }
     return Math.max(0, Math.min(100, (used / total) * 100));
   }, [adminSystemStatus]);
+
+  const selectedSystemDataExportParts = useMemo(() => {
+    return selectedSystemDataParts(systemDataExportSelection);
+  }, [systemDataExportSelection]);
+
+  const availableSystemDataImportParts = useMemo(() => {
+    if (!systemDataImportVerify) {
+      return [];
+    }
+    return systemDataImportVerify.availableParts.map((entry) => entry.part);
+  }, [systemDataImportVerify]);
+
+  const selectedSystemDataImportParts = useMemo(() => {
+    const available = new Set(availableSystemDataImportParts);
+    return selectedSystemDataParts(systemDataImportSelection).filter((part) => available.has(part));
+  }, [availableSystemDataImportParts, systemDataImportSelection]);
 
   const counterResetBusy = counterResetTarget
     ? counterResetTarget.isVirtual
@@ -4574,6 +4799,134 @@ export default function App() {
                           </div>
                         </div>
                         <p className="muted">{formatTs(adminSystemStatus.generatedAt)}</p>
+                      </article>
+                    </div>
+
+                    <div className="system-transfer-grid">
+                      <article className="system-status-card system-transfer-card">
+                        <h3>{t('systemDataExport')}</h3>
+                        <p className="muted">{t('systemDataSelectParts')}</p>
+                        <div className="system-transfer-parts">
+                          {SYSTEM_DATA_PART_ORDER.map((part) => (
+                            <label key={`export-${part}`} className="checkbox-inline system-transfer-part">
+                              <input
+                                type="checkbox"
+                                checked={systemDataExportSelection[part]}
+                                onChange={(event) => toggleSystemDataExportPart(part, event.target.checked)}
+                                disabled={busyKey === 'admin-system-export'}
+                              />
+                              <span>{systemDataPartLabel(part, t)}</span>
+                            </label>
+                          ))}
+                        </div>
+                        <button
+                          className="button"
+                          type="button"
+                          onClick={exportSystemData}
+                          disabled={busyKey === 'admin-system-export' || selectedSystemDataExportParts.length === 0}
+                        >
+                          {t('systemDataExportAction')}
+                        </button>
+                      </article>
+
+                      <article className="system-status-card system-transfer-card">
+                        <h3>{t('systemDataImport')}</h3>
+                        <label className="system-transfer-file">
+                          <span>{t('systemDataImportFile')}</span>
+                          <input
+                            className="input"
+                            type="file"
+                            accept="application/json,.json"
+                            onChange={(event) => {
+                              const file = event.target.files?.[0];
+                              if (!file) {
+                                return;
+                              }
+                              handleSystemImportFileChange(file).catch((error) => setErrorMessage(toErrorMessage(error)));
+                            }}
+                            disabled={busyKey === 'admin-system-import-verify' || busyKey === 'admin-system-import-apply'}
+                          />
+                        </label>
+                        {systemDataImportFileName ? <p className="muted mono">{systemDataImportFileName}</p> : null}
+                        <div className="system-transfer-actions">
+                          <button
+                            className="button secondary"
+                            type="button"
+                            onClick={verifySystemImport}
+                            disabled={
+                              busyKey === 'admin-system-import-verify' ||
+                              busyKey === 'admin-system-import-apply' ||
+                              !systemDataImportDocument
+                            }
+                          >
+                            {t('systemDataVerifyAction')}
+                          </button>
+                          <button
+                            className="button"
+                            type="button"
+                            onClick={applySystemImport}
+                            disabled={
+                              busyKey === 'admin-system-import-verify' ||
+                              busyKey === 'admin-system-import-apply' ||
+                              !systemDataImportVerify?.valid ||
+                              selectedSystemDataImportParts.length === 0
+                            }
+                          >
+                            {t('systemDataApplyAction')}
+                          </button>
+                        </div>
+
+                        {systemDataImportVerify ? (
+                          <div className="system-transfer-verify">
+                            <p className="muted">
+                              {systemDataImportVerify.valid ? t('systemDataImportValid') : t('systemDataImportInvalid')}
+                              {systemDataImportVerify.exportedAt
+                                ? ` - ${formatTs(systemDataImportVerify.exportedAt)}`
+                                : ''}
+                            </p>
+                            {systemDataImportVerify.warnings.length > 0 ? (
+                              <div>
+                                <strong>{t('systemDataImportWarnings')}</strong>
+                                <ul className="system-transfer-warnings">
+                                  {systemDataImportVerify.warnings.map((warning, index) => (
+                                    <li key={`import-warning-${index}`}>{warning}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            ) : null}
+                            {systemDataImportVerify.errors.length > 0 ? (
+                              <div>
+                                <strong>{t('systemDataImportErrors')}</strong>
+                                <ul className="system-transfer-errors">
+                                  {systemDataImportVerify.errors.map((error, index) => (
+                                    <li key={`import-error-${index}`}>{error}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            ) : null}
+
+                            <strong>{t('systemDataImportContains')}</strong>
+                            {systemDataImportVerify.availableParts.length === 0 ? (
+                              <p className="muted">{t('systemDataImportNoSupportedParts')}</p>
+                            ) : (
+                              <div className="system-transfer-parts">
+                                {systemDataImportVerify.availableParts.map((entry) => (
+                                  <label key={`import-${entry.part}`} className="checkbox-inline system-transfer-part">
+                                    <input
+                                      type="checkbox"
+                                      checked={systemDataImportSelection[entry.part]}
+                                      onChange={(event) => toggleSystemDataImportPart(entry.part, event.target.checked)}
+                                      disabled={!systemDataImportVerify.valid || busyKey === 'admin-system-import-apply'}
+                                    />
+                                    <span>
+                                      {systemDataPartLabel(entry.part, t)} ({entry.rowCount})
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ) : null}
                       </article>
                     </div>
                   )}
