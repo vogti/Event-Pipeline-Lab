@@ -40,10 +40,13 @@
   margin-bottom: 0.5rem;
 }
 
-.tasks-list,
 .groups-list {
   max-height: 300px;
   overflow: auto;
+  padding-right: 0.15rem;
+}
+
+.tasks-list {
   padding-right: 0.15rem;
 }
 
@@ -56,10 +59,12 @@
 
 .pipeline-task-inline-editor {
   margin-top: 0.6rem;
-  padding-top: 0.6rem;
-  border-top: 1px solid rgba(36, 66, 86, 0.14);
   display: grid;
   gap: 0.55rem;
+}
+
+.task-settings-modal {
+  width: min(760px, 100%);
 }
 
 .task-config-meta-row {

@@ -33,6 +33,7 @@ import type {
   WsConnectionState
 } from './shared-types';
 import { MetricIcon, SettingsIcon } from './shared-icons';
+import { parsePipelineScenarioOverlays } from './pipeline-scenarios';
 
 const TOKEN_STORAGE_KEY = 'epl.sessionToken';
 const LANGUAGE_STORAGE_KEY = 'epl.languageOverride';
@@ -166,6 +167,100 @@ function mergeEventsBounded(
 
 function clampFeed(items: CanonicalEvent[]): CanonicalEvent[] {
   return mergeEventsBounded([], items, MAX_FEED_EVENTS);
+}
+
+function stableHash(input: string): number {
+  let hash = 2166136261;
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function hashPct(id: string, salt: string): number {
+  return stableHash(`${id}::${salt}`) % 100;
+}
+
+function hashRange(id: string, salt: string, min: number, max: number): number {
+  if (max <= min) {
+    return min;
+  }
+  const span = max - min + 1;
+  return min + (stableHash(`${id}::${salt}`) % span);
+}
+
+function withScenarioFlag(event: CanonicalEvent, flag: string): string {
+  const raw = (event.scenarioFlags ?? '').trim();
+  if (!raw || raw === '{}' || raw === '[]') {
+    return flag;
+  }
+  if (raw.includes(flag)) {
+    return raw;
+  }
+  return `${raw};${flag}`;
+}
+
+function applyFeedScenarioDisturbances(
+  events: CanonicalEvent[],
+  scenarioOverlays: string[] | null | undefined
+): CanonicalEvent[] {
+  const scenarios = parsePipelineScenarioOverlays(scenarioOverlays);
+  const duplicatesPct = scenarios.duplicates ?? 0;
+  const delayMs = scenarios.delay ?? 0;
+  const dropsPct = scenarios.drops ?? 0;
+  const outOfOrderPct = scenarios.out_of_order ?? 0;
+
+  if (duplicatesPct <= 0 && delayMs <= 0 && dropsPct <= 0 && outOfOrderPct <= 0) {
+    return events;
+  }
+
+  const transformed: Array<{ event: CanonicalEvent; sortTs: number }> = [];
+  for (const event of events) {
+    const ingestEpoch = timestampToEpochMillis(event.ingestTs) ?? Number.MIN_SAFE_INTEGER;
+    const eventId = event.id;
+
+    if (dropsPct > 0 && hashPct(eventId, 'drop') < dropsPct) {
+      continue;
+    }
+
+    const delayOffset = delayMs > 0 ? hashRange(eventId, 'delay', 0, delayMs) : 0;
+    const outOfOrderOffset =
+      outOfOrderPct > 0 && hashPct(eventId, 'ooo') < outOfOrderPct
+        ? hashRange(eventId, 'ooodelta', -Math.max(200, Math.floor(delayMs / 2)), Math.max(200, Math.floor(delayMs / 2)))
+        : 0;
+    const effectiveTs = ingestEpoch + delayOffset + outOfOrderOffset;
+
+    transformed.push({
+      event: {
+        ...event,
+        scenarioFlags: withScenarioFlag(event, 'disturbed')
+      },
+      sortTs: effectiveTs
+    });
+
+    if (duplicatesPct > 0 && hashPct(eventId, 'duplicate') < duplicatesPct) {
+      const duplicateTs = effectiveTs + hashRange(eventId, 'dup_shift', 10, 350);
+      transformed.push({
+        event: {
+          ...event,
+          id: `${event.id}::dup`,
+          scenarioFlags: withScenarioFlag(event, 'duplicate')
+        },
+        sortTs: duplicateTs
+      });
+    }
+  }
+
+  return transformed
+    .sort((left, right) => {
+      if (left.sortTs === right.sortTs) {
+        return right.event.id.localeCompare(left.event.id);
+      }
+      return right.sortTs - left.sortTs;
+    })
+    .map((entry) => entry.event)
+    .slice(0, MAX_FEED_EVENTS);
 }
 
 function isLikelyEpochTimestamp(value: number): boolean {
@@ -1456,6 +1551,7 @@ export {
   compareByNewestIngestTs,
   mergeEventsBounded,
   clampFeed,
+  applyFeedScenarioDisturbances,
   isLikelyEpochTimestamp,
   isCounterEvent,
   extractCounterValueFromPayload,

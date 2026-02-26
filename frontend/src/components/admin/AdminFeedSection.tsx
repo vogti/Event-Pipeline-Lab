@@ -19,6 +19,8 @@ interface AdminFeedSectionProps {
   categoryOptions: Array<EventCategory | 'ALL'>;
   adminIncludeInternal: boolean;
   onAdminIncludeInternalChange: (value: boolean) => void;
+  adminShowUndisturbedFeed: boolean;
+  onAdminShowUndisturbedFeedChange: (value: boolean) => void;
   adminVisibleFeedCount: number;
   adminFeedRows: ReactNode;
 }
@@ -40,6 +42,8 @@ export function AdminFeedSection({
   categoryOptions,
   adminIncludeInternal,
   onAdminIncludeInternalChange,
+  adminShowUndisturbedFeed,
+  onAdminShowUndisturbedFeedChange,
   adminVisibleFeedCount,
   adminFeedRows
 }: AdminFeedSectionProps) {
@@ -93,6 +97,15 @@ export function AdminFeedSection({
             onChange={(event) => onAdminIncludeInternalChange(event.target.checked)}
           />
           <span>{t('includeInternal')}</span>
+        </label>
+
+        <label className="checkbox-inline">
+          <input
+            type="checkbox"
+            checked={adminShowUndisturbedFeed}
+            onChange={(event) => onAdminShowUndisturbedFeedChange(event.target.checked)}
+          />
+          <span>{t('showUndisturbedFeed')}</span>
         </label>
       </div>
 

@@ -6,6 +6,7 @@ import type {
   CanonicalEvent,
   DeviceCommandType,
   EventCategory,
+  FeedScenarioConfig,
   LanguageMode,
   PipelineLogModeStatus,
   PipelineLogReplayResponse,
@@ -32,6 +33,7 @@ import {
   SettingsIcon,
   mergeEventsBounded,
   clampFeed,
+  applyFeedScenarioDisturbances,
   ipAddressToHref,
   findIpAddress,
   extractIpAddressFromDeviceStatus,
@@ -169,6 +171,7 @@ export default function App() {
   const [adminCategoryFilter, setAdminCategoryFilter] = useState<EventCategory | 'ALL'>('ALL');
   const [adminDeviceFilter, setAdminDeviceFilter] = useState('');
   const [adminIncludeInternal, setAdminIncludeInternal] = useState(false);
+  const [adminShowUndisturbedFeed, setAdminShowUndisturbedFeed] = useState(false);
   const [adminFeedPaused, setAdminFeedPaused] = useState(false);
   const [adminSettingsDraftMode, setAdminSettingsDraftMode] = useState<LanguageMode>('BROWSER_EN_FALLBACK');
   const [adminSettingsDraftTimeFormat24h, setAdminSettingsDraftTimeFormat24h] = useState(true);
@@ -185,7 +188,7 @@ export default function App() {
   const [adminPipelineTaskId, setAdminPipelineTaskId] = useState('');
   const [adminTaskPipelineConfig, setAdminTaskPipelineConfig] = useState<TaskPipelineConfig | null>(null);
   const [adminTaskPipelineConfigDraft, setAdminTaskPipelineConfigDraft] = useState<TaskPipelineConfig | null>(null);
-  const [adminPipelineCompareRows, setAdminPipelineCompareRows] = useState<PipelineCompareRow[]>([]);
+  const [_adminPipelineCompareRows, setAdminPipelineCompareRows] = useState<PipelineCompareRow[]>([]);
   const [studentVirtualPatch, setStudentVirtualPatch] = useState<VirtualDevicePatch | null>(null);
   const [virtualControlDeviceId, setVirtualControlDeviceId] = useState<string | null>(null);
   const [virtualControlPatch, setVirtualControlPatch] = useState<VirtualDevicePatch | null>(null);
@@ -222,6 +225,8 @@ export default function App() {
   const [systemDataImportSelection, setSystemDataImportSelection] = useState<Record<SystemDataPart, boolean>>(
     () => createSystemDataPartSelection(false)
   );
+  const [feedScenarioConfig, setFeedScenarioConfig] = useState<FeedScenarioConfig | null>(null);
+  const [feedScenarioDraft, setFeedScenarioDraft] = useState<string[]>([]);
 
   const studentPauseRef = useRef(studentFeedPaused);
   const adminPauseRef = useRef(adminFeedPaused);
@@ -415,6 +420,7 @@ export default function App() {
     setAdminCategoryFilter('ALL');
     setAdminDeviceFilter('');
     setAdminIncludeInternal(false);
+    setAdminShowUndisturbedFeed(false);
     setAdminFeedPaused(false);
     setAdminSettingsDraftMode('BROWSER_EN_FALLBACK');
     setAdminSettingsDraftTimeFormat24h(true);
@@ -450,6 +456,8 @@ export default function App() {
     setSystemDataImportFile(null);
     setSystemDataImportVerify(null);
     setSystemDataImportSelection(createSystemDataPartSelection(false));
+    setFeedScenarioConfig(null);
+    setFeedScenarioDraft([]);
     adminDataRef.current = null;
     deferredAdminFeedRef.current = [];
     clearRecentFeedHighlights();
@@ -578,9 +586,10 @@ export default function App() {
 
   const loadDashboards = useCallback(async (auth: AuthMe, activeToken: string) => {
     if (auth.role === 'STUDENT') {
-      const [bootstrap, pipeline] = await Promise.all([
+      const [bootstrap, pipeline, scenarios] = await Promise.all([
         api.studentBootstrap(activeToken),
-        api.studentPipeline(activeToken)
+        api.studentPipeline(activeToken),
+        api.scenarios(activeToken)
       ]);
       setStudentData({
         activeTask: bootstrap.activeTask,
@@ -599,11 +608,12 @@ export default function App() {
       setTimeFormat24h(bootstrap.settings.timeFormat24h);
       setStudentPipeline(pipeline);
       setStudentPipelineDraft(pipeline.processing);
+      setFeedScenarioConfig(scenarios);
       return;
     }
 
     const logModeStatusPromise = api.adminPipelineLogModeStatus(activeToken).catch(() => null);
-    const [tasks, devices, virtualDevices, groups, settings, events, systemStatus, logModeStatus] = await Promise.all([
+    const [tasks, devices, virtualDevices, groups, settings, events, systemStatus, logModeStatus, scenarios] = await Promise.all([
       api.adminTasks(activeToken),
       api.adminDevices(activeToken),
       api.adminVirtualDevices(activeToken),
@@ -611,7 +621,8 @@ export default function App() {
       api.adminSettings(activeToken),
       api.eventsFeed(activeToken, { limit: MAX_FEED_EVENTS, includeInternal: true }),
       api.adminSystemStatus(activeToken),
-      logModeStatusPromise
+      logModeStatusPromise,
+      api.adminScenarios(activeToken)
     ]);
 
     setAdminData({
@@ -634,6 +645,7 @@ export default function App() {
     setAdminPipelineReplayMaxRecords(logModeStatus?.replayDefaultMaxRecords ?? 200);
     setAdminPipelineReplayResult(null);
     setAdminPage('dashboard');
+    setFeedScenarioConfig(scenarios);
 
     const initialGroupKey = groups[0]?.groupKey ?? '';
     const initialTaskId = tasks.find((task) => task.active)?.id ?? tasks[0]?.id ?? '';
@@ -1183,6 +1195,7 @@ export default function App() {
     setAdminSettingsDraftVirtualVisible,
     setDefaultLanguageMode,
     setTimeFormat24h,
+    setFeedScenarioConfig,
     selectedAdminPipelineGroupKeyRef: adminPipelineGroupKeyRef,
     onStudentPipelineUpdated: applyStudentPipelineFromWs,
     onStudentPipelineObservabilityUpdated: applyStudentPipelineObservabilityFromWs,
@@ -1190,6 +1203,14 @@ export default function App() {
     onAdminPipelineObservabilityUpdated: applyAdminPipelineObservabilityFromWs,
     onAdminPipelineObserved: applyAdminPipelineObservedFromWs
   });
+
+  useEffect(() => {
+    if (!feedScenarioConfig) {
+      setFeedScenarioDraft([]);
+      return;
+    }
+    setFeedScenarioDraft(feedScenarioConfig.scenarioOverlays);
+  }, [feedScenarioConfig]);
 
   const adminPhysicalDeviceIds = useMemo(() => {
     return adminData?.devices.map((entry) => entry.deviceId) ?? [];
@@ -1595,21 +1616,6 @@ export default function App() {
     });
   }, []);
 
-  const changeAdminPipelineScenarioOverlays = useCallback((scenarioOverlays: string[]) => {
-    setAdminPipelineDraft((previous) => {
-      if (!previous) {
-        return previous;
-      }
-      return {
-        ...previous,
-        input: {
-          ...previous.input,
-          scenarioOverlays
-        }
-      };
-    });
-  }, []);
-
   const changeAdminPipelineSinkTargets = useCallback((raw: string) => {
     setAdminPipelineDraft((previous) => {
       if (!previous) {
@@ -1700,6 +1706,28 @@ export default function App() {
       };
     });
   }, []);
+
+  const changeFeedScenarioOverlays = useCallback((scenarioOverlays: string[]) => {
+    setFeedScenarioDraft(scenarioOverlays);
+  }, []);
+
+  const saveAdminFeedScenarios = async () => {
+    if (!token || !session || session.role !== 'ADMIN') {
+      return;
+    }
+    setBusyKey('admin-scenarios');
+    setErrorMessage(null);
+    try {
+      const updated = await api.updateAdminScenarios(token, feedScenarioDraft);
+      setFeedScenarioConfig(updated);
+      setFeedScenarioDraft(updated.scenarioOverlays);
+      setInfoMessage(t('settingsUpdated'));
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error));
+    } finally {
+      setBusyKey(null);
+    }
+  };
 
   const saveAdminTaskPipelineConfig = async () => {
     if (!token || !adminTaskPipelineConfigDraft) {
@@ -2219,7 +2247,7 @@ export default function App() {
 
     try {
       const logModeStatusPromise = api.adminPipelineLogModeStatus(token).catch(() => null);
-      const [tasks, devices, virtualDevices, groups, events, settings, systemStatus, logModeStatus] = await Promise.all([
+      const [tasks, devices, virtualDevices, groups, events, settings, systemStatus, logModeStatus, scenarios] = await Promise.all([
         api.adminTasks(token),
         api.adminDevices(token),
         api.adminVirtualDevices(token),
@@ -2227,7 +2255,8 @@ export default function App() {
         api.eventsFeed(token, { limit: MAX_FEED_EVENTS, includeInternal: true }),
         api.adminSettings(token),
         api.adminSystemStatus(token),
-        logModeStatusPromise
+        logModeStatusPromise,
+        api.adminScenarios(token)
       ]);
       setAdminData((previous) => {
         if (!previous) {
@@ -2252,6 +2281,7 @@ export default function App() {
       setTimeFormat24h(settings.timeFormat24h);
       setAdminSystemStatus((previous) => (sameAdminSystemStatus(previous, systemStatus) ? previous : systemStatus));
       setAdminPipelineLogModeStatus(logModeStatus);
+      setFeedScenarioConfig(scenarios);
       setAdminPipelineReplayMaxRecords((previous) => {
         if (previous > 0) {
           return previous;
@@ -2440,20 +2470,32 @@ export default function App() {
       return [];
     }
 
-    return studentData.feed.filter((event) => {
+    const sourceFeed = applyFeedScenarioDisturbances(
+      studentData.feed,
+      feedScenarioConfig?.scenarioOverlays
+    );
+
+    return sourceFeed.filter((event) => {
       if (!studentShowInternal && (event.isInternal || isTelemetryEvent(event))) {
         return false;
       }
       return feedMatchesTopic(event, studentTopicFilter);
     });
-  }, [studentData, studentShowInternal, studentTopicFilter]);
+  }, [feedScenarioConfig?.scenarioOverlays, studentData, studentShowInternal, studentTopicFilter]);
 
   const adminVisibleFeed = useMemo(() => {
     if (!adminData || session?.role !== 'ADMIN' || adminPage !== 'feed') {
       return [];
     }
 
-    return adminData.events.filter((event) => {
+    const sourceFeed = adminShowUndisturbedFeed
+      ? adminData.events
+      : applyFeedScenarioDisturbances(
+          adminData.events,
+          feedScenarioConfig?.scenarioOverlays
+        );
+
+    return sourceFeed.filter((event) => {
       if (!adminIncludeInternal && (event.isInternal || isTelemetryEvent(event))) {
         return false;
       }
@@ -2468,7 +2510,17 @@ export default function App() {
 
       return feedMatchesTopic(event, adminTopicFilter);
     });
-  }, [adminCategoryFilter, adminData, adminDeviceFilter, adminIncludeInternal, adminPage, adminTopicFilter, session?.role]);
+  }, [
+    adminCategoryFilter,
+    adminData,
+    adminDeviceFilter,
+    adminIncludeInternal,
+    adminPage,
+    adminShowUndisturbedFeed,
+    adminTopicFilter,
+    feedScenarioConfig?.scenarioOverlays,
+    session?.role
+  ]);
 
   const studentFeedValues = useMemo(() => {
     const values = new Map<string, string>();
@@ -3361,6 +3413,7 @@ export default function App() {
                   onToggleVisibleToStudents={changeTaskPipelineVisibleToStudents}
                   onSlotCountChange={changeTaskPipelineSlotCount}
                   onToggleAllowedBlock={toggleTaskPipelineAllowedBlock}
+                  onScenarioOverlaysChange={changeTaskPipelineScenarioOverlays}
                   onSaveTaskConfig={saveAdminTaskPipelineConfig}
                   formatTs={formatTs}
                 />
@@ -3382,24 +3435,13 @@ export default function App() {
               {adminPage === 'scenarios' ? (
                 <PipelineScenariosSection
                   t={t}
-                  tasks={adminData.tasks}
-                  selectedTaskId={adminPipelineTaskId}
-                  taskLabel={(task) => taskTitle(task, language)}
-                  taskConfig={adminTaskPipelineConfigDraft ?? adminTaskPipelineConfig}
-                  taskBusy={
-                    busyKey === 'admin-task-pipeline-config' ||
-                    busyKey === 'admin-task-pipeline-config-load'
-                  }
-                  onSelectTask={selectAdminPipelineTask}
-                  onTaskScenarioOverlaysChange={changeTaskPipelineScenarioOverlays}
-                  onSaveTaskScenarios={saveAdminTaskPipelineConfig}
-                  pipelineView={adminPipelineDraft ?? adminPipeline}
-                  groupOptions={adminData.groups.map((group) => group.groupKey)}
-                  selectedGroupKey={adminPipelineGroupKey}
-                  onSelectGroup={selectAdminPipelineGroup}
-                  pipelineBusy={busyKey === 'admin-pipeline' || busyKey === 'admin-pipeline-load'}
-                  onPipelineScenarioOverlaysChange={changeAdminPipelineScenarioOverlays}
-                  onSavePipelineScenarios={saveAdminPipeline}
+                  overlays={feedScenarioDraft}
+                  busy={busyKey === 'admin-scenarios'}
+                  updatedAt={feedScenarioConfig?.updatedAt ?? null}
+                  updatedBy={feedScenarioConfig?.updatedBy ?? null}
+                  formatTs={formatTs}
+                  onOverlaysChange={changeFeedScenarioOverlays}
+                  onSave={saveAdminFeedScenarios}
                 />
               ) : null}
 
@@ -3491,6 +3533,8 @@ export default function App() {
                   categoryOptions={CATEGORY_OPTIONS}
                   adminIncludeInternal={adminIncludeInternal}
                   onAdminIncludeInternalChange={setAdminIncludeInternal}
+                  adminShowUndisturbedFeed={adminShowUndisturbedFeed}
+                  onAdminShowUndisturbedFeedChange={setAdminShowUndisturbedFeed}
                   adminVisibleFeedCount={adminVisibleFeed.length}
                   adminFeedRows={adminFeedRows}
                 />

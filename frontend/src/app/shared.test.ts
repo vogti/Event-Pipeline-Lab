@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyFeedScenarioDisturbances,
   buildDeviceTelemetrySnapshots,
   eventValueSummary,
   extractCounterValueFromPayload,
@@ -33,6 +34,39 @@ function createEvent(
 }
 
 describe('shared helpers', () => {
+  it('returns original feed when no disturbance overlays are active', () => {
+    const events = [
+      createEvent({ id: 'event-a', ingestTs: '2026-01-01T10:00:00Z' }),
+      createEvent({ id: 'event-b', ingestTs: '2026-01-01T09:59:00Z' })
+    ];
+
+    const disturbed = applyFeedScenarioDisturbances(events, []);
+    expect(disturbed).toEqual(events);
+  });
+
+  it('applies deterministic drop and duplicate overlays for feed rendering', () => {
+    const events = Array.from({ length: 20 }).map((_, index) =>
+      createEvent({
+        id: `event-${index}`,
+        ingestTs: `2026-01-01T10:${String(index).padStart(2, '0')}:00Z`
+      })
+    );
+
+    const disturbedA = applyFeedScenarioDisturbances(
+      events,
+      ['duplicates:50%', 'drops:30%', 'out_of_order:40%']
+    );
+    const disturbedB = applyFeedScenarioDisturbances(
+      events,
+      ['duplicates:50%', 'drops:30%', 'out_of_order:40%']
+    );
+
+    expect(disturbedA.map((event) => event.id)).toEqual(disturbedB.map((event) => event.id));
+    expect(disturbedA.length).toBeGreaterThan(0);
+    expect(disturbedA.length).not.toBe(events.length);
+    expect(disturbedA.some((event) => event.id.includes('::dup'))).toBe(true);
+  });
+
   it('parses escaped payload JSON used by devices', () => {
     const escapedPayload = '{\\"temperature\\":22.4,\\"humidity\\":52}';
     expect(tryParsePayload(escapedPayload)).toEqual({ temperature: 22.4, humidity: 52 });

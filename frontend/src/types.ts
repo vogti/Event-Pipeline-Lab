@@ -142,6 +142,12 @@ export interface AppSettings {
   updatedBy: string;
 }
 
+export interface FeedScenarioConfig {
+  scenarioOverlays: string[];
+  updatedAt: TimestampValue;
+  updatedBy: string;
+}
+
 export interface SystemStatusEventRatePoint {
   minuteTs: TimestampValue;
   eventCount: number;

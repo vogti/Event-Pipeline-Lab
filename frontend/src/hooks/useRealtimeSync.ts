@@ -35,6 +35,7 @@ import type {
   AuthMe,
   CanonicalEvent,
   DeviceStatus,
+  FeedScenarioConfig,
   LanguageMode,
   PipelineObservabilityUpdate,
   PipelineView,
@@ -70,6 +71,7 @@ interface UseRealtimeSyncParams {
   setAdminSettingsDraftVirtualVisible: Dispatch<SetStateAction<boolean>>;
   setDefaultLanguageMode: Dispatch<SetStateAction<LanguageMode>>;
   setTimeFormat24h: Dispatch<SetStateAction<boolean>>;
+  setFeedScenarioConfig: Dispatch<SetStateAction<FeedScenarioConfig | null>>;
   selectedAdminPipelineGroupKeyRef: MutableRefObject<string>;
   onStudentPipelineUpdated: (view: PipelineView) => void;
   onStudentPipelineObservabilityUpdated: (update: PipelineObservabilityUpdate) => void;
@@ -104,6 +106,7 @@ export function useRealtimeSync({
   setAdminSettingsDraftVirtualVisible,
   setDefaultLanguageMode,
   setTimeFormat24h,
+  setFeedScenarioConfig,
   selectedAdminPipelineGroupKeyRef,
   onStudentPipelineUpdated,
   onStudentPipelineObservabilityUpdated,
@@ -425,6 +428,20 @@ export function useRealtimeSync({
       },
       'pipeline.observability.updated': (update) => {
         onStudentPipelineObservabilityUpdated(update);
+      },
+      'scenarios.updated': (config) => {
+        setFeedScenarioConfig((previous) => {
+          if (
+            previous &&
+            previous.updatedAt === config.updatedAt &&
+            previous.updatedBy === config.updatedBy &&
+            previous.scenarioOverlays.length === config.scenarioOverlays.length &&
+            previous.scenarioOverlays.every((value, index) => value === config.scenarioOverlays[index])
+          ) {
+            return previous;
+          }
+          return config;
+        });
       }
     };
 
@@ -500,6 +517,20 @@ export function useRealtimeSync({
       'pipeline.observability.updated': (update) => {
         const selectedGroupKey = selectedAdminPipelineGroupKeyRef.current;
         onAdminPipelineObservabilityUpdated(update, selectedGroupKey);
+      },
+      'scenarios.updated': (config) => {
+        setFeedScenarioConfig((previous) => {
+          if (
+            previous &&
+            previous.updatedAt === config.updatedAt &&
+            previous.updatedBy === config.updatedBy &&
+            previous.scenarioOverlays.length === config.scenarioOverlays.length &&
+            previous.scenarioOverlays.every((value, index) => value === config.scenarioOverlays[index])
+          ) {
+            return previous;
+          }
+          return config;
+        });
       }
     };
 
@@ -609,6 +640,7 @@ export function useRealtimeSync({
     setAdminSettingsDraftTimeFormat24h,
     setAdminSettingsDraftVirtualVisible,
     setDefaultLanguageMode,
+    setFeedScenarioConfig,
     setErrorMessage,
     setStudentConfigDraft,
     setStudentData,

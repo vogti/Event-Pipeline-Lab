@@ -2,6 +2,7 @@ package ch.marcovogt.epl.pipelinebuilder;
 
 import ch.marcovogt.epl.authsession.SessionPrincipal;
 import ch.marcovogt.epl.common.DeviceIdMapping;
+import ch.marcovogt.epl.eventfeedquery.FeedScenarioService;
 import ch.marcovogt.epl.eventingestionnormalization.CanonicalEventDto;
 import ch.marcovogt.epl.taskscenarioengine.PipelineTaskConfig;
 import ch.marcovogt.epl.taskscenarioengine.TaskDefinition;
@@ -33,6 +34,7 @@ public class PipelineStateService {
     private final PipelineStateRepository pipelineStateRepository;
     private final TaskStateService taskStateService;
     private final PipelineObservabilityService pipelineObservabilityService;
+    private final FeedScenarioService feedScenarioService;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
@@ -40,11 +42,13 @@ public class PipelineStateService {
             PipelineStateRepository pipelineStateRepository,
             TaskStateService taskStateService,
             PipelineObservabilityService pipelineObservabilityService,
+            FeedScenarioService feedScenarioService,
             ObjectMapper objectMapper
     ) {
         this.pipelineStateRepository = pipelineStateRepository;
         this.taskStateService = taskStateService;
         this.pipelineObservabilityService = pipelineObservabilityService;
+        this.feedScenarioService = feedScenarioService;
         this.objectMapper = objectMapper;
         this.clock = Clock.systemUTC();
     }
@@ -383,11 +387,26 @@ public class PipelineStateService {
             PipelineState globalState,
             PipelineStatePayload defaults
     ) {
+        List<String> globalScenarioOverlays = feedScenarioService.getConfig().scenarioOverlays();
         if (!config.lecturerMode() || globalState == null) {
-            return new PipelineStatePayload(defaults.input(), groupPayload.processing(), defaults.sink());
+            PipelineInputSection groupInput = groupPayload.input();
+            PipelineInputSection resolvedInput = new PipelineInputSection(
+                    groupInput.mode(),
+                    groupInput.deviceScope(),
+                    groupInput.ingestFilters(),
+                    globalScenarioOverlays
+            );
+            return new PipelineStatePayload(resolvedInput, groupPayload.processing(), defaults.sink());
         }
         PipelineStatePayload globalPayload = deserializeOrDefault(globalState.getStateJson(), defaults);
-        return new PipelineStatePayload(globalPayload.input(), groupPayload.processing(), globalPayload.sink());
+        PipelineInputSection globalInput = globalPayload.input();
+        PipelineInputSection resolvedInput = new PipelineInputSection(
+                globalInput.mode(),
+                globalInput.deviceScope(),
+                globalInput.ingestFilters(),
+                globalScenarioOverlays
+        );
+        return new PipelineStatePayload(resolvedInput, groupPayload.processing(), globalPayload.sink());
     }
 
     private long effectiveRevision(PipelineState groupState, PipelineState globalState) {

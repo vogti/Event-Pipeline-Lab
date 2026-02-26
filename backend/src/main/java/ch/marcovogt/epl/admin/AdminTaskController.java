@@ -5,6 +5,8 @@ import ch.marcovogt.epl.authsession.AppRole;
 import ch.marcovogt.epl.authsession.AuthService;
 import ch.marcovogt.epl.authsession.RequestAuth;
 import ch.marcovogt.epl.authsession.SessionPrincipal;
+import ch.marcovogt.epl.eventfeedquery.FeedScenarioConfigDto;
+import ch.marcovogt.epl.eventfeedquery.FeedScenarioService;
 import ch.marcovogt.epl.pipelinebuilder.PipelineStateService;
 import ch.marcovogt.epl.realtimewebsocket.RealtimeSyncService;
 import ch.marcovogt.epl.taskscenarioengine.TaskDefinition;
@@ -30,6 +32,7 @@ public class AdminTaskController {
     private final TaskStateService taskStateService;
     private final RealtimeSyncService realtimeSyncService;
     private final PipelineStateService pipelineStateService;
+    private final FeedScenarioService feedScenarioService;
     private final AuthService authService;
     private final AdminAuditLogger adminAuditLogger;
 
@@ -38,6 +41,7 @@ public class AdminTaskController {
             TaskStateService taskStateService,
             RealtimeSyncService realtimeSyncService,
             PipelineStateService pipelineStateService,
+            FeedScenarioService feedScenarioService,
             AuthService authService,
             AdminAuditLogger adminAuditLogger
     ) {
@@ -45,6 +49,7 @@ public class AdminTaskController {
         this.taskStateService = taskStateService;
         this.realtimeSyncService = realtimeSyncService;
         this.pipelineStateService = pipelineStateService;
+        this.feedScenarioService = feedScenarioService;
         this.authService = authService;
         this.adminAuditLogger = adminAuditLogger;
     }
@@ -59,12 +64,20 @@ public class AdminTaskController {
     public TaskInfoDto activateTask(HttpServletRequest request, @Valid @RequestBody ActivateTaskRequest body) {
         SessionPrincipal principal = requestAuth.requireRole(request, AppRole.ADMIN);
         TaskDefinition active = taskStateService.activateTask(body.taskId(), principal.username());
+        FeedScenarioConfigDto scenarioConfig = feedScenarioService.applyPreset(
+                active.pipeline().scenarioOverlays(),
+                principal.username()
+        );
         realtimeSyncService.broadcastTaskAndCapabilities(active);
+        realtimeSyncService.broadcastFeedScenarios(scenarioConfig);
 
         adminAuditLogger.logAction(
                 "admin.task.activate",
                 principal.username(),
-                Map.of("taskId", active.id())
+                Map.of(
+                        "taskId", active.id(),
+                        "scenarioOverlays", scenarioConfig.scenarioOverlays()
+                )
         );
 
         return TaskInfoDto.from(active, true);

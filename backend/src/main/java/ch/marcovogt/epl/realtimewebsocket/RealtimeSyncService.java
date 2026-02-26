@@ -6,6 +6,7 @@ import ch.marcovogt.epl.authsession.AuthService;
 import ch.marcovogt.epl.authsession.PresenceUserDto;
 import ch.marcovogt.epl.common.DeviceIdMapping;
 import ch.marcovogt.epl.deviceregistryhealth.DeviceStatusDto;
+import ch.marcovogt.epl.eventfeedquery.FeedScenarioConfigDto;
 import ch.marcovogt.epl.eventingestionnormalization.CanonicalEventDto;
 import ch.marcovogt.epl.groupcollaborationsync.GroupConfigDto;
 import ch.marcovogt.epl.pipelinebuilder.PipelineObservabilityUpdateDto;
@@ -100,6 +101,11 @@ public class RealtimeSyncService {
     public void broadcastSettingsUpdated(AppSettingsDto settingsDto) {
         studentBroadcaster.broadcastToAll("settings.updated", settingsDto);
         adminBroadcaster.broadcast("settings.updated", settingsDto);
+    }
+
+    public void broadcastFeedScenarios(FeedScenarioConfigDto configDto) {
+        studentBroadcaster.broadcastToAll("scenarios.updated", configDto);
+        adminBroadcaster.broadcast("scenarios.updated", configDto);
     }
 
     public void broadcastVirtualDeviceUpdated(VirtualDeviceStateDto deviceDto) {

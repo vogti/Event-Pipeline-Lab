@@ -6,6 +6,7 @@ import type {
   DeviceCommandType,
   DevicePinInfo,
   ResetEventsResponse,
+  FeedScenarioConfig,
   SystemDataImportApplyResponse,
   SystemDataImportVerifyResponse,
   SystemDataPart,
@@ -314,6 +315,25 @@ export const api = {
 
   adminSettings(token: string): Promise<AppSettings> {
     return request<AppSettings>('/api/admin/settings', undefined, token);
+  },
+
+  scenarios(token: string): Promise<FeedScenarioConfig> {
+    return request<FeedScenarioConfig>('/api/scenarios', undefined, token);
+  },
+
+  adminScenarios(token: string): Promise<FeedScenarioConfig> {
+    return request<FeedScenarioConfig>('/api/admin/scenarios', undefined, token);
+  },
+
+  updateAdminScenarios(token: string, scenarioOverlays: string[]): Promise<FeedScenarioConfig> {
+    return request<FeedScenarioConfig>(
+      '/api/admin/scenarios',
+      {
+        method: 'POST',
+        body: JSON.stringify({ scenarioOverlays })
+      },
+      token
+    );
   },
 
   adminSystemStatus(token: string): Promise<AdminSystemStatus> {
