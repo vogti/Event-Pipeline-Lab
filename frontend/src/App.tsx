@@ -4729,6 +4729,7 @@ export default function App() {
                   {!adminSystemStatus ? (
                     <p className="muted">{t('loading')}</p>
                   ) : (
+                    <>
                     <div className="system-status-grid">
                       <article className="system-status-card">
                         <h3>{t('eventsLast10Minutes')}</h3>
@@ -4929,6 +4930,7 @@ export default function App() {
                         ) : null}
                       </article>
                     </div>
+                    </>
                   )}
                 </section>
               ) : null}
