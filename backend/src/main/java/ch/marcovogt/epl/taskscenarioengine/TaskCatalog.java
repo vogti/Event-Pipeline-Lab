@@ -9,6 +9,33 @@ import org.springframework.stereotype.Component;
 @Component
 public class TaskCatalog {
 
+    private static final List<String> PBV_BLOCKS_BASIC = List.of(
+            "FILTER_DEVICE_TOPIC",
+            "PARSE_VALIDATE",
+            "ROUTE"
+    );
+
+    private static final List<String> PBV_BLOCKS_INTERMEDIATE = List.of(
+            "FILTER_DEVICE_TOPIC",
+            "FILTER_RATE_LIMIT",
+            "PARSE_VALIDATE",
+            "DEDUP",
+            "WINDOW_AGGREGATE",
+            "ROUTE"
+    );
+
+    private static final List<String> PBV_BLOCKS_ADVANCED = List.of(
+            "FILTER_DEVICE_TOPIC",
+            "FILTER_RATE_LIMIT",
+            "PARSE_VALIDATE",
+            "DEDUP",
+            "WINDOW_AGGREGATE",
+            "MICRO_BATCH",
+            "ROUTE",
+            "RETRY_DLQ",
+            "ENRICH_METADATA"
+    );
+
     private final Map<String, TaskDefinition> tasks;
 
     public TaskCatalog() {
@@ -29,6 +56,17 @@ public class TaskCatalog {
                                 false,
                                 List.of("displayMode", "sensorFocus"),
                                 List.of()
+                        ),
+                        pipelineConfig(
+                                true,
+                                false,
+                                PBV_BLOCKS_BASIC,
+                                "LIVE_MQTT",
+                                "GROUP_DEVICES",
+                                List.of(),
+                                List.of(),
+                                List.of("DEVICE_CONTROL"),
+                                "Aktiviere LED grün bei schwarzem Button-Event / Trigger green LED on black button event"
                         )
                 )
         );
@@ -48,6 +86,17 @@ public class TaskCatalog {
                                 true,
                                 List.of("displayMode", "sensorFocus", "topicPreset"),
                                 List.of()
+                        ),
+                        pipelineConfig(
+                                true,
+                                false,
+                                PBV_BLOCKS_INTERMEDIATE,
+                                "LIVE_MQTT",
+                                "ALL_DEVICES",
+                                List.of("eventType != status.system"),
+                                List.of("delay:300ms"),
+                                List.of("VIRTUAL_SIGNAL"),
+                                "Erzeuge ein Gruppensignal bei hoher Aktivität / Trigger group signal on high activity"
                         )
                 )
         );
@@ -67,6 +116,47 @@ public class TaskCatalog {
                                 false,
                                 List.of("displayMode", "sensorFocus", "commandPanel"),
                                 List.of("LED_GREEN", "LED_ORANGE", "COUNTER_RESET")
+                        ),
+                        pipelineConfig(
+                                true,
+                                false,
+                                PBV_BLOCKS_ADVANCED,
+                                "LIVE_MQTT",
+                                "GROUP_DEVICES",
+                                List.of(),
+                                List.of("duplicates:10%"),
+                                List.of("DEVICE_CONTROL", "VIRTUAL_SIGNAL"),
+                                "Steuere Aktoren robust trotz Duplikaten / Drive actuators robustly under duplicates"
+                        )
+                )
+        );
+
+        entries.put(
+                "task_lecturer_mode",
+                new TaskDefinition(
+                        "task_lecturer_mode",
+                        "Dozierendenmodus",
+                        "Lecturer Mode",
+                        "Dozierende steuern Input/Sink live; Studierende arbeiten im mittleren Processing-Bereich.",
+                        "Lecturer controls input/sink live while students work in the processing section.",
+                        new TaskCapabilities(
+                                true,
+                                true,
+                                true,
+                                true,
+                                List.of("displayMode", "sensorFocus", "commandPanel", "topicPreset"),
+                                List.of("LED_GREEN", "LED_ORANGE", "COUNTER_RESET")
+                        ),
+                        pipelineConfig(
+                                true,
+                                true,
+                                PBV_BLOCKS_ADVANCED,
+                                "LIVE_MQTT",
+                                "ALL_DEVICES",
+                                List.of(),
+                                List.of("delay:500ms", "duplicates:15%"),
+                                List.of("DEVICE_CONTROL", "VIRTUAL_SIGNAL", "STORAGE"),
+                                "Lehrdemo: Linke/Rechte Seite live variieren / Lecture demo with live input and sink changes"
                         )
                 )
         );
@@ -84,5 +174,30 @@ public class TaskCatalog {
 
     public String defaultTaskId() {
         return "task_intro";
+    }
+
+    private PipelineTaskConfig pipelineConfig(
+            boolean visibleToStudents,
+            boolean lecturerMode,
+            List<String> allowedBlocks,
+            String inputMode,
+            String deviceScope,
+            List<String> ingestFilters,
+            List<String> scenarioOverlays,
+            List<String> sinkTargets,
+            String sinkGoal
+    ) {
+        return new PipelineTaskConfig(
+                visibleToStudents,
+                lecturerMode,
+                5,
+                List.copyOf(allowedBlocks),
+                inputMode,
+                deviceScope,
+                List.copyOf(ingestFilters),
+                List.copyOf(scenarioOverlays),
+                List.copyOf(sinkTargets),
+                sinkGoal
+        );
     }
 }

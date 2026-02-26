@@ -1,9 +1,10 @@
-# Event Pipeline Lab (EPL) - Phase 1 + Phase 2 Foundation
+# Event Pipeline Lab (EPL) - Phase 1 + Phase 2 + PBV Stage 1
 
 This repository currently delivers:
 
 - **Phase 1**: reliable MQTT ingestion, canonical normalization, persistence, bounded live feeds, device health
 - **Phase 2**: auth/session, task activation + capability gating, group shared config + presence sync, admin/student REST APIs, authenticated WebSocket channels, and React frontend dashboards
+- **PBV Stage 1**: task-bound Pipeline Builder state model (Input/Processing/Sink), constrained processing slots, student/admin APIs, real-time per-group pipeline sync, and initial PBV UI in student/admin
 
 Backend package namespace: `ch.marcovogt.epl`.
 Build system: **Gradle**.
@@ -33,6 +34,7 @@ Event-Pipeline-Lab/
       eventfeedquery/
       realtimewebsocket/
       taskscenarioengine/
+      pipelinebuilder/
       groupcollaborationsync/
       auditlogging/
       config/
@@ -47,6 +49,7 @@ Event-Pipeline-Lab/
         V6__virtual_device_brightness_voltage.sql
         V7__reconcile_groups_and_virtual_devices_to_physical_devices.sql
         V8__cleanup_virtual_rows_from_device_status.sql
+        V9__pipeline_builder_state.sql
     Dockerfile
     build.gradle
     settings.gradle
@@ -72,6 +75,32 @@ Event-Pipeline-Lab/
 ```bash
 docker compose up --build -d
 ```
+
+## Pipeline Builder Roadmap
+
+PBV is implemented in staged increments to keep lecture reliability high.
+
+1. **Stage 1 (implemented)**  
+   - Persist pipeline state per `task + group`  
+   - Add lecturer-mode template (`task_lecturer_mode`)  
+   - Student/Admin PBV APIs  
+   - WebSocket event `pipeline.state.updated`  
+   - Initial UI: Input (read-only for students), Processing slots (task-gated), Sink (read-only for students)
+2. **Stage 2 (next)**  
+   - Task editor controls for allowed block presets/ranges  
+   - Better admin compare view across groups  
+   - Explicit PBV visibility toggle per task
+3. **Stage 3**  
+   - Scenario engine controls in PBV (duplicates/delay/drop/out-of-order)  
+   - Student transparency badges for active disturbances
+4. **Stage 4**  
+   - Block-level observability counters/latency/backlog  
+   - Sample-event inspector + transform diff view (bounded ring buffers)
+5. **Stage 5**  
+   - Stateful block introspection (window/dedup store size, TTL, reset)  
+   - Restart semantics (state lost vs retained simulation)
+6. **Stage 6**  
+   - Optional Kafka-backed log mode integration (replay/offset framing in PBV)
 
 ## Update Running Deployment
 
@@ -212,6 +241,34 @@ docker run --rm --network epl_default curlimages/curl:8.12.1 -sS http://backend:
 docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST http://backend:8080/api/admin/system-status/events/reset -H "X-EPL-Session: ${ADMIN_TOKEN}" -H 'Content-Type: application/json' -d '{"confirm":true}'
 ```
 
+## Pipeline Builder API (Stage 1)
+
+```bash
+# Student: load own group pipeline for active task
+docker run --rm --network epl_default curlimages/curl:8.12.1 -sS \
+  http://backend:8080/api/student/pipeline \
+  -H "X-EPL-Session: ${STUDENT_TOKEN}"
+
+# Student: update processing slots
+docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST \
+  http://backend:8080/api/student/pipeline \
+  -H "X-EPL-Session: ${STUDENT_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d '{"processing":{"mode":"CONSTRAINED","slotCount":5,"slots":[{"index":0,"blockType":"FILTER_DEVICE_TOPIC","config":{}},{"index":1,"blockType":"PARSE_VALIDATE","config":{}},{"index":2,"blockType":"NONE","config":{}},{"index":3,"blockType":"NONE","config":{}},{"index":4,"blockType":"ROUTE","config":{}}]}}'
+
+# Admin: load pipeline view for a group (active task context)
+docker run --rm --network epl_default curlimages/curl:8.12.1 -sS \
+  "http://backend:8080/api/admin/pipeline?groupKey=epld01" \
+  -H "X-EPL-Session: ${ADMIN_TOKEN}"
+
+# Admin: update pipeline for a group
+docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST \
+  http://backend:8080/api/admin/pipeline \
+  -H "X-EPL-Session: ${ADMIN_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d '{"groupKey":"epld01","input":{"mode":"LIVE_MQTT","deviceScope":"GROUP_DEVICES","ingestFilters":[],"scenarioOverlays":["delay:300ms"]},"processing":{"mode":"CONSTRAINED","slotCount":5,"slots":[{"index":0,"blockType":"FILTER_DEVICE_TOPIC","config":{}},{"index":1,"blockType":"DEDUP","config":{}},{"index":2,"blockType":"WINDOW_AGGREGATE","config":{}},{"index":3,"blockType":"ROUTE","config":{}},{"index":4,"blockType":"NONE","config":{}}]},"sink":{"targets":["DEVICE_CONTROL"],"goal":"Trigger green LED when threshold reached"}}'
+```
+
 ## System Data Export / Import
 
 UI path:
@@ -267,6 +324,7 @@ Server push event types include:
 - `event.feed.append`
 - `device.status.updated`
 - `admin.groups.updated`
+- `pipeline.state.updated`
 - `settings.updated`
 - `ws.ping`
 - `error.notification`

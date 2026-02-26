@@ -13,6 +13,10 @@ import type {
   GroupConfig,
   GroupOverview,
   LanguageMode,
+  PipelineInputSection,
+  PipelineProcessingSection,
+  PipelineSinkSection,
+  PipelineView,
   StudentBootstrap,
   TaskInfo,
   VirtualDeviceState
@@ -395,6 +399,46 @@ export const api = {
 
   studentVirtualDevice(token: string): Promise<VirtualDeviceState> {
     return request<VirtualDeviceState>('/api/student/virtual-device', undefined, token);
+  },
+
+  studentPipeline(token: string): Promise<PipelineView> {
+    return request<PipelineView>('/api/student/pipeline', undefined, token);
+  },
+
+  updateStudentPipeline(token: string, processing: PipelineProcessingSection): Promise<PipelineView> {
+    return request<PipelineView>(
+      '/api/student/pipeline',
+      {
+        method: 'POST',
+        body: JSON.stringify({ processing })
+      },
+      token
+    );
+  },
+
+  adminPipeline(token: string, groupKey: string): Promise<PipelineView> {
+    return request<PipelineView>(
+      withQuery('/api/admin/pipeline', { groupKey }),
+      undefined,
+      token
+    );
+  },
+
+  updateAdminPipeline(
+    token: string,
+    groupKey: string,
+    input: PipelineInputSection,
+    processing: PipelineProcessingSection,
+    sink: PipelineSinkSection
+  ): Promise<PipelineView> {
+    return request<PipelineView>(
+      '/api/admin/pipeline',
+      {
+        method: 'POST',
+        body: JSON.stringify({ groupKey, input, processing, sink })
+      },
+      token
+    );
   },
 
   eventsFeed(

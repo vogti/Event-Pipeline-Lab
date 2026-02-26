@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { dispatchWsEnvelope, parseWsEnvelope } from './ws-dispatcher';
-import type { CanonicalEvent, WsEnvelope } from '../types';
+import type { CanonicalEvent, PipelineView, WsEnvelope } from '../types';
 
 function createEvent(id: string): CanonicalEvent {
   return {
@@ -18,6 +18,43 @@ function createEvent(id: string): CanonicalEvent {
     scenarioFlags: '{}',
     groupKey: 'epld01',
     sequenceNo: 1
+  };
+}
+
+function createPipelineView(): PipelineView {
+  return {
+    taskId: 'task_intro',
+    groupKey: 'epld01',
+    input: {
+      mode: 'LIVE_MQTT',
+      deviceScope: 'GROUP_DEVICES',
+      ingestFilters: [],
+      scenarioOverlays: []
+    },
+    processing: {
+      mode: 'CONSTRAINED',
+      slotCount: 2,
+      slots: [
+        { index: 0, blockType: 'NONE', config: {} },
+        { index: 1, blockType: 'FILTER_DEVICE_TOPIC', config: {} }
+      ]
+    },
+    sink: {
+      targets: ['DEVICE_CONTROL'],
+      goal: 'goal'
+    },
+    permissions: {
+      visible: true,
+      inputEditable: false,
+      processingEditable: true,
+      sinkEditable: false,
+      lecturerMode: false,
+      allowedProcessingBlocks: ['FILTER_DEVICE_TOPIC'],
+      slotCount: 2
+    },
+    revision: 1,
+    updatedAt: '2026-01-01T10:00:00Z',
+    updatedBy: 'tester'
   };
 }
 
@@ -85,6 +122,29 @@ describe('ws dispatcher', () => {
     );
 
     expect(handled).toBe(false);
+  });
+
+  it('dispatches pipeline.state.updated to matching handler', () => {
+    const view = createPipelineView();
+    const onPipeline = vi.fn();
+    const handled = dispatchWsEnvelope(
+      {
+        type: 'pipeline.state.updated',
+        payload: view,
+        ts: null
+      },
+      {
+        'pipeline.state.updated': onPipeline
+      }
+    );
+
+    expect(handled).toBe(true);
+    expect(onPipeline).toHaveBeenCalledTimes(1);
+    expect(onPipeline).toHaveBeenCalledWith(view, {
+      type: 'pipeline.state.updated',
+      payload: view,
+      ts: null
+    });
   });
 
   it('supports handler-driven state reductions across multiple envelopes', () => {

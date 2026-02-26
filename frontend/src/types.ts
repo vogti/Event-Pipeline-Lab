@@ -179,6 +179,52 @@ export interface SystemDataImportApplyResponse {
   importedParts: SystemDataImportPartInfo[];
 }
 
+export interface PipelineInputSection {
+  mode: string;
+  deviceScope: string;
+  ingestFilters: string[];
+  scenarioOverlays: string[];
+}
+
+export interface PipelineSlot {
+  index: number;
+  blockType: string;
+  config: Record<string, unknown>;
+}
+
+export interface PipelineProcessingSection {
+  mode: string;
+  slotCount: number;
+  slots: PipelineSlot[];
+}
+
+export interface PipelineSinkSection {
+  targets: string[];
+  goal: string;
+}
+
+export interface PipelinePermissions {
+  visible: boolean;
+  inputEditable: boolean;
+  processingEditable: boolean;
+  sinkEditable: boolean;
+  lecturerMode: boolean;
+  allowedProcessingBlocks: string[];
+  slotCount: number;
+}
+
+export interface PipelineView {
+  taskId: string;
+  groupKey: string;
+  input: PipelineInputSection;
+  processing: PipelineProcessingSection;
+  sink: PipelineSinkSection;
+  permissions: PipelinePermissions;
+  revision: number;
+  updatedAt: TimestampValue;
+  updatedBy: string;
+}
+
 export interface StudentBootstrap {
   me: AuthMe;
   activeTask: TaskInfo;

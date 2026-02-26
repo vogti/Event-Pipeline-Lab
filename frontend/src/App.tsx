@@ -7,6 +7,8 @@ import type {
   DeviceCommandType,
   EventCategory,
   LanguageMode,
+  PipelineProcessingSection,
+  PipelineView,
   SystemDataImportVerifyResponse,
   SystemDataPart,
   TimestampValue,
@@ -92,6 +94,7 @@ import { StudentCapabilitiesSection } from './components/student/StudentCapabili
 import { StudentCommandsSection } from './components/student/StudentCommandsSection';
 import { StudentVirtualDeviceSection } from './components/student/StudentVirtualDeviceSection';
 import { AppModals } from './components/AppModals';
+import { PipelineBuilderSection } from './components/pipeline/PipelineBuilderSection';
 import { useAdminSystemStatusPolling } from './hooks/useAdminSystemStatusPolling';
 import { useRealtimeSync } from './hooks/useRealtimeSync';
 import {
@@ -100,6 +103,30 @@ import {
   normalizeMqttTemplateForTarget,
   resolveMqttDeviceId
 } from './app/mqtt-composer';
+
+function parsePipelineListInput(value: string): string[] {
+  return value
+    .split(/\r?\n|,/)
+    .map((entry) => entry.trim())
+    .filter((entry, index, array) => entry.length > 0 && array.indexOf(entry) === index);
+}
+
+function setPipelineSlotBlock(
+  processing: PipelineProcessingSection,
+  slotIndex: number,
+  blockType: string
+): PipelineProcessingSection {
+  const nextSlots = processing.slots.some((slot) => slot.index === slotIndex)
+    ? processing.slots.map((slot) =>
+        slot.index === slotIndex ? { ...slot, blockType } : slot
+      )
+    : [...processing.slots, { index: slotIndex, blockType, config: {} }];
+
+  return {
+    ...processing,
+    slots: nextSlots.sort((a, b) => a.index - b.index)
+  };
+}
 
 export default function App() {
   const [token, setToken] = useState<string | null>(() => getStoredToken());
@@ -116,6 +143,8 @@ export default function App() {
   const [studentShowInternal, setStudentShowInternal] = useState(false);
   const [studentFeedPaused, setStudentFeedPaused] = useState(false);
   const [studentOnboardingDone, setStudentOnboardingDone] = useState(false);
+  const [studentPipeline, setStudentPipeline] = useState<PipelineView | null>(null);
+  const [studentPipelineDraft, setStudentPipelineDraft] = useState<PipelineProcessingSection | null>(null);
 
   const [adminData, setAdminData] = useState<AdminViewData | null>(null);
   const [adminSystemStatus, setAdminSystemStatus] = useState<AdminSystemStatus | null>(null);
@@ -129,6 +158,9 @@ export default function App() {
   const [adminSettingsDraftVirtualVisible, setAdminSettingsDraftVirtualVisible] = useState(true);
   const [adminDeviceSnapshots, setAdminDeviceSnapshots] = useState<Record<string, DeviceTelemetrySnapshot>>({});
   const [adminDeviceIpById, setAdminDeviceIpById] = useState<Record<string, string>>({});
+  const [adminPipeline, setAdminPipeline] = useState<PipelineView | null>(null);
+  const [adminPipelineDraft, setAdminPipelineDraft] = useState<PipelineView | null>(null);
+  const [adminPipelineGroupKey, setAdminPipelineGroupKey] = useState('');
   const [studentVirtualPatch, setStudentVirtualPatch] = useState<VirtualDevicePatch | null>(null);
   const [virtualControlDeviceId, setVirtualControlDeviceId] = useState<string | null>(null);
   const [virtualControlPatch, setVirtualControlPatch] = useState<VirtualDevicePatch | null>(null);
@@ -173,6 +205,7 @@ export default function App() {
   const deferredAdminFeedRef = useRef<CanonicalEvent[]>([]);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const recentFeedClearTimerRef = useRef<number | null>(null);
+  const adminPipelineGroupKeyRef = useRef<string>('');
 
   const reportBackgroundError = useCallback((context: string, error: unknown) => {
     const message = toErrorMessage(error);
@@ -263,6 +296,10 @@ export default function App() {
   }, [adminPage]);
 
   useEffect(() => {
+    adminPipelineGroupKeyRef.current = adminPipelineGroupKey;
+  }, [adminPipelineGroupKey]);
+
+  useEffect(() => {
     adminDataRef.current = adminData;
   }, [adminData]);
 
@@ -344,6 +381,8 @@ export default function App() {
     setStudentShowInternal(false);
     setStudentFeedPaused(false);
     setStudentOnboardingDone(false);
+    setStudentPipeline(null);
+    setStudentPipelineDraft(null);
 
     setAdminData(null);
     setAdminSystemStatus(null);
@@ -357,6 +396,10 @@ export default function App() {
     setAdminSettingsDraftVirtualVisible(true);
     setAdminDeviceSnapshots({});
     setAdminDeviceIpById({});
+    setAdminPipeline(null);
+    setAdminPipelineDraft(null);
+    setAdminPipelineGroupKey('');
+    adminPipelineGroupKeyRef.current = '';
     setStudentVirtualPatch(null);
     setVirtualControlDeviceId(null);
     setVirtualControlPatch(null);
@@ -419,9 +462,38 @@ export default function App() {
     });
   }, []);
 
+  const loadAdminPipelineForGroup = useCallback(
+    async (groupKey: string) => {
+      if (!token) {
+        return;
+      }
+      if (!groupKey) {
+        setAdminPipeline(null);
+        setAdminPipelineDraft(null);
+        return;
+      }
+
+      setBusyKey('admin-pipeline-load');
+      setErrorMessage(null);
+      try {
+        const view = await api.adminPipeline(token, groupKey);
+        setAdminPipeline(view);
+        setAdminPipelineDraft(view);
+      } catch (error) {
+        setErrorMessage(toErrorMessage(error));
+      } finally {
+        setBusyKey(null);
+      }
+    },
+    [token]
+  );
+
   const loadDashboards = useCallback(async (auth: AuthMe, activeToken: string) => {
     if (auth.role === 'STUDENT') {
-      const bootstrap = await api.studentBootstrap(activeToken);
+      const [bootstrap, pipeline] = await Promise.all([
+        api.studentBootstrap(activeToken),
+        api.studentPipeline(activeToken)
+      ]);
       setStudentData({
         activeTask: bootstrap.activeTask,
         capabilities: bootstrap.capabilities,
@@ -437,6 +509,8 @@ export default function App() {
       setStudentOnboardingDone(false);
       setDefaultLanguageMode(bootstrap.settings.defaultLanguageMode);
       setTimeFormat24h(bootstrap.settings.timeFormat24h);
+      setStudentPipeline(pipeline);
+      setStudentPipelineDraft(pipeline.processing);
       return;
     }
 
@@ -466,6 +540,18 @@ export default function App() {
     setTimeFormat24h(settings.timeFormat24h);
     setAdminSystemStatus(systemStatus);
     setAdminPage('dashboard');
+
+    const initialGroupKey = groups[0]?.groupKey ?? '';
+    setAdminPipelineGroupKey(initialGroupKey);
+    adminPipelineGroupKeyRef.current = initialGroupKey;
+    if (initialGroupKey) {
+      const pipeline = await api.adminPipeline(activeToken, initialGroupKey);
+      setAdminPipeline(pipeline);
+      setAdminPipelineDraft(pipeline);
+    } else {
+      setAdminPipeline(null);
+      setAdminPipelineDraft(null);
+    }
   }, []);
 
   useEffect(() => {
@@ -522,6 +608,72 @@ export default function App() {
     }
     setStudentShowInternal(false);
   }, [studentData]);
+
+  const studentActiveTaskId = studentData?.activeTask.id ?? '';
+  const hasStudentData = studentData !== null;
+
+  useEffect(() => {
+    if (!token || session?.role !== 'STUDENT' || !hasStudentData) {
+      return;
+    }
+
+    let cancelled = false;
+    api.studentPipeline(token)
+      .then((view) => {
+        if (cancelled) {
+          return;
+        }
+        setStudentPipeline(view);
+        setStudentPipelineDraft(view.processing);
+      })
+      .catch((error) => reportBackgroundError('studentPipeline', error));
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token, session?.role, hasStudentData, studentActiveTaskId, reportBackgroundError]);
+
+  const adminGroupKeysSignature = useMemo(
+    () => (adminData?.groups ?? []).map((group) => group.groupKey).join('|'),
+    [adminData?.groups]
+  );
+  const adminTaskActivitySignature = useMemo(
+    () => (adminData?.tasks ?? []).map((task) => `${task.id}:${task.active}`).join('|'),
+    [adminData?.tasks]
+  );
+  const adminGroups = useMemo(() => adminData?.groups ?? [], [adminData?.groups]);
+  const hasAdminData = adminData !== null;
+
+  useEffect(() => {
+    const groupKeys = adminGroups.map((group) => group.groupKey);
+    if (groupKeys.length === 0) {
+      setAdminPipelineGroupKey('');
+      adminPipelineGroupKeyRef.current = '';
+      setAdminPipeline(null);
+      setAdminPipelineDraft(null);
+      return;
+    }
+    if (!adminPipelineGroupKey || !groupKeys.includes(adminPipelineGroupKey)) {
+      const firstGroupKey = groupKeys[0];
+      setAdminPipelineGroupKey(firstGroupKey);
+      adminPipelineGroupKeyRef.current = firstGroupKey;
+      void loadAdminPipelineForGroup(firstGroupKey);
+    }
+  }, [adminGroupKeysSignature, adminGroups, adminPipelineGroupKey, loadAdminPipelineForGroup]);
+
+  useEffect(() => {
+    if (!token || session?.role !== 'ADMIN' || !adminPipelineGroupKey || !hasAdminData) {
+      return;
+    }
+    void loadAdminPipelineForGroup(adminPipelineGroupKey);
+  }, [
+    token,
+    session?.role,
+    hasAdminData,
+    adminPipelineGroupKey,
+    adminTaskActivitySignature,
+    loadAdminPipelineForGroup
+  ]);
 
   useEffect(() => {
     const virtualDevice = studentData?.virtualDevice;
@@ -743,6 +895,36 @@ export default function App() {
     setAdminSystemStatus
   });
 
+  const applyStudentPipelineFromWs = useCallback((view: PipelineView) => {
+    setStudentPipeline((previous) => {
+      if (
+        previous &&
+        previous.taskId === view.taskId &&
+        previous.groupKey === view.groupKey &&
+        previous.revision === view.revision
+      ) {
+        return previous;
+      }
+      return view;
+    });
+    setStudentPipelineDraft(view.processing);
+  }, []);
+
+  const applyAdminPipelineFromWs = useCallback((view: PipelineView) => {
+    setAdminPipeline((previous) => {
+      if (
+        previous &&
+        previous.taskId === view.taskId &&
+        previous.groupKey === view.groupKey &&
+        previous.revision === view.revision
+      ) {
+        return previous;
+      }
+      return view;
+    });
+    setAdminPipelineDraft(view);
+  }, []);
+
   useRealtimeSync({
     session,
     token,
@@ -768,7 +950,10 @@ export default function App() {
     setAdminSettingsDraftTimeFormat24h,
     setAdminSettingsDraftVirtualVisible,
     setDefaultLanguageMode,
-    setTimeFormat24h
+    setTimeFormat24h,
+    selectedAdminPipelineGroupKeyRef: adminPipelineGroupKeyRef,
+    onStudentPipelineUpdated: applyStudentPipelineFromWs,
+    onAdminPipelineUpdated: applyAdminPipelineFromWs
   });
 
   const adminPhysicalDeviceIds = useMemo(() => {
@@ -918,6 +1103,171 @@ export default function App() {
       setBusyKey(null);
     }
   };
+
+  const saveStudentPipeline = async () => {
+    if (!token || !studentPipelineDraft) {
+      return;
+    }
+
+    setBusyKey('student-pipeline');
+    setErrorMessage(null);
+
+    try {
+      const updated = await api.updateStudentPipeline(token, studentPipelineDraft);
+      setStudentPipeline(updated);
+      setStudentPipelineDraft(updated.processing);
+      setInfoMessage(t('pipelineUpdated'));
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const changeStudentPipelineSlot = useCallback((slotIndex: number, blockType: string) => {
+    setStudentPipelineDraft((previous) => {
+      if (!previous) {
+        return previous;
+      }
+      return setPipelineSlotBlock(previous, slotIndex, blockType);
+    });
+  }, []);
+
+  const selectAdminPipelineGroup = useCallback(
+    (groupKey: string) => {
+      setAdminPipelineGroupKey(groupKey);
+      adminPipelineGroupKeyRef.current = groupKey;
+      void loadAdminPipelineForGroup(groupKey);
+    },
+    [loadAdminPipelineForGroup]
+  );
+
+  const saveAdminPipeline = async () => {
+    if (!token || !adminPipelineDraft || !adminPipelineGroupKey) {
+      return;
+    }
+
+    setBusyKey('admin-pipeline');
+    setErrorMessage(null);
+    try {
+      const updated = await api.updateAdminPipeline(
+        token,
+        adminPipelineGroupKey,
+        adminPipelineDraft.input,
+        adminPipelineDraft.processing,
+        adminPipelineDraft.sink
+      );
+      setAdminPipeline(updated);
+      setAdminPipelineDraft(updated);
+      setInfoMessage(t('pipelineUpdated'));
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const changeAdminPipelineSlot = useCallback((slotIndex: number, blockType: string) => {
+    setAdminPipelineDraft((previous) => {
+      if (!previous) {
+        return previous;
+      }
+      return {
+        ...previous,
+        processing: setPipelineSlotBlock(previous.processing, slotIndex, blockType)
+      };
+    });
+  }, []);
+
+  const changeAdminPipelineInputMode = useCallback((nextMode: string) => {
+    setAdminPipelineDraft((previous) => {
+      if (!previous) {
+        return previous;
+      }
+      return {
+        ...previous,
+        input: {
+          ...previous.input,
+          mode: nextMode
+        }
+      };
+    });
+  }, []);
+
+  const changeAdminPipelineDeviceScope = useCallback((nextScope: string) => {
+    setAdminPipelineDraft((previous) => {
+      if (!previous) {
+        return previous;
+      }
+      return {
+        ...previous,
+        input: {
+          ...previous.input,
+          deviceScope: nextScope
+        }
+      };
+    });
+  }, []);
+
+  const changeAdminPipelineIngestFilters = useCallback((raw: string) => {
+    setAdminPipelineDraft((previous) => {
+      if (!previous) {
+        return previous;
+      }
+      return {
+        ...previous,
+        input: {
+          ...previous.input,
+          ingestFilters: parsePipelineListInput(raw)
+        }
+      };
+    });
+  }, []);
+
+  const changeAdminPipelineScenarioOverlays = useCallback((raw: string) => {
+    setAdminPipelineDraft((previous) => {
+      if (!previous) {
+        return previous;
+      }
+      return {
+        ...previous,
+        input: {
+          ...previous.input,
+          scenarioOverlays: parsePipelineListInput(raw)
+        }
+      };
+    });
+  }, []);
+
+  const changeAdminPipelineSinkTargets = useCallback((raw: string) => {
+    setAdminPipelineDraft((previous) => {
+      if (!previous) {
+        return previous;
+      }
+      return {
+        ...previous,
+        sink: {
+          ...previous.sink,
+          targets: parsePipelineListInput(raw)
+        }
+      };
+    });
+  }, []);
+
+  const changeAdminPipelineSinkGoal = useCallback((goal: string) => {
+    setAdminPipelineDraft((previous) => {
+      if (!previous) {
+        return previous;
+      }
+      return {
+        ...previous,
+        sink: {
+          ...previous.sink,
+          goal
+        }
+      };
+    });
+  }, []);
 
   const sendStudentCommand = async (command: DeviceCommandType, on?: boolean) => {
     if (!token || !session || session.role !== 'STUDENT' || !session.groupKey) {
@@ -2376,6 +2726,16 @@ export default function App() {
               formatTs={formatTs}
             />
 
+            <PipelineBuilderSection
+              t={t}
+              title={t('pipelineBuilder')}
+              view={studentPipeline}
+              draftProcessing={studentPipelineDraft}
+              onChangeSlotBlock={changeStudentPipelineSlot}
+              onSave={saveStudentPipeline}
+              saveBusy={busyKey === 'student-pipeline'}
+            />
+
             <StudentPresenceSection
               t={t}
               groupPresence={studentData.groupPresence}
@@ -2513,6 +2873,27 @@ export default function App() {
                   onActivateTask={activateTask}
                   isTaskActivationBusy={(taskId) => busyKey === `activate-${taskId}`}
                   formatTs={formatTs}
+                />
+              ) : null}
+
+              {adminPage === 'pipeline' ? (
+                <PipelineBuilderSection
+                  t={t}
+                  title={t('pipelineBuilder')}
+                  view={adminPipelineDraft ?? adminPipeline}
+                  groupOptions={adminData.groups.map((group) => group.groupKey)}
+                  selectedGroupKey={adminPipelineGroupKey}
+                  onSelectGroup={selectAdminPipelineGroup}
+                  draftProcessing={adminPipelineDraft?.processing ?? adminPipeline?.processing ?? null}
+                  onChangeSlotBlock={changeAdminPipelineSlot}
+                  onInputModeChange={changeAdminPipelineInputMode}
+                  onDeviceScopeChange={changeAdminPipelineDeviceScope}
+                  onIngestFiltersChange={changeAdminPipelineIngestFilters}
+                  onScenarioOverlaysChange={changeAdminPipelineScenarioOverlays}
+                  onSinkTargetsChange={changeAdminPipelineSinkTargets}
+                  onSinkGoalChange={changeAdminPipelineSinkGoal}
+                  onSave={saveAdminPipeline}
+                  saveBusy={busyKey === 'admin-pipeline' || busyKey === 'admin-pipeline-load'}
                 />
               ) : null}
 

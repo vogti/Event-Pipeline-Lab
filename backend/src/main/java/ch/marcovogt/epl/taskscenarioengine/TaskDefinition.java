@@ -6,6 +6,7 @@ public record TaskDefinition(
         String titleEn,
         String descriptionDe,
         String descriptionEn,
-        TaskCapabilities studentCapabilities
+        TaskCapabilities studentCapabilities,
+        PipelineTaskConfig pipeline
 ) {
 }

@@ -36,6 +36,7 @@ import type {
   CanonicalEvent,
   DeviceStatus,
   LanguageMode,
+  PipelineView,
   PresenceUser,
   TaskDefinitionPayload,
   TaskInfo,
@@ -68,6 +69,9 @@ interface UseRealtimeSyncParams {
   setAdminSettingsDraftVirtualVisible: Dispatch<SetStateAction<boolean>>;
   setDefaultLanguageMode: Dispatch<SetStateAction<LanguageMode>>;
   setTimeFormat24h: Dispatch<SetStateAction<boolean>>;
+  selectedAdminPipelineGroupKeyRef: MutableRefObject<string>;
+  onStudentPipelineUpdated: (view: PipelineView) => void;
+  onAdminPipelineUpdated: (view: PipelineView) => void;
 }
 
 export function useRealtimeSync({
@@ -95,7 +99,10 @@ export function useRealtimeSync({
   setAdminSettingsDraftTimeFormat24h,
   setAdminSettingsDraftVirtualVisible,
   setDefaultLanguageMode,
-  setTimeFormat24h
+  setTimeFormat24h,
+  selectedAdminPipelineGroupKeyRef,
+  onStudentPipelineUpdated,
+  onAdminPipelineUpdated
 }: UseRealtimeSyncParams): void {
   useEffect(() => {
     if (!session || !token) {
@@ -405,6 +412,9 @@ export function useRealtimeSync({
             })
             .catch((error) => reportBackgroundError('studentVirtualDevice', error));
         }
+      },
+      'pipeline.state.updated': (view) => {
+        onStudentPipelineUpdated(view);
       }
     };
 
@@ -469,6 +479,12 @@ export function useRealtimeSync({
       },
       'error.notification': (payload) => {
         setErrorMessage(String(payload));
+      },
+      'pipeline.state.updated': (view) => {
+        if (view.groupKey !== selectedAdminPipelineGroupKeyRef.current) {
+          return;
+        }
+        onAdminPipelineUpdated(view);
       }
     };
 
@@ -560,10 +576,13 @@ export function useRealtimeSync({
     adminPauseRef,
     flushDeferredAdminFeedEvents,
     markFeedEventsRecent,
+    onAdminPipelineUpdated,
+    onStudentPipelineUpdated,
     queueDeferredAdminFeedEvents,
     refreshAdminGroups,
     refreshAdminTasks,
     reportBackgroundError,
+    selectedAdminPipelineGroupKeyRef,
     session,
     setAdminData,
     setAdminDeviceIpById,

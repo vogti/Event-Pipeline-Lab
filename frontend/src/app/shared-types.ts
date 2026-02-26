@@ -33,7 +33,15 @@ export interface AdminViewData {
 export type WsConnectionState = 'connecting' | 'connected' | 'disconnected';
 export type FeedViewMode = 'rendered' | 'raw';
 export type EventDetailsViewMode = 'rendered' | 'raw';
-export type AdminPage = 'dashboard' | 'devices' | 'virtualDevices' | 'feed' | 'groupsTasks' | 'systemStatus' | 'settings';
+export type AdminPage =
+  | 'dashboard'
+  | 'devices'
+  | 'virtualDevices'
+  | 'feed'
+  | 'groupsTasks'
+  | 'pipeline'
+  | 'systemStatus'
+  | 'settings';
 export type CounterResetTarget = { deviceId: string; isVirtual: boolean };
 
 export interface VirtualDevicePatch {
