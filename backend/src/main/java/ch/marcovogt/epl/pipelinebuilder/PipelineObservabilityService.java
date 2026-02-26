@@ -19,6 +19,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -37,6 +38,7 @@ public class PipelineObservabilityService {
     private final int maxGroupStates;
     private final LinkedHashMap<String, GroupState> stateByKey;
 
+    @Autowired
     public PipelineObservabilityService(
             ObjectMapper objectMapper,
             @Value("${epl.pipeline.observability.sample-every:10}") int sampleEvery,
