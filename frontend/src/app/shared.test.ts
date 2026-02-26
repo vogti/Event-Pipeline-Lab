@@ -1,0 +1,185 @@
+import { describe, expect, it } from 'vitest';
+import {
+  buildDeviceTelemetrySnapshots,
+  eventValueSummary,
+  extractCounterValueFromPayload,
+  mergeIpAddressCache,
+  mergeEventsBounded,
+  mergeTelemetrySnapshotCache,
+  timestampToEpochMillis,
+  tryParsePayload
+} from './shared';
+import type { CanonicalEvent } from '../types';
+
+function createEvent(
+  overrides: Partial<CanonicalEvent> & Pick<CanonicalEvent, 'id'>
+): CanonicalEvent {
+  return {
+    id: overrides.id,
+    deviceId: overrides.deviceId ?? 'epld01',
+    topic: overrides.topic ?? 'epld/epld01/event/button',
+    eventType: overrides.eventType ?? 'button.black.press',
+    category: overrides.category ?? 'BUTTON',
+    payloadJson: overrides.payloadJson ?? '{}',
+    deviceTs: overrides.deviceTs ?? null,
+    ingestTs: overrides.ingestTs ?? '2026-01-01T10:00:00Z',
+    valid: overrides.valid ?? true,
+    validationErrors: overrides.validationErrors ?? null,
+    isInternal: overrides.isInternal ?? false,
+    scenarioFlags: overrides.scenarioFlags ?? '{}',
+    groupKey: overrides.groupKey ?? 'epld01',
+    sequenceNo: overrides.sequenceNo ?? null
+  };
+}
+
+describe('shared helpers', () => {
+  it('parses escaped payload JSON used by devices', () => {
+    const escapedPayload = '{\\"temperature\\":22.4,\\"humidity\\":52}';
+    expect(tryParsePayload(escapedPayload)).toEqual({ temperature: 22.4, humidity: 52 });
+  });
+
+  it('keeps event feed bounded, deduplicated and newest first', () => {
+    const existing = [
+      createEvent({ id: 'event-a', ingestTs: '2026-01-01T10:00:00Z' }),
+      createEvent({ id: 'event-b', ingestTs: '2026-01-01T09:59:00Z' })
+    ];
+    const incoming = [
+      createEvent({ id: 'event-a', ingestTs: '2026-01-01T10:00:00Z' }),
+      createEvent({ id: 'event-c', ingestTs: '2026-01-01T10:01:00Z' })
+    ];
+
+    const merged = mergeEventsBounded(existing, incoming, 2);
+
+    expect(merged).toHaveLength(2);
+    expect(merged.map((event) => event.id)).toEqual(['event-c', 'event-a']);
+  });
+
+  it('maps LED state_changed output payload to on/off value summary', () => {
+    const ledEvent = createEvent({
+      id: 'event-led',
+      topic: 'epld/epld01/event/led/green',
+      eventType: 'led.green.state_changed',
+      category: 'STATUS',
+      payloadJson: '{"output":true}'
+    });
+
+    expect(eventValueSummary(ledEvent)).toBe('on');
+  });
+
+  it('does not show a value for telemetry events', () => {
+    const telemetryEvent = createEvent({
+      id: 'event-telemetry',
+      topic: 'epld/epld01/event/telemetry',
+      eventType: 'sensor.telemetry',
+      category: 'INTERNAL',
+      payloadJson: '{"temperature":23.1}'
+    });
+
+    expect(eventValueSummary(telemetryEvent)).toBe('');
+  });
+
+  it('rejects timestamp-like loose counter values but accepts explicit counter fields', () => {
+    const timestampLikeCounter = extractCounterValueFromPayload({ value: 1700000000 }, true);
+    const explicitCounter = extractCounterValueFromPayload({ counter: 7 }, true);
+
+    expect(timestampLikeCounter).toBeNull();
+    expect(explicitCounter).toBe(7);
+  });
+
+  it('parses double-escaped payload strings into objects', () => {
+    const payload = '"{\\\\\\"counter\\\\\\":12,\\\\\\"state\\\\\\":true}"';
+    expect(tryParsePayload(payload)).toEqual({ counter: 12, state: true });
+  });
+
+  it('treats numeric timestamps in seconds and milliseconds consistently', () => {
+    expect(timestampToEpochMillis(1_700_000_000)).toBe(1_700_000_000_000);
+    expect(timestampToEpochMillis(1_700_000_000_000)).toBe(1_700_000_000_000);
+  });
+
+  it('extracts telemetry snapshots from mixed payload shapes', () => {
+    const events = [
+      createEvent({
+        id: 'event-sensor',
+        topic: 'epld/epld01/event/sensor/dht22',
+        eventType: 'sensor.dht22.read',
+        category: 'SENSOR',
+        payloadJson: '{"params":{"temperature:100":{"tC":21.6},"humidity:100":{"rh":46}}}'
+      }),
+      createEvent({
+        id: 'event-brightness',
+        topic: 'epld/epld01/event/sensor/ldr',
+        eventType: 'sensor.ldr.read',
+        category: 'SENSOR',
+        payloadJson: '{"params":{"voltmeter:100":{"voltage":2.41}}}'
+      }),
+      createEvent({
+        id: 'event-counter',
+        topic: 'epld/epld01/event/counter',
+        eventType: 'counter.blue.changed',
+        category: 'COUNTER',
+        payloadJson: '{"params":{"counter:0":{"value":9}}}'
+      }),
+      createEvent({
+        id: 'event-uptime',
+        topic: 'epld/epld01/status/heartbeat',
+        eventType: 'status.heartbeat',
+        category: 'STATUS',
+        ingestTs: '2026-01-01T10:02:00Z',
+        payloadJson: '{"sys":{"uptime":123}}'
+      })
+    ];
+
+    const snapshots = buildDeviceTelemetrySnapshots(events);
+    expect(snapshots.epld01).toMatchObject({
+      temperatureC: 21.6,
+      humidityPct: 46,
+      brightness: 2.41,
+      counterValue: 9,
+      uptimeMs: 123_000,
+      uptimeIngestTs: '2026-01-01T10:02:00Z'
+    });
+  });
+
+  it('keeps previously cached telemetry values when latest batch has nulls', () => {
+    const previous = {
+      epld01: {
+        temperatureC: 21.6,
+        humidityPct: 46,
+        brightness: 2.41,
+        counterValue: 9,
+        buttonRedPressed: true,
+        buttonBlackPressed: false,
+        ledGreenOn: true,
+        ledOrangeOn: false,
+        uptimeMs: 123_000,
+        uptimeIngestTs: '2026-01-01T10:02:00Z'
+      }
+    };
+
+    const latest = {
+      epld01: {
+        temperatureC: null,
+        humidityPct: null,
+        brightness: null,
+        counterValue: null,
+        buttonRedPressed: null,
+        buttonBlackPressed: null,
+        ledGreenOn: null,
+        ledOrangeOn: null,
+        uptimeMs: null,
+        uptimeIngestTs: null
+      }
+    };
+
+    const merged = mergeTelemetrySnapshotCache(previous, latest);
+    expect(merged.epld01).toEqual(previous.epld01);
+  });
+
+  it('merges ip cache by active devices and prunes removed ids', () => {
+    const previous = { epld01: '192.168.1.10', epld02: '192.168.1.11' };
+    const latest = { epld01: '192.168.1.20' };
+    const merged = mergeIpAddressCache(previous, latest, ['epld01']);
+
+    expect(merged).toEqual({ epld01: '192.168.1.20' });
+  });
+});

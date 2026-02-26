@@ -1,0 +1,158 @@
+.system-status-panel {
+  gap: 0.8rem;
+}
+
+.system-status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.system-status-card {
+  border: 1px solid rgba(29, 53, 73, 0.13);
+  border-radius: 12px;
+  padding: 0.65rem;
+  background: rgba(255, 255, 255, 0.78);
+  display: grid;
+  gap: 0.45rem;
+}
+
+.system-status-card h3 {
+  margin: 0;
+  font-size: 0.88rem;
+}
+
+.system-status-value {
+  margin: 0;
+  color: #1f445d;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.system-status-chart {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: 0.38rem;
+  align-items: end;
+}
+
+.system-status-bar-column {
+  display: grid;
+  gap: 0.2rem;
+  justify-items: center;
+}
+
+.system-status-bar-value {
+  font-size: 0.68rem;
+  color: #2b526a;
+}
+
+.system-status-bar-track {
+  width: 100%;
+  height: 92px;
+  border-radius: 6px;
+  border: 1px solid rgba(42, 71, 90, 0.18);
+  background: rgba(229, 241, 247, 0.7);
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+}
+
+.system-status-bar-fill {
+  width: 100%;
+  background: linear-gradient(180deg, rgba(20, 138, 107, 0.88), rgba(13, 96, 121, 0.94));
+  border-radius: 4px 4px 0 0;
+}
+
+.system-status-bar-label {
+  font-size: 0.66rem;
+  color: #416274;
+}
+
+.system-status-progress {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid rgba(42, 71, 90, 0.2);
+  background: rgba(225, 236, 243, 0.78);
+}
+
+.system-status-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #1f8a59, #0f7a8f);
+}
+
+.system-status-db-button {
+  width: fit-content;
+}
+
+.system-status-sessions {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.system-status-session-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: #355268;
+}
+
+.system-transfer-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.system-transfer-card {
+  align-content: start;
+}
+
+.system-transfer-parts {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.system-transfer-part {
+  justify-content: flex-start;
+}
+
+.system-transfer-file {
+  display: grid;
+  gap: 0.3rem;
+  color: #385367;
+  font-size: 0.86rem;
+}
+
+.system-transfer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.system-transfer-verify {
+  display: grid;
+  gap: 0.4rem;
+  padding-top: 0.15rem;
+  border-top: 1px solid rgba(45, 68, 84, 0.1);
+}
+
+.system-transfer-errors,
+.system-transfer-warnings {
+  margin: 0.2rem 0 0;
+  padding-left: 1rem;
+  font-size: 0.8rem;
+}
+
+.system-transfer-errors {
+  color: #8e2a2a;
+}
+
+.system-transfer-warnings {
+  color: #785717;
+}

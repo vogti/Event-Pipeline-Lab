@@ -1,0 +1,51 @@
+@media (max-width: 1080px) {
+  .dashboard-grid > .panel {
+    grid-column: span 12;
+  }
+
+  .topbar {
+    position: static;
+  }
+}
+
+@media (max-width: 760px) {
+  .app-shell {
+    padding: 0.7rem;
+  }
+
+  .topbar {
+    border-radius: 14px;
+  }
+
+  .button-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .device-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .split-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .virtual-controls-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .system-status-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .system-transfer-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .feed-table {
+    font-size: 0.72rem;
+  }
+
+  .event-details-row {
+    grid-template-columns: 1fr;
+  }
+}

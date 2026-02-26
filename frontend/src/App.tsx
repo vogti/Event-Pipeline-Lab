@@ -1,1563 +1,95 @@
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ApiError, api } from './api';
-import {
-  type AdminSystemStatus,
-  type AppSettings,
-  type AuthMe,
-  type CanonicalEvent,
-  type DeviceCommandType,
-  type DeviceStatus,
-  type EventCategory,
-  type GroupConfig,
-  type GroupOverview,
-  type LanguageMode,
-  type PresenceUser,
-  type SystemDataImportVerifyResponse,
-  type SystemDataPart,
-  type SystemDataTransferDocument,
-  type SystemStatusEventRatePoint,
-  type TimestampValue,
-  type TaskCapabilities,
-  type TaskDefinitionPayload,
-  type TaskInfo,
-  type VirtualDeviceState,
-  type WsEnvelope
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { api } from './api';
+import type {
+  AdminSystemStatus,
+  AuthMe,
+  CanonicalEvent,
+  DeviceCommandType,
+  EventCategory,
+  LanguageMode,
+  SystemDataImportVerifyResponse,
+  SystemDataPart,
+  SystemDataTransferDocument,
+  TimestampValue,
+  VirtualDeviceState
 } from './types';
 import { type I18nKey, type Language, resolveLanguageFromMode, taskDescription, taskTitle, tr } from './i18n';
-
-const TOKEN_STORAGE_KEY = 'epl.sessionToken';
-const LANGUAGE_STORAGE_KEY = 'epl.languageOverride';
-const MAX_FEED_EVENTS = 200;
-const SYSTEM_DATA_PART_ORDER: SystemDataPart[] = [
-  'APP_SETTINGS',
-  'TASK_STATE',
-  'GROUP_STATE',
-  'AUTH_ACCOUNTS',
-  'DEVICE_STATUS',
-  'VIRTUAL_DEVICE_STATE',
-  'EVENT_DATA'
-];
-
-interface StudentViewData {
-  activeTask: TaskInfo;
-  capabilities: TaskCapabilities;
-  groupConfig: GroupConfig;
-  groupPresence: PresenceUser[];
-  feed: CanonicalEvent[];
-  virtualDevice: VirtualDeviceState | null;
-  settings: AppSettings;
-}
-
-interface AdminViewData {
-  tasks: TaskInfo[];
-  devices: DeviceStatus[];
-  virtualDevices: VirtualDeviceState[];
-  groups: GroupOverview[];
-  events: CanonicalEvent[];
-  settings: AppSettings;
-}
-
-type WsConnectionState = 'connecting' | 'connected' | 'disconnected';
-type FeedViewMode = 'rendered' | 'raw';
-type EventDetailsViewMode = 'rendered' | 'raw';
-type AdminPage = 'dashboard' | 'devices' | 'virtualDevices' | 'feed' | 'groupsTasks' | 'systemStatus' | 'settings';
-type CounterResetTarget = { deviceId: string; isVirtual: boolean };
-
-interface VirtualDevicePatch {
-  buttonRedPressed?: boolean;
-  buttonBlackPressed?: boolean;
-  ledGreenOn?: boolean;
-  ledOrangeOn?: boolean;
-  temperatureC?: number;
-  humidityPct?: number;
-  brightness?: number;
-  counterValue?: number;
-}
-
-function isAdminFeedHotPage(page: AdminPage): boolean {
-  return page === 'feed' || page === 'dashboard';
-}
-
-interface DeviceTelemetrySnapshot {
-  temperatureC: number | null;
-  humidityPct: number | null;
-  brightness: number | null;
-  counterValue: number | null;
-  buttonRedPressed: boolean | null;
-  buttonBlackPressed: boolean | null;
-  ledGreenOn: boolean | null;
-  ledOrangeOn: boolean | null;
-  uptimeMs: number | null;
-  uptimeIngestTs: TimestampValue;
-}
-
-type MetricIconKind =
-  | 'temperature'
-  | 'humidity'
-  | 'brightness'
-  | 'counter'
-  | 'buttons'
-  | 'leds';
-
-const CATEGORY_OPTIONS: Array<EventCategory | 'ALL'> = [
-  'ALL',
-  'BUTTON',
-  'COUNTER',
-  'SENSOR',
-  'STATUS',
-  'INTERNAL',
-  'COMMAND',
-  'ACK'
-];
-
-function createSystemDataPartSelection(defaultChecked: boolean): Record<SystemDataPart, boolean> {
-  const next = {} as Record<SystemDataPart, boolean>;
-  for (const part of SYSTEM_DATA_PART_ORDER) {
-    next[part] = defaultChecked;
-  }
-  return next;
-}
-
-function selectedSystemDataParts(selection: Record<SystemDataPart, boolean>): SystemDataPart[] {
-  return SYSTEM_DATA_PART_ORDER.filter((part) => selection[part]);
-}
-
-function systemDataPartLabel(part: SystemDataPart, t: (key: I18nKey) => string): string {
-  switch (part) {
-    case 'APP_SETTINGS':
-      return t('partAppSettings');
-    case 'TASK_STATE':
-      return t('partTaskState');
-    case 'GROUP_STATE':
-      return t('partGroupState');
-    case 'AUTH_ACCOUNTS':
-      return t('partAuthAccounts');
-    case 'DEVICE_STATUS':
-      return t('partDeviceStatus');
-    case 'VIRTUAL_DEVICE_STATE':
-      return t('partVirtualDeviceState');
-    case 'EVENT_DATA':
-      return t('partEventData');
-    default:
-      return part;
-  }
-}
-
-function MetricIcon({ kind }: { kind: MetricIconKind }) {
-  if (kind === 'temperature') {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-        <path
-          d="M10 4a2 2 0 1 1 4 0v8.4a4.6 4.6 0 1 1-4 0V4Z"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <line x1="12" y1="10" x2="12" y2="16.2" stroke="currentColor" strokeWidth="1.8" />
-      </svg>
-    );
-  }
-  if (kind === 'humidity') {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-        <path
-          d="M12 3.6C9.6 6.6 6.5 9.9 6.5 13.5a5.5 5.5 0 0 0 11 0c0-3.6-3.1-6.9-5.5-9.9Z"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    );
-  }
-  if (kind === 'brightness') {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-        <circle cx="12" cy="12" r="3.6" fill="none" stroke="currentColor" strokeWidth="1.8" />
-        <line x1="12" y1="3.5" x2="12" y2="6" stroke="currentColor" strokeWidth="1.8" />
-        <line x1="12" y1="18" x2="12" y2="20.5" stroke="currentColor" strokeWidth="1.8" />
-        <line x1="3.5" y1="12" x2="6" y2="12" stroke="currentColor" strokeWidth="1.8" />
-        <line x1="18" y1="12" x2="20.5" y2="12" stroke="currentColor" strokeWidth="1.8" />
-        <line x1="6.3" y1="6.3" x2="8" y2="8" stroke="currentColor" strokeWidth="1.8" />
-        <line x1="16" y1="16" x2="17.7" y2="17.7" stroke="currentColor" strokeWidth="1.8" />
-        <line x1="6.3" y1="17.7" x2="8" y2="16" stroke="currentColor" strokeWidth="1.8" />
-        <line x1="16" y1="8" x2="17.7" y2="6.3" stroke="currentColor" strokeWidth="1.8" />
-      </svg>
-    );
-  }
-  if (kind === 'buttons') {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-        <circle cx="8" cy="12" r="3.1" fill="none" stroke="currentColor" strokeWidth="1.8" />
-        <circle cx="16" cy="12" r="3.1" fill="none" stroke="currentColor" strokeWidth="1.8" />
-      </svg>
-    );
-  }
-  if (kind === 'counter') {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-        <rect x="4.2" y="6.5" width="15.6" height="11" rx="2" fill="none" stroke="currentColor" strokeWidth="1.8" />
-        <line x1="8.4" y1="10" x2="15.6" y2="10" stroke="currentColor" strokeWidth="1.8" />
-        <line x1="8.4" y1="14" x2="15.6" y2="14" stroke="currentColor" strokeWidth="1.8" />
-      </svg>
-    );
-  }
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <rect x="4.4" y="8.2" width="6.3" height="7.6" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.8" />
-      <rect x="13.3" y="8.2" width="6.3" height="7.6" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.8" />
-    </svg>
-  );
-}
-
-function SettingsIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <path
-        d="M10.3 3.5h3.4l.5 2.1 1.9.8 1.9-1.1 2.4 2.4-1.1 1.9.8 1.9 2.1.5v3.4l-2.1.5-.8 1.9 1.1 1.9-2.4 2.4-1.9-1.1-1.9.8-.5 2.1h-3.4l-.5-2.1-1.9-.8-1.9 1.1-2.4-2.4 1.1-1.9-.8-1.9-2.1-.5v-3.4l2.1-.5.8-1.9-1.1-1.9 2.4-2.4 1.9 1.1 1.9-.8z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinejoin="round"
-      />
-      <circle cx="12" cy="12" r="2.6" fill="none" stroke="currentColor" strokeWidth="1.8" />
-    </svg>
-  );
-}
-
-function timestampToEpochMillis(value: TimestampValue): number | null {
-  if (value === null || value === undefined) {
-    return null;
-  }
-  if (typeof value === 'number') {
-    if (!Number.isFinite(value)) {
-      return null;
-    }
-    return Math.abs(value) < 10_000_000_000 ? Math.trunc(value * 1000) : Math.trunc(value);
-  }
-  const trimmed = value.trim();
-  if (trimmed.length === 0) {
-    return null;
-  }
-  if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
-    const numeric = Number(trimmed);
-    if (!Number.isFinite(numeric)) {
-      return null;
-    }
-    return Math.abs(numeric) < 10_000_000_000 ? Math.trunc(numeric * 1000) : Math.trunc(numeric);
-  }
-  const parsed = Date.parse(trimmed);
-  if (Number.isNaN(parsed)) {
-    return null;
-  }
-  return parsed;
-}
-
-function compareByNewestIngestTs(a: CanonicalEvent, b: CanonicalEvent): number {
-  const aEpoch = timestampToEpochMillis(a.ingestTs) ?? Number.MIN_SAFE_INTEGER;
-  const bEpoch = timestampToEpochMillis(b.ingestTs) ?? Number.MIN_SAFE_INTEGER;
-  if (aEpoch === bEpoch) {
-    return b.id.localeCompare(a.id);
-  }
-  return bEpoch - aEpoch;
-}
-
-function mergeEventsBounded(
-  existing: CanonicalEvent[],
-  incoming: CanonicalEvent[],
-  maxSize: number
-): CanonicalEvent[] {
-  if (incoming.length === 0) {
-    return existing;
-  }
-
-  const byId = new Map(existing.map((event) => [event.id, event]));
-  let changed = false;
-  for (const event of incoming) {
-    if (byId.has(event.id)) {
-      continue;
-    }
-    byId.set(event.id, event);
-    changed = true;
-  }
-  if (!changed) {
-    return existing;
-  }
-
-  const merged = Array.from(byId.values()).sort(compareByNewestIngestTs).slice(0, maxSize);
-  if (
-    merged.length === existing.length &&
-    merged.every((event, index) => event.id === existing[index]?.id)
-  ) {
-    return existing;
-  }
-  return merged;
-}
-
-function clampFeed(items: CanonicalEvent[]): CanonicalEvent[] {
-  return mergeEventsBounded([], items, MAX_FEED_EVENTS);
-}
-
-function isLikelyEpochTimestamp(value: number): boolean {
-  if (!Number.isFinite(value)) {
-    return false;
-  }
-  if (value >= 946_684_800_000 && value <= 4_102_444_800_000) {
-    return true;
-  }
-  if (value >= 946_684_800 && value <= 4_102_444_800) {
-    return true;
-  }
-  return false;
-}
-
-function isCounterEvent(event: CanonicalEvent): boolean {
-  const lowerTopic = event.topic.toLowerCase();
-  const lowerEventType = event.eventType.toLowerCase();
-  return (
-    event.category === 'COUNTER' ||
-    lowerTopic.includes('/counter') ||
-    lowerEventType.includes('counter')
-  );
-}
-
-function extractCounterValueFromPayload(payload: unknown, allowLooseValue: boolean): number | null {
-  const strictCounter =
-    firstNumber(payload, [
-      ['counter'],
-      ['count'],
-      ['total'],
-      ['counterValue'],
-      ['counter_value'],
-      ['blueCounter'],
-      ['params', 'counter:0', 'value'],
-      ['params', 'counter:100', 'value']
-    ]) ??
-    findNumberByKeys(payload, [
-      'counter',
-      'count',
-      'total',
-      'counterValue',
-      'counter_value',
-      'blueCounter'
-    ]);
-
-  if (strictCounter !== null) {
-    return isLikelyEpochTimestamp(strictCounter) ? null : strictCounter;
-  }
-
-  if (!allowLooseValue) {
-    return null;
-  }
-
-  const looseValue = firstNumber(payload, [['value']]);
-  if (looseValue === null) {
-    return null;
-  }
-  return isLikelyEpochTimestamp(looseValue) ? null : looseValue;
-}
-
-function looksLikeIpAddress(value: string): boolean {
-  const trimmed = value.trim();
-  if (trimmed.length === 0) {
-    return false;
-  }
-
-  const ipv4Match = trimmed.match(/^(\d{1,3})(?:\.(\d{1,3})){3}$/);
-  if (ipv4Match) {
-    const parts = trimmed.split('.');
-    return parts.every((part) => {
-      const parsed = Number(part);
-      return Number.isInteger(parsed) && parsed >= 0 && parsed <= 255;
-    });
-  }
-
-  if (trimmed.includes(':') && /^[0-9a-fA-F:]+$/.test(trimmed)) {
-    return true;
-  }
-  return false;
-}
-
-function ipAddressToHref(ipAddress: string): string | null {
-  const trimmed = ipAddress.trim();
-  if (!looksLikeIpAddress(trimmed)) {
-    return null;
-  }
-  if (trimmed.includes(':')) {
-    return `http://[${trimmed}]`;
-  }
-  return `http://${trimmed}`;
-}
-
-function findIpAddress(node: unknown, depth = 0): string | null {
-  if (depth > 6 || node === null || node === undefined) {
-    return null;
-  }
-
-  if (typeof node === 'string') {
-    return looksLikeIpAddress(node) ? node.trim() : null;
-  }
-  if (typeof node === 'number' || typeof node === 'boolean') {
-    return null;
-  }
-  if (Array.isArray(node)) {
-    for (const entry of node) {
-      const found = findIpAddress(entry, depth + 1);
-      if (found) {
-        return found;
-      }
-    }
-    return null;
-  }
-
-  const objectNode = node as Record<string, unknown>;
-  const priorityKeys = ['ip', 'ip_address', 'ipAddress', 'sta_ip', 'ipv4', 'address'];
-  for (const key of priorityKeys) {
-    if (!(key in objectNode)) {
-      continue;
-    }
-    const found = findIpAddress(objectNode[key], depth + 1);
-    if (found) {
-      return found;
-    }
-  }
-
-  for (const [key, value] of Object.entries(objectNode)) {
-    if (key.toLowerCase().includes('ip')) {
-      const found = findIpAddress(value, depth + 1);
-      if (found) {
-        return found;
-      }
-    }
-  }
-
-  for (const value of Object.values(objectNode)) {
-    const found = findIpAddress(value, depth + 1);
-    if (found) {
-      return found;
-    }
-  }
-  return null;
-}
-
-function extractIpAddressFromDeviceStatus(device: DeviceStatus, events: CanonicalEvent[]): string | null {
-  if (device.wifiPayloadJson) {
-    const wifiPayload = tryParsePayload(device.wifiPayloadJson);
-    const fromStatusPayload = findIpAddress(wifiPayload);
-    if (fromStatusPayload) {
-      return fromStatusPayload;
-    }
-  }
-
-  for (const event of events) {
-    if (event.deviceId !== device.deviceId) {
-      continue;
-    }
-    const fromEventPayload = findIpAddress(tryParsePayload(event.payloadJson));
-    if (fromEventPayload) {
-      return fromEventPayload;
-    }
-  }
-  return null;
-}
-
-function extractIpAddressesFromEvents(events: CanonicalEvent[]): Record<string, string> {
-  const latestByDevice: Record<string, { value: string; ingestEpoch: number }> = {};
-
-  for (const event of events) {
-    const ipAddress = findIpAddress(tryParsePayload(event.payloadJson));
-    if (!ipAddress) {
-      continue;
-    }
-    const ingestEpoch = timestampToEpochMillis(event.ingestTs) ?? Number.MIN_SAFE_INTEGER;
-    const current = latestByDevice[event.deviceId];
-    if (!current || ingestEpoch >= current.ingestEpoch) {
-      latestByDevice[event.deviceId] = { value: ipAddress, ingestEpoch };
-    }
-  }
-
-  const output: Record<string, string> = {};
-  for (const [deviceId, entry] of Object.entries(latestByDevice)) {
-    output[deviceId] = entry.value;
-  }
-  return output;
-}
-
-function sameDeviceStatus(a: DeviceStatus, b: DeviceStatus): boolean {
-  return (
-    a.deviceId === b.deviceId &&
-    a.online === b.online &&
-    a.lastSeen === b.lastSeen &&
-    a.rssi === b.rssi &&
-    a.wifiPayloadJson === b.wifiPayloadJson &&
-    a.updatedAt === b.updatedAt
-  );
-}
-
-function sameStringArray(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) {
-    return false;
-  }
-  for (let index = 0; index < a.length; index += 1) {
-    if (a[index] !== b[index]) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function sameTaskCapabilities(a: TaskCapabilities, b: TaskCapabilities): boolean {
-  return (
-    a.canViewRoomEvents === b.canViewRoomEvents &&
-    a.canSendDeviceCommands === b.canSendDeviceCommands &&
-    a.canFilterByTopic === b.canFilterByTopic &&
-    a.showInternalEventsToggle === b.showInternalEventsToggle &&
-    sameStringArray(a.allowedConfigOptions, b.allowedConfigOptions) &&
-    sameStringArray(a.studentCommandWhitelist, b.studentCommandWhitelist)
-  );
-}
-
-function sameTaskInfo(a: TaskInfo, b: TaskInfo): boolean {
-  return (
-    a.id === b.id &&
-    a.titleDe === b.titleDe &&
-    a.titleEn === b.titleEn &&
-    a.descriptionDe === b.descriptionDe &&
-    a.descriptionEn === b.descriptionEn &&
-    a.active === b.active
-  );
-}
-
-function sameGroupConfigMeta(a: GroupConfig, b: GroupConfig): boolean {
-  return (
-    a.groupKey === b.groupKey &&
-    a.revision === b.revision &&
-    a.updatedAt === b.updatedAt &&
-    a.updatedBy === b.updatedBy
-  );
-}
-
-function samePresenceUser(a: PresenceUser, b: PresenceUser): boolean {
-  return (
-    a.username === b.username &&
-    a.displayName === b.displayName &&
-    a.lastSeen === b.lastSeen
-  );
-}
-
-function samePresenceList(a: PresenceUser[], b: PresenceUser[]): boolean {
-  if (a.length !== b.length) {
-    return false;
-  }
-  for (let index = 0; index < a.length; index += 1) {
-    if (!samePresenceUser(a[index], b[index])) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function sameGroupOverview(a: GroupOverview, b: GroupOverview): boolean {
-  return (
-    a.groupKey === b.groupKey &&
-    a.onlineCount === b.onlineCount &&
-    samePresenceList(a.presence, b.presence) &&
-    sameGroupConfigMeta(a.config, b.config)
-  );
-}
-
-function sameGroupOverviewList(a: GroupOverview[], b: GroupOverview[]): boolean {
-  if (a.length !== b.length) {
-    return false;
-  }
-  for (let index = 0; index < a.length; index += 1) {
-    if (!sameGroupOverview(a[index], b[index])) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function sameAppSettings(a: AppSettings, b: AppSettings): boolean {
-  return (
-    a.defaultLanguageMode === b.defaultLanguageMode &&
-    a.timeFormat24h === b.timeFormat24h &&
-    a.studentVirtualDeviceVisible === b.studentVirtualDeviceVisible &&
-    a.updatedAt === b.updatedAt &&
-    a.updatedBy === b.updatedBy
-  );
-}
-
-function sameEventRateSeries(
-  a: SystemStatusEventRatePoint[],
-  b: SystemStatusEventRatePoint[]
-): boolean {
-  if (a.length !== b.length) {
-    return false;
-  }
-  for (let index = 0; index < a.length; index += 1) {
-    if (a[index].minuteTs !== b[index].minuteTs || a[index].eventCount !== b[index].eventCount) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function sameAdminSystemStatus(
-  a: AdminSystemStatus | null,
-  b: AdminSystemStatus
-): boolean {
-  if (!a) {
-    return false;
-  }
-  return (
-    a.generatedAt === b.generatedAt &&
-    sameEventRateSeries(a.eventsLast10Minutes, b.eventsLast10Minutes) &&
-    a.cpuLoadPct === b.cpuLoadPct &&
-    a.ramUsedBytes === b.ramUsedBytes &&
-    a.ramTotalBytes === b.ramTotalBytes &&
-    a.postgresSizeBytes === b.postgresSizeBytes &&
-    a.websocketSessions.admin === b.websocketSessions.admin &&
-    a.websocketSessions.student === b.websocketSessions.student &&
-    a.websocketSessions.total === b.websocketSessions.total
-  );
-}
-
-function sameVirtualDeviceState(a: VirtualDeviceState, b: VirtualDeviceState): boolean {
-  return (
-    a.deviceId === b.deviceId &&
-    a.groupKey === b.groupKey &&
-    a.online === b.online &&
-    a.rssi === b.rssi &&
-    a.ipAddress === b.ipAddress &&
-    a.temperatureC === b.temperatureC &&
-    a.humidityPct === b.humidityPct &&
-    a.brightness === b.brightness &&
-    a.counterValue === b.counterValue &&
-    a.buttonRedPressed === b.buttonRedPressed &&
-    a.buttonBlackPressed === b.buttonBlackPressed &&
-    a.ledGreenOn === b.ledGreenOn &&
-    a.ledOrangeOn === b.ledOrangeOn &&
-    a.updatedAt === b.updatedAt
-  );
-}
-
-function sameVirtualDevicePatch(a: VirtualDevicePatch | null, b: VirtualDevicePatch | null): boolean {
-  if (a === b) {
-    return true;
-  }
-  if (!a || !b) {
-    return false;
-  }
-  return (
-    a.buttonRedPressed === b.buttonRedPressed &&
-    a.buttonBlackPressed === b.buttonBlackPressed &&
-    a.ledGreenOn === b.ledGreenOn &&
-    a.ledOrangeOn === b.ledOrangeOn &&
-    a.temperatureC === b.temperatureC &&
-    a.humidityPct === b.humidityPct &&
-    a.brightness === b.brightness &&
-    a.counterValue === b.counterValue
-  );
-}
-
-function getStoredToken(): string | null {
-  if (typeof window === 'undefined') {
-    return null;
-  }
-  return window.localStorage.getItem(TOKEN_STORAGE_KEY);
-}
-
-function getStoredLanguageOverride(): Language | null {
-  if (typeof window === 'undefined') {
-    return null;
-  }
-
-  const value = window.localStorage.getItem(LANGUAGE_STORAGE_KEY);
-  if (value === 'de' || value === 'en') {
-    return value;
-  }
-  return null;
-}
-
-function setStoredLanguageOverride(value: Language | null): void {
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  if (value === null) {
-    window.localStorage.removeItem(LANGUAGE_STORAGE_KEY);
-  } else {
-    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, value);
-  }
-}
-
-function toErrorMessage(error: unknown): string {
-  if (error instanceof ApiError) {
-    return `${error.message} (${error.status})`;
-  }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return 'Unknown error';
-}
-
-function formatTimestamp(value: TimestampValue, language: Language, use24HourTime: boolean): string {
-  if (value === null || value === undefined || value === '') {
-    return '-';
-  }
-
-  const epochMillis = timestampToEpochMillis(value);
-  if (epochMillis === null) {
-    return typeof value === 'string' ? value : String(value);
-  }
-
-  const parsed = new Date(epochMillis);
-  const locale = language === 'de' ? 'de-CH' : 'en-US';
-  return parsed.toLocaleString(locale, {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: !use24HourTime
-  });
-}
-
-function formatMinuteTimestamp(value: TimestampValue, language: Language, use24HourTime: boolean): string {
-  const epochMillis = timestampToEpochMillis(value);
-  if (epochMillis === null) {
-    return '-';
-  }
-  const locale = language === 'de' ? 'de-CH' : 'en-US';
-  return new Date(epochMillis).toLocaleTimeString(locale, {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: !use24HourTime
-  });
-}
-
-function formatBytes(value: number | null, language: Language): string {
-  if (value === null || !Number.isFinite(value) || value < 0) {
-    return '-';
-  }
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  let size = value;
-  let unitIndex = 0;
-  while (size >= 1024 && unitIndex < units.length - 1) {
-    size /= 1024;
-    unitIndex += 1;
-  }
-  const fractionDigits = size >= 100 || unitIndex === 0 ? 0 : 1;
-  const locale = language === 'de' ? 'de-CH' : 'en-US';
-  return `${size.toLocaleString(locale, { maximumFractionDigits: fractionDigits, minimumFractionDigits: fractionDigits })} ${units[unitIndex]}`;
-}
-
-function safeConfigMap(value: unknown): Record<string, unknown> {
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    return { ...(value as Record<string, unknown>) };
-  }
-  return {};
-}
-
-function extractTaskInfo(payload: unknown): TaskInfo | null {
-  if (!payload || typeof payload !== 'object') {
-    return null;
-  }
-
-  const data = payload as Partial<TaskInfo>;
-  if (
-    typeof data.id !== 'string' ||
-    typeof data.titleDe !== 'string' ||
-    typeof data.titleEn !== 'string' ||
-    typeof data.descriptionDe !== 'string' ||
-    typeof data.descriptionEn !== 'string'
-  ) {
-    return null;
-  }
-
-  return {
-    id: data.id,
-    titleDe: data.titleDe,
-    titleEn: data.titleEn,
-    descriptionDe: data.descriptionDe,
-    descriptionEn: data.descriptionEn,
-    active: typeof data.active === 'boolean' ? data.active : true
-  };
-}
-
-function statusLabel(online: boolean, language: Language): string {
-  if (online) {
-    return language === 'de' ? 'Online' : 'Online';
-  }
-  return language === 'de' ? 'Offline' : 'Offline';
-}
-
-function sanitizeConfigForCapabilities(
-  config: Record<string, unknown>,
-  capabilities: TaskCapabilities
-): Record<string, unknown> {
-  if (capabilities.allowedConfigOptions.includes('*')) {
-    return { ...config };
-  }
-
-  const allowed = new Set(capabilities.allowedConfigOptions);
-  const next: Record<string, unknown> = {};
-  Object.entries(config).forEach(([key, value]) => {
-    if (allowed.has(key)) {
-      next[key] = value;
-    }
-  });
-  return next;
-}
-
-function feedMatchesTopic(event: CanonicalEvent, topicFilter: string): boolean {
-  const filter = topicFilter.trim().toLowerCase();
-  if (!filter) {
-    return true;
-  }
-
-  return (
-    event.topic.toLowerCase().includes(filter) ||
-    event.eventType.toLowerCase().includes(filter) ||
-    event.deviceId.toLowerCase().includes(filter)
-  );
-}
-
-function tryParsePayload(payloadJson: string): unknown | null {
-  const initial = payloadJson.trim();
-  if (!initial) {
-    return null;
-  }
-
-  const looksLikeJsonLiteral = (value: string): boolean => {
-    if (value.startsWith('{') || value.startsWith('[') || value.startsWith('"')) {
-      return true;
-    }
-    if (value === 'true' || value === 'false' || value === 'null') {
-      return true;
-    }
-    return /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(value);
-  };
-
-  let current = initial;
-  for (let depth = 0; depth < 4; depth += 1) {
-    try {
-      const parsed = JSON.parse(current);
-      if (typeof parsed === 'string') {
-        const next = parsed.trim();
-        if (!next) {
-          return '';
-        }
-        if (!looksLikeJsonLiteral(next) || next === current) {
-          return parsed;
-        }
-        current = next;
-        continue;
-      }
-      return parsed;
-    } catch {
-      const unescaped = current
-        .replace(/\\"/g, '"')
-        .replace(/\\\\/g, '\\')
-        .replace(/\\n/g, '\n')
-        .replace(/\\r/g, '\r')
-        .replace(/\\t/g, '\t')
-        .trim();
-      if (!unescaped || unescaped === current) {
-        return null;
-      }
-      current = unescaped;
-    }
-  }
-  return null;
-}
-
-function isTelemetryEvent(event: CanonicalEvent): boolean {
-  const topic = event.topic.toLowerCase();
-  const eventType = event.eventType.toLowerCase();
-  return topic.includes('/telemetry') || eventType.includes('telemetry');
-}
-
-function isVirtualDeviceId(deviceId: string): boolean {
-  return /^eplvd[0-9]+$/i.test(deviceId.trim());
-}
-
-function formatScalar(value: unknown): string | null {
-  if (typeof value === 'string') {
-    return value;
-  }
-  if (typeof value === 'number' || typeof value === 'boolean') {
-    return String(value);
-  }
-  return null;
-}
-
-function extractEventValueFromPayload(node: unknown, depth = 0): string | null {
-  if (depth > 4 || node === null || node === undefined) {
-    return null;
-  }
-
-  const scalar = formatScalar(node);
-  if (scalar !== null) {
-    return scalar;
-  }
-
-  if (Array.isArray(node)) {
-    for (const value of node) {
-      const extracted = extractEventValueFromPayload(value, depth + 1);
-      if (extracted !== null) {
-        return extracted;
-      }
-    }
-    return null;
-  }
-
-  if (typeof node !== 'object') {
-    return null;
-  }
-
-  const objectNode = node as Record<string, unknown>;
-  const priorityKeys = ['value', 'state', 'output', 'on', 'action', 'event', 'button', 'online'];
-
-  for (const key of priorityKeys) {
-    if (!(key in objectNode)) {
-      continue;
-    }
-    const value = extractEventValueFromPayload(objectNode[key], depth + 1);
-    if (value !== null) {
-      return value;
-    }
-  }
-
-  for (const value of Object.values(objectNode)) {
-    const extracted = extractEventValueFromPayload(value, depth + 1);
-    if (extracted !== null) {
-      return extracted;
-    }
-  }
-
-  return null;
-}
-
-function formatBrightnessMeasurement(value: number): string {
-  return value > 5 ? `${Math.round(value)} lx` : `${value.toFixed(2)} V`;
-}
-
-function eventValueSummary(event: CanonicalEvent): string {
-  if (isTelemetryEvent(event)) {
-    return '';
-  }
-
-  const lowerEventType = event.eventType.toLowerCase();
-  const lowerTopic = event.topic.toLowerCase();
-  if (lowerEventType === 'status.system' || lowerEventType.startsWith('status.system.')) {
-    return '';
-  }
-  if (lowerEventType.endsWith('.press')) {
-    return 'pressed';
-  }
-  if (lowerEventType.endsWith('.release')) {
-    return 'released';
-  }
-
-  const parsedPayload = tryParsePayload(event.payloadJson);
-  if (parsedPayload === null) {
-    return '';
-  }
-
-  const temperature =
-    firstNumber(parsedPayload, [
-      ['temperature'],
-      ['temp'],
-      ['tC'],
-      ['params', 'temperature:100', 'tC'],
-      ['params', 'temperature:100', 'value']
-    ]) ?? findNumberByKeys(parsedPayload, ['temperature', 'temp', 'tC']);
-
-  const humidity =
-    firstNumber(parsedPayload, [
-      ['humidity'],
-      ['hum'],
-      ['rh'],
-      ['params', 'humidity:100', 'rh'],
-      ['params', 'humidity:100', 'value']
-    ]) ?? findNumberByKeys(parsedPayload, ['humidity', 'hum', 'rh']);
-
-  const brightness =
-    firstNumber(parsedPayload, [
-      ['brightness'],
-      ['lux'],
-      ['ldr'],
-      ['voltage'],
-      ['params', 'voltmeter:100', 'voltage'],
-      ['params', 'voltmeter:100', 'value']
-    ]) ?? findNumberByKeys(parsedPayload, ['brightness', 'lux', 'ldr', 'voltage']);
-
-  const counter = extractCounterValueFromPayload(parsedPayload, true);
-
-  if (lowerEventType.includes('temperature') && temperature !== null) {
-    return `${temperature.toFixed(1)} °C`;
-  }
-  if (lowerEventType.includes('humidity') && humidity !== null) {
-    return `${Math.round(humidity)} %`;
-  }
-  if ((lowerEventType.includes('ldr') || lowerTopic.includes('/sensor/ldr')) && brightness !== null) {
-    return formatBrightnessMeasurement(brightness);
-  }
-  if (event.category === 'COUNTER' && counter !== null) {
-    return Number.isInteger(counter) ? String(counter) : counter.toFixed(2);
-  }
-
-  if (event.category === 'SENSOR') {
-    const sensorParts: string[] = [];
-    if (temperature !== null) {
-      sensorParts.push(`${temperature.toFixed(1)} °C`);
-    }
-    if (humidity !== null) {
-      sensorParts.push(`${Math.round(humidity)} %`);
-    }
-    if (brightness !== null && sensorParts.length === 0) {
-      sensorParts.push(formatBrightnessMeasurement(brightness));
-    }
-    if (sensorParts.length > 0) {
-      return sensorParts.join(' / ');
-    }
-  }
-
-  if (
-    lowerEventType.includes('led.green.state_changed') ||
-    lowerEventType.includes('led.orange.state_changed')
-  ) {
-    const ledState = firstBoolean(parsedPayload, [
-      ['output'],
-      ['state'],
-      ['on'],
-      ['value'],
-      ['params', 'switch:0', 'output'],
-      ['switch:0', 'output'],
-      ['params', 'switch:1', 'output'],
-      ['switch:1', 'output']
-    ]);
-    if (ledState !== null) {
-      return ledState ? 'on' : 'off';
-    }
-  }
-
-  const state = firstBoolean(parsedPayload, [['state'], ['output'], ['on'], ['online'], ['value']]);
-  if (state !== null) {
-    if (lowerEventType.includes('button')) {
-      return state ? 'pressed' : 'released';
-    }
-    if (lowerEventType.includes('online') || lowerTopic.includes('/status/heartbeat')) {
-      return state ? 'online' : 'offline';
-    }
-    return state ? 'on' : 'off';
-  }
-
-  const rssi =
-    firstNumber(parsedPayload, [['rssi'], ['wifi', 'rssi'], ['params', 'wifi', 'rssi']]) ??
-    findNumberByKeys(parsedPayload, ['rssi']);
-  if (rssi !== null) {
-    return `${Math.round(rssi)} dBm`;
-  }
-
-  return extractEventValueFromPayload(parsedPayload) ?? '';
-}
-
-function emptyDeviceTelemetrySnapshot(): DeviceTelemetrySnapshot {
-  return {
-    temperatureC: null,
-    humidityPct: null,
-    brightness: null,
-    counterValue: null,
-    buttonRedPressed: null,
-    buttonBlackPressed: null,
-    ledGreenOn: null,
-    ledOrangeOn: null,
-    uptimeMs: null,
-    uptimeIngestTs: null
-  };
-}
-
-function toNumber(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value;
-  }
-  if (typeof value === 'string' && value.trim().length > 0) {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
-  }
-  return null;
-}
-
-function toBoolean(value: unknown): boolean | null {
-  if (typeof value === 'boolean') {
-    return value;
-  }
-  if (typeof value === 'number') {
-    if (value === 1) {
-      return true;
-    }
-    if (value === 0) {
-      return false;
-    }
-  }
-  if (typeof value === 'string') {
-    const normalized = value.trim().toLowerCase();
-    if (['true', 'on', 'pressed', 'press', '1'].includes(normalized)) {
-      return true;
-    }
-    if (['false', 'off', 'released', 'release', '0'].includes(normalized)) {
-      return false;
-    }
-  }
-  return null;
-}
-
-function readPath(root: unknown, path: string[]): unknown {
-  let current: unknown = root;
-  for (const segment of path) {
-    if (!current || typeof current !== 'object') {
-      return null;
-    }
-    const next = (current as Record<string, unknown>)[segment];
-    if (next === undefined) {
-      return null;
-    }
-    current = next;
-  }
-  return current;
-}
-
-function firstNumber(root: unknown, paths: string[][]): number | null {
-  for (const path of paths) {
-    const value = toNumber(readPath(root, path));
-    if (value !== null) {
-      return value;
-    }
-  }
-  return null;
-}
-
-function firstBoolean(root: unknown, paths: string[][]): boolean | null {
-  for (const path of paths) {
-    const value = toBoolean(readPath(root, path));
-    if (value !== null) {
-      return value;
-    }
-  }
-  return null;
-}
-
-function findNumberByKeys(node: unknown, keys: string[], depth = 0): number | null {
-  if (depth > 5 || node === null || node === undefined) {
-    return null;
-  }
-  if (Array.isArray(node)) {
-    for (const item of node) {
-      const value = findNumberByKeys(item, keys, depth + 1);
-      if (value !== null) {
-        return value;
-      }
-    }
-    return null;
-  }
-  if (typeof node !== 'object') {
-    return null;
-  }
-  const keySet = new Set(keys);
-  for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
-    if (keySet.has(key)) {
-      const parsed = toNumber(value);
-      if (parsed !== null) {
-        return parsed;
-      }
-    }
-  }
-  for (const value of Object.values(node as Record<string, unknown>)) {
-    const parsed = findNumberByKeys(value, keys, depth + 1);
-    if (parsed !== null) {
-      return parsed;
-    }
-  }
-  return null;
-}
-
-function extractButtonState(event: CanonicalEvent, payload: unknown, channel: 'red' | 'black'): boolean | null {
-  const prefix = `button.${channel}.`;
-  if (event.eventType.startsWith(prefix)) {
-    if (event.eventType.endsWith('.press')) {
-      return true;
-    }
-    if (event.eventType.endsWith('.release')) {
-      return false;
-    }
-  }
-  if (!payload || typeof payload !== 'object') {
-    return null;
-  }
-  if (channel === 'red') {
-    return firstBoolean(payload, [['params', 'input:0', 'state'], ['input:0', 'state']]);
-  }
-  return firstBoolean(payload, [['params', 'input:1', 'state'], ['input:1', 'state']]);
-}
-
-function extractLedState(event: CanonicalEvent, payload: unknown, channel: 'green' | 'orange'): boolean | null {
-  if (!payload || typeof payload !== 'object') {
-    return null;
-  }
-
-  const isTargetEvent =
-    (channel === 'green' &&
-      (event.eventType.includes('green') || event.topic.includes('switch:0'))) ||
-    (channel === 'orange' &&
-      (event.eventType.includes('orange') || event.topic.includes('switch:1')));
-
-  if (!isTargetEvent) {
-    return null;
-  }
-
-  if (channel === 'green') {
-    return firstBoolean(payload, [
-      ['params', 'switch:0', 'output'],
-      ['switch:0', 'output'],
-      ['output'],
-      ['on'],
-      ['state']
-    ]);
-  }
-  return firstBoolean(payload, [
-    ['params', 'switch:1', 'output'],
-    ['switch:1', 'output'],
-    ['output'],
-    ['on'],
-    ['state']
-  ]);
-}
-
-function extractUptimeMs(payload: unknown): number | null {
-  if (!payload || typeof payload !== 'object') {
-    return null;
-  }
-
-  const directMs = firstNumber(payload, [['ts_uptime_ms'], ['uptime_ms']]);
-  if (directMs !== null && directMs >= 0) {
-    return directMs;
-  }
-
-  const deepMs = findNumberByKeys(payload, ['ts_uptime_ms', 'uptime_ms']);
-  if (deepMs !== null && deepMs >= 0) {
-    return deepMs;
-  }
-
-  const seconds = firstNumber(payload, [['sys', 'uptime'], ['uptime']]);
-  if (seconds !== null && seconds >= 0) {
-    return seconds * 1000;
-  }
-
-  return null;
-}
-
-function buildDeviceTelemetrySnapshots(events: CanonicalEvent[]): Record<string, DeviceTelemetrySnapshot> {
-  const byDevice: Record<string, DeviceTelemetrySnapshot> = {};
-
-  for (const event of events) {
-    if (!byDevice[event.deviceId]) {
-      byDevice[event.deviceId] = emptyDeviceTelemetrySnapshot();
-    }
-    const snapshot = byDevice[event.deviceId];
-    const payload = tryParsePayload(event.payloadJson);
-
-    if (snapshot.temperatureC === null) {
-      const temperature = firstNumber(payload, [
-        ['temperature'],
-        ['temp'],
-        ['tC'],
-        ['params', 'temperature:100', 'tC'],
-        ['params', 'temperature:100', 'value']
-      ]) ?? findNumberByKeys(payload, ['temperature', 'temp', 'tC']);
-      if (temperature !== null) {
-        snapshot.temperatureC = temperature;
-      }
-    }
-
-    if (snapshot.humidityPct === null) {
-      const humidity = firstNumber(payload, [
-        ['humidity'],
-        ['hum'],
-        ['rh'],
-        ['params', 'humidity:100', 'rh'],
-        ['params', 'humidity:100', 'value']
-      ]) ?? findNumberByKeys(payload, ['humidity', 'hum', 'rh']);
-      if (humidity !== null) {
-        snapshot.humidityPct = humidity;
-      }
-    }
-
-    if (snapshot.brightness === null) {
-      const brightness = firstNumber(payload, [
-        ['brightness'],
-        ['lux'],
-        ['ldr'],
-        ['voltage'],
-        ['params', 'voltmeter:100', 'voltage'],
-        ['params', 'voltmeter:100', 'value']
-      ]) ?? findNumberByKeys(payload, ['brightness', 'lux', 'ldr', 'voltage']);
-      if (brightness !== null) {
-        snapshot.brightness = brightness;
-      }
-    }
-
-    if (snapshot.counterValue === null && isCounterEvent(event)) {
-      const counterValue = extractCounterValueFromPayload(payload, true);
-      if (counterValue !== null) {
-        snapshot.counterValue = counterValue;
-      }
-    }
-
-    if (snapshot.buttonRedPressed === null) {
-      const red = extractButtonState(event, payload, 'red');
-      if (red !== null) {
-        snapshot.buttonRedPressed = red;
-      }
-    }
-
-    if (snapshot.buttonBlackPressed === null) {
-      const black = extractButtonState(event, payload, 'black');
-      if (black !== null) {
-        snapshot.buttonBlackPressed = black;
-      }
-    }
-
-    if (snapshot.ledGreenOn === null) {
-      const green = extractLedState(event, payload, 'green');
-      if (green !== null) {
-        snapshot.ledGreenOn = green;
-      }
-    }
-
-    if (snapshot.ledOrangeOn === null) {
-      const orange = extractLedState(event, payload, 'orange');
-      if (orange !== null) {
-        snapshot.ledOrangeOn = orange;
-      }
-    }
-
-    if (snapshot.uptimeMs === null) {
-      const uptimeMs = extractUptimeMs(payload);
-      if (uptimeMs !== null) {
-        snapshot.uptimeMs = uptimeMs;
-        snapshot.uptimeIngestTs = event.ingestTs;
-      }
-    }
-  }
-
-  return byDevice;
-}
-
-function sameTelemetrySnapshot(a: DeviceTelemetrySnapshot, b: DeviceTelemetrySnapshot): boolean {
-  return (
-    a.temperatureC === b.temperatureC &&
-    a.humidityPct === b.humidityPct &&
-    a.brightness === b.brightness &&
-    a.counterValue === b.counterValue &&
-    a.buttonRedPressed === b.buttonRedPressed &&
-    a.buttonBlackPressed === b.buttonBlackPressed &&
-    a.ledGreenOn === b.ledGreenOn &&
-    a.ledOrangeOn === b.ledOrangeOn &&
-    a.uptimeMs === b.uptimeMs &&
-    a.uptimeIngestTs === b.uptimeIngestTs
-  );
-}
-
-function mergeTelemetrySnapshotCache(
-  previous: Record<string, DeviceTelemetrySnapshot>,
-  latest: Record<string, DeviceTelemetrySnapshot>
-): Record<string, DeviceTelemetrySnapshot> {
-  const allDeviceIds = new Set([...Object.keys(previous), ...Object.keys(latest)]);
-  const next: Record<string, DeviceTelemetrySnapshot> = {};
-  let changed = false;
-
-  for (const deviceId of allDeviceIds) {
-    const previousSnapshot = previous[deviceId];
-    const latestSnapshot = latest[deviceId];
-
-    if (!previousSnapshot && latestSnapshot) {
-      next[deviceId] = latestSnapshot;
-      changed = true;
-      continue;
-    }
-    if (previousSnapshot && !latestSnapshot) {
-      next[deviceId] = previousSnapshot;
-      continue;
-    }
-    if (!previousSnapshot || !latestSnapshot) {
-      continue;
-    }
-
-    const merged: DeviceTelemetrySnapshot = {
-      temperatureC: latestSnapshot.temperatureC ?? previousSnapshot.temperatureC,
-      humidityPct: latestSnapshot.humidityPct ?? previousSnapshot.humidityPct,
-      brightness: latestSnapshot.brightness ?? previousSnapshot.brightness,
-      counterValue: latestSnapshot.counterValue ?? previousSnapshot.counterValue,
-      buttonRedPressed: latestSnapshot.buttonRedPressed ?? previousSnapshot.buttonRedPressed,
-      buttonBlackPressed: latestSnapshot.buttonBlackPressed ?? previousSnapshot.buttonBlackPressed,
-      ledGreenOn: latestSnapshot.ledGreenOn ?? previousSnapshot.ledGreenOn,
-      ledOrangeOn: latestSnapshot.ledOrangeOn ?? previousSnapshot.ledOrangeOn,
-      uptimeMs: latestSnapshot.uptimeMs ?? previousSnapshot.uptimeMs,
-      uptimeIngestTs:
-        latestSnapshot.uptimeMs !== null
-          ? latestSnapshot.uptimeIngestTs
-          : previousSnapshot.uptimeIngestTs
-    };
-
-    next[deviceId] = merged;
-    if (!sameTelemetrySnapshot(previousSnapshot, merged)) {
-      changed = true;
-    }
-  }
-
-  if (!changed && Object.keys(previous).length === Object.keys(next).length) {
-    return previous;
-  }
-  return next;
-}
-
-function mergeIpAddressCache(
-  previous: Record<string, string>,
-  latest: Record<string, string>,
-  activeDeviceIds: string[]
-): Record<string, string> {
-  const activeIds = new Set(activeDeviceIds);
-  const next: Record<string, string> = {};
-  let changed = false;
-
-  for (const deviceId of activeIds) {
-    const value = latest[deviceId] ?? previous[deviceId];
-    if (!value) {
-      continue;
-    }
-    next[deviceId] = value;
-    if (previous[deviceId] !== value) {
-      changed = true;
-    }
-  }
-
-  for (const existingDeviceId of Object.keys(previous)) {
-    if (!activeIds.has(existingDeviceId)) {
-      changed = true;
-      break;
-    }
-  }
-
-  if (!changed && Object.keys(previous).length === Object.keys(next).length) {
-    return previous;
-  }
-  return next;
-}
-
-function formatRoundedDuration(durationMs: number, language: Language): string {
-  if (!Number.isFinite(durationMs) || durationMs < 0) {
-    return '-';
-  }
-
-  const totalMinutes = Math.max(0, Math.round(durationMs / 60_000));
-  if (totalMinutes < 1) {
-    return language === 'de' ? '<1 Min' : '<1 min';
-  }
-  if (totalMinutes < 60) {
-    return language === 'de' ? `${totalMinutes} Min` : `${totalMinutes} min`;
-  }
-  const totalHours = Math.floor(totalMinutes / 60);
-  const remainingMinutes = totalMinutes % 60;
-  if (totalHours < 24) {
-    return language === 'de'
-      ? `${totalHours} Std ${remainingMinutes} Min`
-      : `${totalHours}h ${remainingMinutes}m`;
-  }
-  const days = Math.floor(totalHours / 24);
-  const remainingHours = totalHours % 24;
-  return language === 'de' ? `${days} T ${remainingHours} Std` : `${days}d ${remainingHours}h`;
-}
-
-function estimateUptimeNow(snapshot: DeviceTelemetrySnapshot | undefined, nowEpochMs: number): number | null {
-  if (!snapshot || snapshot.uptimeMs === null) {
-    return null;
-  }
-  const ingestEpochMs = timestampToEpochMillis(snapshot.uptimeIngestTs);
-  if (ingestEpochMs === null) {
-    return snapshot.uptimeMs;
-  }
-  return snapshot.uptimeMs + Math.max(0, nowEpochMs - ingestEpochMs);
-}
-
-function formatRelativeFromNow(value: TimestampValue, nowEpochMs: number, language: Language): string {
-  const epochMillis = timestampToEpochMillis(value);
-  if (epochMillis === null) {
-    return '-';
-  }
-  const elapsed = Math.max(0, nowEpochMs - epochMillis);
-  const duration = formatRoundedDuration(elapsed, language);
-  if (duration === '-') {
-    return '-';
-  }
-  return language === 'de' ? `vor ${duration}` : `${duration} ago`;
-}
-
-function rssiBars(rssi: number | null): number {
-  if (rssi === null) {
-    return 0;
-  }
-  if (rssi >= -55) {
-    return 4;
-  }
-  if (rssi >= -67) {
-    return 3;
-  }
-  if (rssi >= -75) {
-    return 2;
-  }
-  if (rssi >= -85) {
-    return 1;
-  }
-  return 0;
-}
-
-function rssiClassName(rssi: number | null): string {
-  if (rssi === null) {
-    return 'none';
-  }
-  if (rssi >= -67) {
-    return 'good';
-  }
-  if (rssi >= -75) {
-    return 'fair';
-  }
-  if (rssi >= -85) {
-    return 'weak';
-  }
-  return 'bad';
-}
-
-function patchFromVirtualDevice(state: VirtualDeviceState): VirtualDevicePatch {
-  return {
-    buttonRedPressed: state.buttonRedPressed,
-    buttonBlackPressed: state.buttonBlackPressed,
-    ledGreenOn: state.ledGreenOn,
-    ledOrangeOn: state.ledOrangeOn,
-    temperatureC: state.temperatureC,
-    humidityPct: state.humidityPct,
-    brightness: state.brightness,
-    counterValue: state.counterValue
-  };
-}
+import {
+  TOKEN_STORAGE_KEY,
+  MAX_FEED_EVENTS,
+  isAdminFeedHotPage,
+  CATEGORY_OPTIONS,
+  createSystemDataPartSelection,
+  selectedSystemDataParts,
+  systemDataPartLabel,
+  MetricIcon,
+  SettingsIcon,
+  mergeEventsBounded,
+  clampFeed,
+  ipAddressToHref,
+  findIpAddress,
+  extractIpAddressFromDeviceStatus,
+  extractIpAddressesFromEvents,
+  sameTaskInfo,
+  sameGroupOverviewList,
+  sameAdminSystemStatus,
+  sameVirtualDeviceState,
+  sameVirtualDevicePatch,
+  getStoredToken,
+  getStoredLanguageOverride,
+  setStoredLanguageOverride,
+  toErrorMessage,
+  formatTimestamp,
+  safeConfigMap,
+  statusLabel,
+  sanitizeConfigForCapabilities,
+  feedMatchesTopic,
+  tryParsePayload,
+  isTelemetryEvent,
+  formatBrightnessMeasurement,
+  eventValueSummary,
+  buildDeviceTelemetrySnapshots,
+  mergeTelemetrySnapshotCache,
+  mergeIpAddressCache,
+  formatRoundedDuration,
+  estimateUptimeNow,
+  formatRelativeFromNow,
+  rssiBars,
+  rssiClassName,
+  patchFromVirtualDevice
+} from './app/shared';
+import type {
+  StudentViewData,
+  AdminViewData,
+  WsConnectionState,
+  FeedViewMode,
+  EventDetailsViewMode,
+  AdminPage,
+  CounterResetTarget,
+  VirtualDevicePatch,
+  DeviceTelemetrySnapshot
+} from './app/shared';
+import { SystemStatusSection } from './components/admin/SystemStatusSection';
+import { AdminDevicesSection } from './components/admin/AdminDevicesSection';
+import { AdminFeedSection } from './components/admin/AdminFeedSection';
+import { AdminDashboardSection } from './components/admin/AdminDashboardSection';
+import { AdminGroupsTasksSection } from './components/admin/AdminGroupsTasksSection';
+import { AdminPageNav } from './components/admin/AdminPageNav';
+import { AdminSettingsSection } from './components/admin/AdminSettingsSection';
+import { AppTopBar } from './components/layout/AppTopBar';
+import { MainStateBanners } from './components/layout/MainStateBanners';
+import { LoginSection } from './components/auth/LoginSection';
+import { StudentFeedSection } from './components/student/StudentFeedSection';
+import { StudentOnboardingSection } from './components/student/StudentOnboardingSection';
+import { StudentOverviewSection } from './components/student/StudentOverviewSection';
+import { StudentGroupConfigSection } from './components/student/StudentGroupConfigSection';
+import { StudentPresenceSection } from './components/student/StudentPresenceSection';
+import { StudentCapabilitiesSection } from './components/student/StudentCapabilitiesSection';
+import { StudentCommandsSection } from './components/student/StudentCommandsSection';
+import { StudentVirtualDeviceSection } from './components/student/StudentVirtualDeviceSection';
+import { AppModals } from './components/AppModals';
+import { useAdminSystemStatusPolling } from './hooks/useAdminSystemStatusPolling';
+import { useRealtimeSync } from './hooks/useRealtimeSync';
 
 export default function App() {
   const [token, setToken] = useState<string | null>(() => getStoredToken());
@@ -1626,7 +158,7 @@ export default function App() {
   const adminDataRef = useRef<AdminViewData | null>(null);
   const adminPageRef = useRef(adminPage);
   const deferredAdminFeedRef = useRef<CanonicalEvent[]>([]);
-  const userMenuRef = useRef<HTMLDivElement | null>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
   const recentFeedClearTimerRef = useRef<number | null>(null);
 
   const reportBackgroundError = useCallback((context: string, error: unknown) => {
@@ -2066,7 +598,9 @@ export default function App() {
     }
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        closePinEditor();
+        setPinEditorDeviceId(null);
+        setPinEditorValue('');
+        setPinEditorLoading(false);
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -2081,7 +615,8 @@ export default function App() {
     }
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        closeVirtualControlModal();
+        setVirtualControlDeviceId(null);
+        setVirtualControlPatch(null);
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -2107,18 +642,20 @@ export default function App() {
   }, [adminData]);
 
   useEffect(() => {
-    if (!adminData || adminPage !== 'devices') {
+    const adminDevices = adminData?.devices;
+    const adminEvents = adminData?.events;
+    if (!adminDevices || !adminEvents || adminPage !== 'devices') {
       return;
     }
 
-    const latestSnapshots = buildDeviceTelemetrySnapshots(adminData.events);
+    const latestSnapshots = buildDeviceTelemetrySnapshots(adminEvents);
     if (Object.keys(latestSnapshots).length > 0) {
       setAdminDeviceSnapshots((previous) => mergeTelemetrySnapshotCache(previous, latestSnapshots));
     }
 
     const latestIpByDeviceId: Record<string, string> = {};
-    for (const device of adminData.devices) {
-      const ipAddress = extractIpAddressFromDeviceStatus(device, adminData.events);
+    for (const device of adminDevices) {
+      const ipAddress = extractIpAddressFromDeviceStatus(device, adminEvents);
       if (ipAddress) {
         latestIpByDeviceId[device.deviceId] = ipAddress;
       }
@@ -2127,18 +664,19 @@ export default function App() {
       mergeIpAddressCache(
         previous,
         latestIpByDeviceId,
-        adminData.devices.map((device) => device.deviceId)
+        adminDevices.map((device) => device.deviceId)
       )
     );
-  }, [adminData?.events, adminPage]);
+  }, [adminData?.devices, adminData?.events, adminPage]);
 
   useEffect(() => {
-    if (!adminData || adminPage !== 'devices') {
+    const adminDevices = adminData?.devices;
+    if (!adminDevices || adminPage !== 'devices') {
       return;
     }
 
     const latestWifiIpByDeviceId: Record<string, string> = {};
-    for (const device of adminData.devices) {
+    for (const device of adminDevices) {
       if (!device.wifiPayloadJson) {
         continue;
       }
@@ -2154,535 +692,48 @@ export default function App() {
       mergeIpAddressCache(
         previous,
         latestWifiIpByDeviceId,
-        adminData.devices.map((device) => device.deviceId)
+        adminDevices.map((device) => device.deviceId)
       )
     );
   }, [adminData?.devices, adminPage]);
 
-  useEffect(() => {
-    if (!token || session?.role !== 'ADMIN' || adminPage !== 'systemStatus') {
-      return;
-    }
+  useAdminSystemStatusPolling({
+    token,
+    role: session?.role ?? null,
+    adminPage,
+    reportBackgroundError,
+    setAdminSystemStatus
+  });
 
-    let cancelled = false;
-    let intervalId: number | null = null;
-
-    const loadStatus = async () => {
-      try {
-        const latest = await api.adminSystemStatus(token);
-        if (cancelled) {
-          return;
-        }
-        setAdminSystemStatus((previous) => (sameAdminSystemStatus(previous, latest) ? previous : latest));
-      } catch (error) {
-        if (!cancelled) {
-          reportBackgroundError('adminSystemStatus', error);
-        }
-      }
-    };
-
-    loadStatus().catch((error) => reportBackgroundError('adminSystemStatus', error));
-    intervalId = window.setInterval(() => {
-      loadStatus().catch((error) => reportBackgroundError('adminSystemStatus', error));
-    }, 5000);
-
-    return () => {
-      cancelled = true;
-      if (intervalId !== null) {
-        window.clearInterval(intervalId);
-      }
-    };
-  }, [adminPage, reportBackgroundError, session?.role, token]);
-
-  useEffect(() => {
-    if (!session || !token) {
-      return;
-    }
-
-    let socket: WebSocket | null = null;
-    let reconnectTimer: number | null = null;
-    let groupRefreshTimer: number | null = null;
-    let studentFeedFlushTimer: number | null = null;
-    let adminFeedFlushTimer: number | null = null;
-    let adminDeviceStatusFlushTimer: number | null = null;
-    let studentFeedQueue: CanonicalEvent[] = [];
-    let adminFeedQueue: CanonicalEvent[] = [];
-    const adminDeviceStatusQueue = new Map<string, DeviceStatus>();
-    let closed = false;
-
-    const rolePath = session.role === 'ADMIN' ? '/ws/admin' : '/ws/student';
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-
-    const scheduleGroupRefresh = () => {
-      if (groupRefreshTimer !== null) {
-        return;
-      }
-      groupRefreshTimer = window.setTimeout(() => {
-        groupRefreshTimer = null;
-        refreshAdminGroups(token).catch((error) => reportBackgroundError('refreshAdminGroups', error));
-      }, 350);
-    };
-
-    const scheduleReconnect = () => {
-      if (closed || reconnectTimer !== null) {
-        return;
-      }
-      reconnectTimer = window.setTimeout(() => {
-        reconnectTimer = null;
-        connect();
-      }, 1500);
-    };
-
-    const flushStudentFeedQueue = () => {
-      studentFeedFlushTimer = null;
-      if (studentFeedQueue.length === 0) {
-        return;
-      }
-      const queued = studentFeedQueue;
-      studentFeedQueue = [];
-      markFeedEventsRecent(queued);
-      setStudentData((previous) => {
-        if (!previous) {
-          return previous;
-        }
-        const nextFeed = mergeEventsBounded(previous.feed, queued, MAX_FEED_EVENTS);
-        if (nextFeed === previous.feed) {
-          return previous;
-        }
-        return {
-          ...previous,
-          feed: nextFeed
-        };
-      });
-    };
-
-    const queueStudentFeedEvent = (eventPayload: CanonicalEvent) => {
-      studentFeedQueue.push(eventPayload);
-      if (studentFeedFlushTimer !== null) {
-        return;
-      }
-      studentFeedFlushTimer = window.setTimeout(flushStudentFeedQueue, 180);
-    };
-
-    const flushAdminFeedQueue = () => {
-      adminFeedFlushTimer = null;
-      if (adminFeedQueue.length === 0) {
-        return;
-      }
-      const queued = adminFeedQueue;
-      adminFeedQueue = [];
-
-      queueDeferredAdminFeedEvents(queued);
-
-      const currentPage = adminPageRef.current;
-      if (currentPage === 'devices') {
-        const latestSnapshots = buildDeviceTelemetrySnapshots(queued);
-        if (Object.keys(latestSnapshots).length > 0) {
-          setAdminDeviceSnapshots((previous) =>
-            mergeTelemetrySnapshotCache(previous, latestSnapshots)
-          );
-        }
-
-        const latestIpByDeviceId = extractIpAddressesFromEvents(queued);
-        if (Object.keys(latestIpByDeviceId).length > 0) {
-          setAdminDeviceIpById((previous) => {
-            const activeDeviceIds =
-              adminDataRef.current?.devices.map((device) => device.deviceId) ??
-              Array.from(new Set([...Object.keys(previous), ...Object.keys(latestIpByDeviceId)]));
-            return mergeIpAddressCache(previous, latestIpByDeviceId, activeDeviceIds);
-          });
-        }
-      }
-
-      if (isAdminFeedHotPage(currentPage)) {
-        flushDeferredAdminFeedEvents(currentPage === 'feed');
-      }
-    };
-
-    const queueAdminFeedEvent = (eventPayload: CanonicalEvent) => {
-      adminFeedQueue.push(eventPayload);
-      if (adminFeedFlushTimer !== null) {
-        return;
-      }
-      adminFeedFlushTimer = window.setTimeout(flushAdminFeedQueue, 180);
-    };
-
-    const flushAdminDeviceStatusQueue = () => {
-      adminDeviceStatusFlushTimer = null;
-      if (adminDeviceStatusQueue.size === 0) {
-        return;
-      }
-      const queuedStatuses = Array.from(adminDeviceStatusQueue.values());
-      adminDeviceStatusQueue.clear();
-      setAdminData((previous) => {
-        if (!previous) {
-          return previous;
-        }
-        const nextDevices = new Map(previous.devices.map((device) => [device.deviceId, device]));
-        let changed = false;
-        for (const queuedDevice of queuedStatuses) {
-          const existing = nextDevices.get(queuedDevice.deviceId);
-          if (existing && sameDeviceStatus(existing, queuedDevice)) {
-            continue;
-          }
-          nextDevices.set(queuedDevice.deviceId, queuedDevice);
-          changed = true;
-        }
-        if (!changed) {
-          return previous;
-        }
-        return {
-          ...previous,
-          devices: Array.from(nextDevices.values()).sort((a, b) => a.deviceId.localeCompare(b.deviceId))
-        };
-      });
-    };
-
-    const queueAdminDeviceStatus = (deviceStatus: DeviceStatus) => {
-      if (isVirtualDeviceId(deviceStatus.deviceId)) {
-        return;
-      }
-      adminDeviceStatusQueue.set(deviceStatus.deviceId, deviceStatus);
-      if (adminDeviceStatusFlushTimer !== null) {
-        return;
-      }
-      adminDeviceStatusFlushTimer = window.setTimeout(flushAdminDeviceStatusQueue, 240);
-    };
-
-    const handleEnvelope = (envelope: WsEnvelope<unknown>) => {
-      if (session.role === 'STUDENT') {
-        if (envelope.type === 'event.feed.append') {
-          if (studentPauseRef.current) {
-            return;
-          }
-          queueStudentFeedEvent(envelope.payload as CanonicalEvent);
-          return;
-        }
-
-        if (envelope.type === 'group.presence.updated') {
-          const presence = Array.isArray(envelope.payload)
-            ? (envelope.payload as PresenceUser[])
-            : [];
-          setStudentData((previous) => {
-            if (!previous) {
-              return previous;
-            }
-            if (samePresenceList(previous.groupPresence, presence)) {
-              return previous;
-            }
-            return {
-              ...previous,
-              groupPresence: presence
-            };
-          });
-          return;
-        }
-
-        if (envelope.type === 'group.config.updated') {
-          const nextConfig = envelope.payload as GroupConfig;
-          let changed = false;
-          setStudentData((previous) => {
-            if (!previous) {
-              return previous;
-            }
-            if (sameGroupConfigMeta(previous.groupConfig, nextConfig)) {
-              return previous;
-            }
-            changed = true;
-            return {
-              ...previous,
-              groupConfig: nextConfig
-            };
-          });
-          if (changed) {
-            setStudentConfigDraft(safeConfigMap(nextConfig.config));
-          }
-          return;
-        }
-
-        if (envelope.type === 'capabilities.updated') {
-          const nextCapabilities = envelope.payload as TaskCapabilities;
-          setStudentData((previous) => {
-            if (!previous) {
-              return previous;
-            }
-            if (sameTaskCapabilities(previous.capabilities, nextCapabilities)) {
-              return previous;
-            }
-            return {
-              ...previous,
-              capabilities: nextCapabilities
-            };
-          });
-          return;
-        }
-
-        if (envelope.type === 'task.updated') {
-          if (!envelope.payload || typeof envelope.payload !== 'object') {
-            return;
-          }
-          const taskLike = envelope.payload as TaskDefinitionPayload | TaskInfo;
-          const task = extractTaskInfo(taskLike);
-          if (!task) {
-            return;
-          }
-          setStudentData((previous) => {
-            if (!previous) {
-              return previous;
-            }
-            const nextCapabilities =
-              (taskLike as TaskDefinitionPayload).studentCapabilities ?? previous.capabilities;
-            if (sameTaskInfo(previous.activeTask, task) && sameTaskCapabilities(previous.capabilities, nextCapabilities)) {
-              return previous;
-            }
-            return {
-              ...previous,
-              activeTask: task,
-              capabilities: nextCapabilities
-            };
-          });
-          return;
-        }
-
-        if (envelope.type === 'error.notification') {
-          setErrorMessage(String(envelope.payload));
-          return;
-        }
-
-        if (envelope.type === 'virtual.device.updated') {
-          const virtualDevice = envelope.payload as VirtualDeviceState;
-          let changed = false;
-          setStudentData((previous) => {
-            if (!previous || !previous.settings.studentVirtualDeviceVisible) {
-              return previous;
-            }
-            if (previous.virtualDevice && sameVirtualDeviceState(previous.virtualDevice, virtualDevice)) {
-              return previous;
-            }
-            changed = true;
-            return {
-              ...previous,
-              virtualDevice
-            };
-          });
-          if (changed) {
-            const nextPatch = patchFromVirtualDevice(virtualDevice);
-            setStudentVirtualPatch((previous) => (sameVirtualDevicePatch(previous, nextPatch) ? previous : nextPatch));
-          }
-          return;
-        }
-
-        if (envelope.type === 'settings.updated') {
-          const settings = envelope.payload as AppSettings;
-          let becameVisible = false;
-          let becameHidden = false;
-          setStudentData((previous) => {
-            if (!previous) {
-              return previous;
-            }
-            becameVisible = !previous.settings.studentVirtualDeviceVisible && settings.studentVirtualDeviceVisible;
-            becameHidden = previous.settings.studentVirtualDeviceVisible && !settings.studentVirtualDeviceVisible;
-            const nextVirtualDevice = settings.studentVirtualDeviceVisible ? previous.virtualDevice : null;
-            if (sameAppSettings(previous.settings, settings) && nextVirtualDevice === previous.virtualDevice) {
-              return previous;
-            }
-            return {
-              ...previous,
-              virtualDevice: nextVirtualDevice,
-              settings
-            };
-          });
-          setDefaultLanguageMode(settings.defaultLanguageMode);
-          setTimeFormat24h(settings.timeFormat24h);
-          if (becameHidden) {
-            setStudentVirtualPatch((previous) => (previous === null ? previous : null));
-          } else if (becameVisible) {
-            api.studentVirtualDevice(token)
-              .then((virtualDevice) => {
-                setStudentData((previous) => {
-                  if (!previous || !previous.settings.studentVirtualDeviceVisible) {
-                    return previous;
-                  }
-                  if (previous.virtualDevice && sameVirtualDeviceState(previous.virtualDevice, virtualDevice)) {
-                    return previous;
-                  }
-                  return {
-                    ...previous,
-                    virtualDevice
-                  };
-                });
-                const nextPatch = patchFromVirtualDevice(virtualDevice);
-                setStudentVirtualPatch((previous) => (sameVirtualDevicePatch(previous, nextPatch) ? previous : nextPatch));
-              })
-              .catch((error) => reportBackgroundError('studentVirtualDevice', error));
-          }
-        }
-        return;
-      }
-
-      if (envelope.type === 'event.feed.append') {
-        if (adminPauseRef.current) {
-          return;
-        }
-        queueAdminFeedEvent(envelope.payload as CanonicalEvent);
-        return;
-      }
-
-      if (envelope.type === 'device.status.updated') {
-        queueAdminDeviceStatus(envelope.payload as DeviceStatus);
-        return;
-      }
-
-      if (envelope.type === 'admin.groups.updated') {
-        scheduleGroupRefresh();
-        return;
-      }
-
-      if (envelope.type === 'task.updated') {
-        refreshAdminTasks(token).catch((error) => reportBackgroundError('refreshAdminTasks', error));
-        return;
-      }
-
-      if (envelope.type === 'settings.updated') {
-        const settings = envelope.payload as AppSettings;
-        setAdminData((previous) => {
-          if (!previous) {
-            return previous;
-          }
-          if (sameAppSettings(previous.settings, settings)) {
-            return previous;
-          }
-          return {
-            ...previous,
-            settings
-          };
-        });
-        setAdminSettingsDraftMode(settings.defaultLanguageMode);
-        setAdminSettingsDraftTimeFormat24h(settings.timeFormat24h);
-        setAdminSettingsDraftVirtualVisible(settings.studentVirtualDeviceVisible);
-        setDefaultLanguageMode(settings.defaultLanguageMode);
-        setTimeFormat24h(settings.timeFormat24h);
-        return;
-      }
-
-      if (envelope.type === 'virtual.device.updated') {
-        const updatedVirtual = envelope.payload as VirtualDeviceState;
-        setAdminData((previous) => {
-          if (!previous) {
-            return previous;
-          }
-          const existing = previous.virtualDevices.find(
-            (entry) => entry.deviceId === updatedVirtual.deviceId
-          );
-          if (existing && sameVirtualDeviceState(existing, updatedVirtual)) {
-            return previous;
-          }
-          const hasExisting = Boolean(existing);
-          return {
-            ...previous,
-            virtualDevices: hasExisting
-              ? previous.virtualDevices.map((entry) =>
-                  entry.deviceId === updatedVirtual.deviceId ? updatedVirtual : entry
-                )
-              : [...previous.virtualDevices, updatedVirtual].sort((a, b) =>
-                  a.deviceId.localeCompare(b.deviceId)
-                )
-          };
-        });
-        return;
-      }
-
-      if (envelope.type === 'error.notification') {
-        setErrorMessage(String(envelope.payload));
-      }
-    };
-
-    const connect = () => {
-      if (closed) {
-        return;
-      }
-
-      setWsConnection('connecting');
-      socket = new WebSocket(
-        `${protocol}//${window.location.host}${rolePath}?token=${encodeURIComponent(token)}`
-      );
-
-      socket.onopen = () => {
-        if (!closed) {
-          setWsConnection('connected');
-        }
-        if (reconnectTimer !== null) {
-          window.clearTimeout(reconnectTimer);
-          reconnectTimer = null;
-        }
-      };
-
-      socket.onmessage = (event) => {
-        try {
-          const envelope = JSON.parse(event.data) as WsEnvelope<unknown>;
-          handleEnvelope(envelope);
-        } catch (error) {
-          setErrorMessage(toErrorMessage(error));
-        }
-      };
-
-      socket.onclose = () => {
-        if (closed) {
-          return;
-        }
-        setWsConnection('disconnected');
-        scheduleReconnect();
-      };
-
-      socket.onerror = () => {
-        if (!closed) {
-          setWsConnection('disconnected');
-          scheduleReconnect();
-        }
-      };
-    };
-
-    connect();
-
-    return () => {
-      closed = true;
-      setWsConnection('disconnected');
-
-      if (reconnectTimer !== null) {
-        window.clearTimeout(reconnectTimer);
-      }
-      if (groupRefreshTimer !== null) {
-        window.clearTimeout(groupRefreshTimer);
-      }
-      if (studentFeedFlushTimer !== null) {
-        window.clearTimeout(studentFeedFlushTimer);
-      }
-      if (adminFeedFlushTimer !== null) {
-        window.clearTimeout(adminFeedFlushTimer);
-      }
-      if (adminDeviceStatusFlushTimer !== null) {
-        window.clearTimeout(adminDeviceStatusFlushTimer);
-      }
-      studentFeedQueue = [];
-      adminFeedQueue = [];
-      adminDeviceStatusQueue.clear();
-
-      if (socket) {
-        socket.close();
-      }
-    };
-  }, [
-    flushDeferredAdminFeedEvents,
-    queueDeferredAdminFeedEvents,
+  useRealtimeSync({
+    session,
+    token,
+    studentPauseRef,
+    adminPauseRef,
+    adminDataRef,
+    adminPageRef,
+    reportBackgroundError,
     refreshAdminGroups,
     refreshAdminTasks,
-    reportBackgroundError,
-    session,
-    token
-  ]);
+    markFeedEventsRecent,
+    queueDeferredAdminFeedEvents,
+    flushDeferredAdminFeedEvents,
+    setWsConnection,
+    setErrorMessage,
+    setStudentData,
+    setStudentConfigDraft,
+    setStudentVirtualPatch,
+    setAdminData,
+    setAdminDeviceSnapshots,
+    setAdminDeviceIpById,
+    setAdminSettingsDraftMode,
+    setAdminSettingsDraftTimeFormat24h,
+    setAdminSettingsDraftVirtualVisible,
+    setDefaultLanguageMode,
+    setTimeFormat24h
+  });
 
-  const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const handleLogin = async () => {
     setBusyKey('login');
     setErrorMessage(null);
     setInfoMessage(null);
@@ -3098,7 +1149,7 @@ export default function App() {
     }
     const nextPin = pinEditorValue.trim();
     if (!nextPin) {
-      setErrorMessage(toErrorMessage(new Error('PIN must not be blank')));
+      setErrorMessage(t('pinBlankError'));
       return;
     }
 
@@ -3238,6 +1289,12 @@ export default function App() {
       setErrorMessage(toErrorMessage(error));
     }
   }, []);
+
+  const handleSystemImportFileSelected = useCallback((file: File) => {
+    handleSystemImportFileChange(file).catch((error) => {
+      setErrorMessage(toErrorMessage(error));
+    });
+  }, [handleSystemImportFileChange]);
 
   const exportSystemData = async () => {
     if (!token || !session || session.role !== 'ADMIN') {
@@ -3533,22 +1590,22 @@ export default function App() {
     }
 
     return [
-      ['ID', selectedEvent.id],
-      ['DEVICE ID', selectedEvent.deviceId],
-      ['TOPIC', selectedEvent.topic],
-      ['EVENT TYPE', selectedEvent.eventType],
-      ['CATEGORY', selectedEvent.category],
-      ['INGEST TS', formatTs(selectedEvent.ingestTs)],
-      ['DEVICE TS', formatTs(selectedEvent.deviceTs)],
-      ['VALUE', eventValueSummary(selectedEvent) || '-'],
-      ['VALID', String(selectedEvent.valid)],
-      ['VALIDATION ERRORS', selectedEvent.validationErrors ?? '-'],
-      ['INTERNAL', String(selectedEvent.isInternal)],
-      ['GROUP KEY', selectedEvent.groupKey ?? '-'],
-      ['SEQUENCE NO', selectedEvent.sequenceNo == null ? '-' : String(selectedEvent.sequenceNo)],
-      ['SCENARIO FLAGS', selectedEvent.scenarioFlags]
+      [t('eventFieldId'), selectedEvent.id],
+      [t('eventFieldDeviceId'), selectedEvent.deviceId],
+      [t('eventFieldTopic'), selectedEvent.topic],
+      [t('eventFieldEventType'), selectedEvent.eventType],
+      [t('eventFieldCategory'), selectedEvent.category],
+      [t('eventFieldIngestTs'), formatTs(selectedEvent.ingestTs)],
+      [t('eventFieldDeviceTs'), formatTs(selectedEvent.deviceTs)],
+      [t('eventFieldValue'), eventValueSummary(selectedEvent) || '-'],
+      [t('eventFieldValid'), String(selectedEvent.valid)],
+      [t('eventFieldValidationErrors'), selectedEvent.validationErrors ?? '-'],
+      [t('eventFieldInternal'), String(selectedEvent.isInternal)],
+      [t('eventFieldGroupKey'), selectedEvent.groupKey ?? '-'],
+      [t('eventFieldSequenceNo'), selectedEvent.sequenceNo == null ? '-' : String(selectedEvent.sequenceNo)],
+      [t('eventFieldScenarioFlags'), selectedEvent.scenarioFlags]
     ];
-  }, [formatTs, selectedEvent]);
+  }, [formatTs, selectedEvent, t]);
 
   const selectedEventRawJson = useMemo(() => {
     if (!selectedEvent) {
@@ -3565,6 +1622,14 @@ export default function App() {
       null,
       2
     );
+  }, [selectedEvent]);
+
+  const selectedEventPayloadPretty = useMemo(() => {
+    if (!selectedEvent) {
+      return '';
+    }
+    const parsedPayload = tryParsePayload(selectedEvent.payloadJson);
+    return JSON.stringify(parsedPayload ?? selectedEvent.payloadJson, null, 2);
   }, [selectedEvent]);
 
   const studentFeedRows = useMemo(() => {
@@ -3603,10 +1668,11 @@ export default function App() {
   }, [feedViewMode, formatTs, recentFeedEventIds, studentFeedValues, studentVisibleFeed]);
 
   const adminDeviceCards = useMemo(() => {
-    if (!adminData) {
+    const adminDevices = adminData?.devices;
+    if (!adminDevices) {
       return null;
     }
-    return adminData.devices.map((device) => {
+    return adminDevices.map((device) => {
       const snapshot = adminDeviceSnapshots[device.deviceId];
       const uptimeNow = estimateUptimeNow(snapshot, nowEpochMs);
       const redPressed = snapshot?.buttonRedPressed ?? null;
@@ -3770,7 +1836,7 @@ export default function App() {
                 <MetricIcon kind="buttons" />
               </span>
               <span className="metric-text metric-state-row">
-                <span className="metric-label">Red:</span>
+                <span className="metric-label">{t('colorRed')}:</span>
                 <span className={`state-label ${redButtonClass}`}>{redButton}</span>
               </span>
             </div>
@@ -3779,7 +1845,7 @@ export default function App() {
                 <MetricIcon kind="buttons" />
               </span>
               <span className="metric-text metric-state-row">
-                <span className="metric-label">Black:</span>
+                <span className="metric-label">{t('colorBlack')}:</span>
                 <span className={`state-label ${blackButtonClass}`}>{blackButton}</span>
               </span>
             </div>
@@ -3821,10 +1887,11 @@ export default function App() {
   ]);
 
   const adminVirtualDeviceCards = useMemo(() => {
-    if (!adminData) {
+    const adminVirtualDevices = adminData?.virtualDevices;
+    if (!adminVirtualDevices) {
       return null;
     }
-    return adminData.virtualDevices.map((device) => {
+    return adminVirtualDevices.map((device) => {
       const redButtonClass = device.buttonRedPressed ? 'state-pressed' : 'state-released';
       const blackButtonClass = device.buttonBlackPressed ? 'state-pressed' : 'state-released';
       const counterBusy = busyKey === `admin-virtual-counter-reset-${device.deviceId}`;
@@ -3885,7 +1952,7 @@ export default function App() {
                 <MetricIcon kind="buttons" />
               </span>
               <span className="metric-text metric-state-row">
-                <span className="metric-label">Red:</span>
+                <span className="metric-label">{t('colorRed')}:</span>
                 <span className={`state-label ${redButtonClass}`}>
                   {device.buttonRedPressed ? t('statePressed') : t('stateReleased')}
                 </span>
@@ -3896,7 +1963,7 @@ export default function App() {
                 <MetricIcon kind="buttons" />
               </span>
               <span className="metric-text metric-state-row">
-                <span className="metric-label">Black:</span>
+                <span className="metric-label">{t('colorBlack')}:</span>
                 <span className={`state-label ${blackButtonClass}`}>
                   {device.buttonBlackPressed ? t('statePressed') : t('stateReleased')}
                 </span>
@@ -3906,7 +1973,16 @@ export default function App() {
         </article>
       );
     });
-  }, [adminData?.virtualDevices, busyKey, formatTs, language, nowEpochMs, openCounterResetModal, openVirtualControlModal, t]);
+  }, [
+    adminData?.virtualDevices,
+    busyKey,
+    formatTs,
+    language,
+    nowEpochMs,
+    openCounterResetModal,
+    openVirtualControlModal,
+    t
+  ]);
 
   const adminFeedRows = useMemo(() => {
     if (adminVisibleFeed.length === 0) {
@@ -3957,8 +2033,8 @@ export default function App() {
           value={selected}
           onChange={(event) => setValue(event.target.value)}
         >
-          <option value="compact">compact</option>
-          <option value="detailed">detailed</option>
+          <option value="compact">{t('configOptionCompact')}</option>
+          <option value="detailed">{t('configOptionDetailed')}</option>
         </select>
       );
     }
@@ -3971,10 +2047,10 @@ export default function App() {
           value={selected}
           onChange={(event) => setValue(event.target.value)}
         >
-          <option value="all">all</option>
-          <option value="ldr">ldr</option>
-          <option value="dht22">dht22</option>
-          <option value="buttons">buttons</option>
+          <option value="all">{t('configOptionAll')}</option>
+          <option value="ldr">{t('configOptionLdr')}</option>
+          <option value="dht22">{t('configOptionDht22')}</option>
+          <option value="buttons">{t('configOptionButtons')}</option>
         </select>
       );
     }
@@ -3987,7 +2063,7 @@ export default function App() {
             checked={Boolean(value)}
             onChange={(event) => setValue(event.target.checked)}
           />
-          <span>enabled</span>
+          <span>{t('configEnabled')}</span>
         </label>
       );
     }
@@ -4010,1372 +2086,320 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <header className="topbar">
-        <div>
-          <h1>{t('appTitle')}</h1>
-          <p>{t('appSubtitle')}</p>
-        </div>
-
-        <div className="topbar-controls">
-          {session ? (
-            <div className="user-menu" ref={userMenuRef}>
-              <button
-                className="button secondary user-menu-trigger"
-                type="button"
-                onClick={() => setUserMenuOpen((open) => !open)}
-                aria-haspopup="menu"
-                aria-expanded={userMenuOpen}
-              >
-                <span className="user-menu-name">{userMenuLabel}</span>
-                <span className="user-menu-caret" aria-hidden="true">▾</span>
-              </button>
-
-              {userMenuOpen ? (
-                <div className="user-menu-panel" role="menu">
-                  <div className="user-menu-status-row">
-                    <span className={`status-pill ${wsConnection}`}>{wsLabel}</span>
-                    {roleLabel ? <span className="status-pill role">{roleLabel}</span> : null}
-                  </div>
-
-                  <div className="user-menu-section">
-                    <div className="user-menu-label">{t('language')}</div>
-                    <div className="user-menu-actions">
-                      <button
-                        className={`button tiny ${language === 'de' ? 'active' : 'secondary'}`}
-                        type="button"
-                        onClick={() => setManualLanguage('de')}
-                      >
-                        DE
-                      </button>
-                      <button
-                        className={`button tiny ${language === 'en' ? 'active' : 'secondary'}`}
-                        type="button"
-                        onClick={() => setManualLanguage('en')}
-                      >
-                        EN
-                      </button>
-                    </div>
-                  </div>
-
-                  <button className="button secondary user-menu-link" type="button" onClick={openSettingsSection}>
-                    {t('settings')}
-                  </button>
-
-                  <button
-                    className="button danger user-menu-link"
-                    type="button"
-                    onClick={handleLogout}
-                    disabled={busyKey === 'logout'}
-                  >
-                    {t('logout')}
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
-      </header>
+      <AppTopBar
+        t={t}
+        hasSession={!!session}
+        userMenuRef={userMenuRef}
+        userMenuOpen={userMenuOpen}
+        userMenuLabel={userMenuLabel}
+        wsConnection={wsConnection}
+        wsLabel={wsLabel}
+        roleLabel={roleLabel}
+        language={language}
+        logoutBusy={busyKey === 'logout'}
+        onToggleUserMenu={() => setUserMenuOpen((open) => !open)}
+        onSetLanguage={setManualLanguage}
+        onOpenSettings={openSettingsSection}
+        onLogout={handleLogout}
+      />
 
       <main className="content">
-        {errorMessage ? (
-          <div className="alert error">
-            {t('errorPrefix')}: {errorMessage}
-          </div>
-        ) : null}
-
-        {infoMessage ? <div className="alert info">{infoMessage}</div> : null}
-
-        {booting ? (
-          <section className="panel loading">{t('loading')}</section>
-        ) : null}
+        <MainStateBanners
+          t={t}
+          errorMessage={errorMessage}
+          infoMessage={infoMessage}
+          booting={booting}
+        />
 
         {!booting && !session ? (
-          <section className="panel login-panel panel-animate">
-            <div className="login-panel-header">
-              <h2>{t('loginTitle')}</h2>
-              <p className="login-panel-subtitle">{t('appSubtitle')}</p>
-            </div>
-            <form onSubmit={handleLogin} className="form-grid login-form">
-              <label>
-                <span>{t('username')}</span>
-                <input
-                  className="input"
-                  value={loginUsername}
-                  onChange={(event) => setLoginUsername(event.target.value)}
-                  required
-                />
-              </label>
-
-              <label>
-                <span>{t('pin')}</span>
-                <input
-                  className="input"
-                  type="password"
-                  value={loginPin}
-                  onChange={(event) => setLoginPin(event.target.value)}
-                  required
-                />
-              </label>
-
-              <button className="button" type="submit" disabled={busyKey === 'login'}>
-                {t('login')}
-              </button>
-            </form>
-            <p className="muted login-hint">{t('loginHint')}</p>
-          </section>
+          <LoginSection
+            t={t}
+            username={loginUsername}
+            pin={loginPin}
+            busy={busyKey === 'login'}
+            onUsernameChange={setLoginUsername}
+            onPinChange={setLoginPin}
+            onSubmit={() => {
+              void handleLogin();
+            }}
+          />
         ) : null}
 
         {!booting && session?.role === 'STUDENT' && studentData && !studentOnboardingDone ? (
-          <section className="panel panel-animate student-onboarding-panel">
-            <h2>{t('onboardingTitle')}</h2>
-            <p className="muted">{t('onboardingSubtitle')}</p>
-
-            <form
-              className="form-grid student-onboarding-form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                continueStudentOnboarding().catch((error) => setErrorMessage(toErrorMessage(error)));
-              }}
-            >
-              <label>
-                <span>{t('displayName')}</span>
-                <input
-                  className="input"
-                  value={displayNameDraft}
-                  onChange={(event) => setDisplayNameDraft(event.target.value)}
-                  autoFocus
-                />
-              </label>
-
-              <div className="student-onboarding-language">
-                <span>{t('language')}</span>
-                <div className="user-menu-actions">
-                  <button
-                    className={`button tiny ${language === 'de' ? 'active' : 'secondary'}`}
-                    type="button"
-                    onClick={() => setManualLanguage('de')}
-                  >
-                    DE
-                  </button>
-                  <button
-                    className={`button tiny ${language === 'en' ? 'active' : 'secondary'}`}
-                    type="button"
-                    onClick={() => setManualLanguage('en')}
-                  >
-                    EN
-                  </button>
-                </div>
-              </div>
-
-              <button className="button" type="submit" disabled={busyKey === 'student-onboarding'}>
-                {t('onboardingContinue')}
-              </button>
-            </form>
-          </section>
+          <StudentOnboardingSection
+            t={t}
+            language={language}
+            displayNameDraft={displayNameDraft}
+            busy={busyKey === 'student-onboarding'}
+            onDisplayNameChange={setDisplayNameDraft}
+            onSetLanguage={setManualLanguage}
+            onSubmit={() => {
+              continueStudentOnboarding().catch((error) => setErrorMessage(toErrorMessage(error)));
+            }}
+          />
         ) : null}
 
         {!booting && session?.role === 'STUDENT' && studentData && studentOnboardingDone ? (
           <div className="dashboard-grid">
-            <section className="panel hero panel-animate">
-              <h2>{t('currentTask')}</h2>
-              <h3>{taskTitle(studentData.activeTask, language)}</h3>
-              <p>{taskDescription(studentData.activeTask, language)}</p>
+            <StudentOverviewSection
+              t={t}
+              taskTitle={taskTitle(studentData.activeTask, language)}
+              taskDescription={taskDescription(studentData.activeTask, language)}
+              defaultLanguageMode={defaultLanguageMode}
+              displayNameDraft={displayNameDraft}
+              busy={busyKey === 'display-name'}
+              onDisplayNameChange={setDisplayNameDraft}
+              onSaveDisplayName={saveDisplayName}
+            />
 
-              <div className="chip-row">
-                <span className="chip">
-                  {t('defaultMode')}: {defaultLanguageMode}
-                </span>
-                <span className="chip">{t('feedLimited')}</span>
-              </div>
+            <StudentGroupConfigSection
+              t={t}
+              allowedConfigOptions={studentData.capabilities.allowedConfigOptions}
+              configDraft={studentConfigDraft}
+              revision={studentData.groupConfig.revision}
+              updatedBy={studentData.groupConfig.updatedBy}
+              updatedAt={studentData.groupConfig.updatedAt}
+              busy={busyKey === 'student-config'}
+              onConfigOptionChange={(option, nextValue) => {
+                setStudentConfigDraft((previous) => ({
+                  ...previous,
+                  [option]: nextValue
+                }));
+              }}
+              onSave={saveStudentConfig}
+              renderConfigInput={renderConfigInput}
+              formatTs={formatTs}
+            />
 
-              <div className="split-grid">
-                <label>
-                  <span>{t('displayName')}</span>
-                  <input
-                    className="input"
-                    value={displayNameDraft}
-                    onChange={(event) => setDisplayNameDraft(event.target.value)}
-                  />
-                </label>
+            <StudentPresenceSection
+              t={t}
+              groupPresence={studentData.groupPresence}
+              formatTs={formatTs}
+            />
 
-                <button
-                  className="button"
-                  type="button"
-                  onClick={saveDisplayName}
-                  disabled={busyKey === 'display-name'}
-                >
-                  {t('save')}
-                </button>
-              </div>
-            </section>
-
-            <section className="panel panel-animate" id="student-settings-panel">
-              <h2>{t('groupConfig')}</h2>
-              <div className="config-grid">
-                {studentData.capabilities.allowedConfigOptions.map((option) => (
-                  <label key={option}>
-                    <span>{option}</span>
-                    {renderConfigInput(option, studentConfigDraft[option], (next) => {
-                      setStudentConfigDraft((previous) => ({
-                        ...previous,
-                        [option]: next
-                      }));
-                    })}
-                  </label>
-                ))}
-              </div>
-
-              <div className="meta-row">
-                <span>
-                  {t('revision')}: {studentData.groupConfig.revision}
-                </span>
-                <span>
-                  {t('updatedBy')}: {studentData.groupConfig.updatedBy}
-                </span>
-                <span>
-                  {t('lastSeen')}: {formatTs(studentData.groupConfig.updatedAt)}
-                </span>
-              </div>
-
-              <button
-                className="button"
-                type="button"
-                onClick={saveStudentConfig}
-                disabled={busyKey === 'student-config'}
-              >
-                {t('save')}
-              </button>
-            </section>
-
-            <section className="panel panel-animate">
-              <h2>{t('groupPresence')}</h2>
-                <ul className="presence-list">
-                  {studentData.groupPresence.map((presence) => (
-                  <li key={`${presence.username}-${presence.displayName}`}>
-                    <strong>{presence.displayName}</strong>
-                    <span>{formatTs(presence.lastSeen)}</span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-
-            <section className="panel panel-animate">
-              <h2>{t('capabilities')}</h2>
-              <div className="chip-row">
-                <span className="chip">canViewRoomEvents: {String(studentData.capabilities.canViewRoomEvents)}</span>
-                <span className="chip">canSendDeviceCommands: {String(studentData.capabilities.canSendDeviceCommands)}</span>
-                <span className="chip">canFilterByTopic: {String(studentData.capabilities.canFilterByTopic)}</span>
-                <span className="chip">
-                  showInternalEventsToggle: {String(studentData.capabilities.showInternalEventsToggle)}
-                </span>
-              </div>
-            </section>
+            <StudentCapabilitiesSection
+              t={t}
+              capabilities={studentData.capabilities}
+            />
 
             {studentData.capabilities.canSendDeviceCommands ? (
-              <section className="panel panel-animate">
-                <h2>{t('commands')}</h2>
-                <p className="muted">{t('ownDeviceOnly')}</p>
-                <div className="button-grid">
-                  {studentData.capabilities.studentCommandWhitelist.includes('LED_GREEN') ? (
-                    <>
-                      <button
-                        className="button"
-                        type="button"
-                        onClick={() => sendStudentCommand('LED_GREEN', true)}
-                        disabled={busyKey === 'student-command-LED_GREEN-true'}
-                      >
-                        {t('commandGreenOn')}
-                      </button>
-                      <button
-                        className="button secondary"
-                        type="button"
-                        onClick={() => sendStudentCommand('LED_GREEN', false)}
-                        disabled={busyKey === 'student-command-LED_GREEN-false'}
-                      >
-                        {t('commandGreenOff')}
-                      </button>
-                    </>
-                  ) : null}
-
-                  {studentData.capabilities.studentCommandWhitelist.includes('LED_ORANGE') ? (
-                    <>
-                      <button
-                        className="button"
-                        type="button"
-                        onClick={() => sendStudentCommand('LED_ORANGE', true)}
-                        disabled={busyKey === 'student-command-LED_ORANGE-true'}
-                      >
-                        {t('commandOrangeOn')}
-                      </button>
-                      <button
-                        className="button secondary"
-                        type="button"
-                        onClick={() => sendStudentCommand('LED_ORANGE', false)}
-                        disabled={busyKey === 'student-command-LED_ORANGE-false'}
-                      >
-                        {t('commandOrangeOff')}
-                      </button>
-                    </>
-                  ) : null}
-
-                  {studentData.capabilities.studentCommandWhitelist.includes('COUNTER_RESET') ? (
-                    <button
-                      className="button ghost"
-                      type="button"
-                      onClick={() => sendStudentCommand('COUNTER_RESET')}
-                      disabled={busyKey === 'student-command-COUNTER_RESET-undefined'}
-                    >
-                      {t('commandCounterReset')}
-                    </button>
-                  ) : null}
-                </div>
-              </section>
+              <StudentCommandsSection
+                t={t}
+                studentCommandWhitelist={studentData.capabilities.studentCommandWhitelist}
+                busyKey={busyKey}
+                onSendCommand={sendStudentCommand}
+              />
             ) : null}
 
             {studentData.settings.studentVirtualDeviceVisible && studentData.virtualDevice && studentVirtualPatch ? (
-              <section className="panel panel-animate">
-                <h2>{t('virtualDevice')}</h2>
-                <p className="muted">{studentData.virtualDevice.deviceId}</p>
-                <div className="virtual-controls-grid">
-                  <label className="checkbox-inline">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(studentVirtualPatch.buttonRedPressed)}
-                      onChange={(event) => setStudentVirtualField('buttonRedPressed', event.target.checked)}
-                    />
-                    <span>Red</span>
-                  </label>
-                  <label className="checkbox-inline">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(studentVirtualPatch.buttonBlackPressed)}
-                      onChange={(event) => setStudentVirtualField('buttonBlackPressed', event.target.checked)}
-                    />
-                    <span>Black</span>
-                  </label>
-                  <label className="checkbox-inline">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(studentVirtualPatch.ledGreenOn)}
-                      onChange={(event) => setStudentVirtualField('ledGreenOn', event.target.checked)}
-                    />
-                    <span>{t('commandGreenLed')}</span>
-                  </label>
-                  <label className="checkbox-inline">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(studentVirtualPatch.ledOrangeOn)}
-                      onChange={(event) => setStudentVirtualField('ledOrangeOn', event.target.checked)}
-                    />
-                    <span>{t('commandOrangeLed')}</span>
-                  </label>
-                  <label>
-                    <span>{t('metricTemp')}</span>
-                    <input
-                      className="input"
-                      type="number"
-                      step="0.1"
-                      value={studentVirtualPatch.temperatureC ?? 0}
-                      onChange={(event) => {
-                        const next = Number.isFinite(event.target.valueAsNumber)
-                          ? event.target.valueAsNumber
-                          : (studentVirtualPatch.temperatureC ?? 0);
-                        setStudentVirtualField('temperatureC', next);
-                      }}
-                    />
-                  </label>
-                  <label>
-                    <span>{t('metricHumidity')}</span>
-                    <input
-                      className="input"
-                      type="number"
-                      step="0.1"
-                      value={studentVirtualPatch.humidityPct ?? 0}
-                      onChange={(event) => {
-                        const next = Number.isFinite(event.target.valueAsNumber)
-                          ? event.target.valueAsNumber
-                          : (studentVirtualPatch.humidityPct ?? 0);
-                        setStudentVirtualField('humidityPct', next);
-                      }}
-                    />
-                  </label>
-                  <label>
-                    <span>{t('metricBrightness')}</span>
-                    <input
-                      className="input"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      max="3.3"
-                      value={studentVirtualPatch.brightness ?? 0}
-                      onChange={(event) => {
-                        const raw = Number.isFinite(event.target.valueAsNumber)
-                          ? event.target.valueAsNumber
-                          : (studentVirtualPatch.brightness ?? 0);
-                        const next = Math.min(3.3, Math.max(0, raw));
-                        setStudentVirtualField('brightness', Number(next.toFixed(2)));
-                      }}
-                    />
-                  </label>
-                  <label>
-                    <span>{t('metricCounter')}</span>
-                    <input
-                      className="input"
-                      type="number"
-                      step="1"
-                      min="0"
-                      value={studentVirtualPatch.counterValue ?? 0}
-                      onChange={(event) => {
-                        const raw = Number.isFinite(event.target.valueAsNumber)
-                          ? event.target.valueAsNumber
-                          : (studentVirtualPatch.counterValue ?? 0);
-                        setStudentVirtualField('counterValue', Math.max(0, Math.round(raw)));
-                      }}
-                    />
-                  </label>
-                </div>
-
-                <button
-                  className="button"
-                  type="button"
-                  onClick={saveStudentVirtualDevice}
-                  disabled={studentVirtualBusy}
-                >
-                  {t('applyVirtualState')}
-                </button>
-              </section>
+              <StudentVirtualDeviceSection
+                t={t}
+                deviceId={studentData.virtualDevice.deviceId}
+                patch={studentVirtualPatch}
+                busy={studentVirtualBusy}
+                onSetField={setStudentVirtualField}
+                onSave={saveStudentVirtualDevice}
+              />
             ) : null}
 
-            <section className="panel panel-animate feed-panel full-width">
-              <h2>{t('liveFeed')}</h2>
-              <div className="toolbar">
-                <button
-                  className="button secondary"
-                  type="button"
-                  onClick={() => setStudentFeedPaused((value) => !value)}
-                >
-                  {studentFeedPaused ? t('resume') : t('pause')}
-                </button>
-                <button
-                  className="button secondary"
-                  type="button"
-                  onClick={() =>
-                    setFeedViewMode((mode) => (mode === 'rendered' ? 'raw' : 'rendered'))
+            <StudentFeedSection
+              t={t}
+              studentFeedPaused={studentFeedPaused}
+              feedViewMode={feedViewMode}
+              onTogglePause={() => setStudentFeedPaused((value) => !value)}
+              onToggleFeedViewMode={() =>
+                setFeedViewMode((mode) => (mode === 'rendered' ? 'raw' : 'rendered'))
+              }
+              onClearFeed={() => {
+                setStudentData((previous) => {
+                  if (!previous) {
+                    return previous;
                   }
-                >
-                  {feedViewMode === 'rendered' ? t('switchToRawFeed') : t('switchToRenderedFeed')}
-                </button>
-                <button
-                  className="button secondary"
-                  type="button"
-                  onClick={() => {
-                    setStudentData((previous) => {
-                      if (!previous) {
-                        return previous;
-                      }
-                      return { ...previous, feed: [] };
-                    });
-                  }}
-                >
-                  {t('clear')}
-                </button>
-
-                <input
-                  className="input"
-                  placeholder={t('topicFilter')}
-                  value={studentTopicFilter}
-                  onChange={(event) => setStudentTopicFilter(event.target.value)}
-                  disabled={!studentData.capabilities.canFilterByTopic}
-                />
-
-                {studentData.capabilities.showInternalEventsToggle ? (
-                  <label className="checkbox-inline">
-                    <input
-                      type="checkbox"
-                      checked={studentShowInternal}
-                      onChange={(event) => setStudentShowInternal(event.target.checked)}
-                    />
-                    <span>{t('includeInternal')}</span>
-                  </label>
-                ) : null}
-              </div>
-
-              <div className="feed-table-wrap">
-                <table className="feed-table">
-                  <thead>
-                    <tr>
-                      <th>INGEST TS</th>
-                      <th>DEVICE ID</th>
-                      <th>EVENT TYPE</th>
-                      <th>{feedViewMode === 'rendered' ? t('value') : t('rawPayload')}</th>
-                      <th>TOPIC</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {studentVisibleFeed.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} className="muted">
-                          {t('noEvents')}
-                        </td>
-                      </tr>
-                    ) : (
-                      studentFeedRows
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </section>
+                  return { ...previous, feed: [] };
+                });
+              }}
+              studentTopicFilter={studentTopicFilter}
+              onStudentTopicFilterChange={setStudentTopicFilter}
+              canFilterByTopic={studentData.capabilities.canFilterByTopic}
+              showInternalEventsToggle={studentData.capabilities.showInternalEventsToggle}
+              studentShowInternal={studentShowInternal}
+              onStudentShowInternalChange={setStudentShowInternal}
+              studentVisibleFeedCount={studentVisibleFeed.length}
+              studentFeedRows={studentFeedRows}
+            />
           </div>
         ) : null}
 
         {!booting && session?.role === 'ADMIN' && adminData ? (
           <div className="admin-page-shell">
-            <nav className="panel panel-animate admin-page-nav">
-              <button
-                className={`button tiny ${adminPage === 'dashboard' ? 'active' : 'secondary'}`}
-                type="button"
-                onClick={() => setAdminPage('dashboard')}
-              >
-                {t('dashboard')}
-              </button>
-              <button
-                className={`button tiny ${adminPage === 'devices' ? 'active' : 'secondary'}`}
-                type="button"
-                onClick={() => setAdminPage('devices')}
-              >
-                {t('devices')}
-              </button>
-              <button
-                className={`button tiny ${adminPage === 'virtualDevices' ? 'active' : 'secondary'}`}
-                type="button"
-                onClick={() => setAdminPage('virtualDevices')}
-              >
-                {t('virtualDevices')}
-              </button>
-              <button
-                className={`button tiny ${adminPage === 'feed' ? 'active' : 'secondary'}`}
-                type="button"
-                onClick={() => setAdminPage('feed')}
-              >
-                {t('liveFeed')}
-              </button>
-              <button
-                className={`button tiny ${adminPage === 'groupsTasks' ? 'active' : 'secondary'}`}
-                type="button"
-                onClick={() => setAdminPage('groupsTasks')}
-              >
-                {t('groupsTasks')}
-              </button>
-              <button
-                className={`button tiny ${adminPage === 'systemStatus' ? 'active' : 'secondary'}`}
-                type="button"
-                onClick={() => setAdminPage('systemStatus')}
-              >
-                {t('systemStatus')}
-              </button>
-              <button
-                className={`button tiny ${adminPage === 'settings' ? 'active' : 'secondary'}`}
-                type="button"
-                onClick={() => setAdminPage('settings')}
-              >
-                {t('settings')}
-              </button>
-            </nav>
+            <AdminPageNav t={t} adminPage={adminPage} onChangePage={setAdminPage} />
 
             <div className="dashboard-grid">
               {adminPage === 'dashboard' ? (
-                <>
-                  <section className="panel hero panel-animate full-width">
-                    <div className="panel-header">
-                      <h2>{t('dashboard')}</h2>
-                      <span className={`status-pill ${wsConnection}`}>{wsLabel}</span>
-                    </div>
-                    <div className="chip-row">
-                      <span className="chip">{t('devices')}: {adminData.devices.length}</span>
-                      <span className="chip ok">{t('online')}: {adminOnlineDeviceCount}</span>
-                      <span className="chip warn">{t('offline')}: {adminData.devices.length - adminOnlineDeviceCount}</span>
-                      <span className="chip">{t('groups')}: {adminData.groups.length}</span>
-                      <span className="chip">{t('groupPresence')}: {adminOnlineUserCount}</span>
-                      <span className="chip">{t('liveFeed')}: {adminData.events.length}</span>
-                    </div>
-                    <div className="meta-row">
-                      <span>{t('currentTask')}: {adminActiveTask ? taskTitle(adminActiveTask, language) : '-'}</span>
-                      <span>
-                        {t('lastEvent')}: {adminLatestEvent ? formatRelativeFromNow(adminLatestEvent.ingestTs, nowEpochMs, language) : '-'}
-                      </span>
-                    </div>
-                    <div className="admin-dashboard-actions">
-                      <button className="button secondary" type="button" onClick={() => setAdminPage('devices')}>
-                        {t('devices')}
-                      </button>
-                      <button className="button secondary" type="button" onClick={() => setAdminPage('virtualDevices')}>
-                        {t('virtualDevices')}
-                      </button>
-                      <button className="button secondary" type="button" onClick={() => setAdminPage('feed')}>
-                        {t('liveFeed')}
-                      </button>
-                      <button className="button secondary" type="button" onClick={() => setAdminPage('groupsTasks')}>
-                        {t('groupsTasks')}
-                      </button>
-                      <button className="button secondary" type="button" onClick={() => setAdminPage('systemStatus')}>
-                        {t('systemStatus')}
-                      </button>
-                      <button className="button secondary" type="button" onClick={() => setAdminPage('settings')}>
-                        {t('settings')}
-                      </button>
-                    </div>
-                  </section>
-
-                  <section className="panel panel-animate">
-                    <h2>{t('tasks')}</h2>
-                    <p className="muted">
-                      {t('currentTask')}: {adminActiveTask ? taskTitle(adminActiveTask, language) : '-'}
-                    </p>
-                  </section>
-
-                  <section className="panel panel-animate">
-                    <h2>{t('groups')}</h2>
-                    <p className="muted">{t('groupPresence')}: {adminOnlineUserCount}</p>
-                  </section>
-                </>
-              ) : null}
-
-              {adminPage === 'groupsTasks' ? (
-                <section className="panel hero panel-animate">
-                  <h2>{t('tasks')}</h2>
-                  <div className="tasks-list">
-                    {adminData.tasks.map((task) => (
-                  <article key={task.id} className={`task-card ${task.active ? 'active' : ''}`}>
-                    <header>
-                      <strong>{taskTitle(task, language)}</strong>
-                      {task.active ? <span className="chip">active</span> : null}
-                    </header>
-                    <p>{taskDescription(task, language)}</p>
-                    <button
-                      className="button"
-                      type="button"
-                      onClick={() => activateTask(task.id)}
-                      disabled={busyKey === `activate-${task.id}` || task.active}
-                    >
-                      {t('activate')}
-                    </button>
-                      </article>
-                    ))}
-                  </div>
-                </section>
+                <AdminDashboardSection
+                  t={t}
+                  wsConnection={wsConnection}
+                  wsLabel={wsLabel}
+                  deviceCount={adminData.devices.length}
+                  onlineDeviceCount={adminOnlineDeviceCount}
+                  groupCount={adminData.groups.length}
+                  onlineUserCount={adminOnlineUserCount}
+                  eventCount={adminData.events.length}
+                  currentTaskLabel={adminActiveTask ? taskTitle(adminActiveTask, language) : '-'}
+                  lastEventLabel={
+                    adminLatestEvent
+                      ? formatRelativeFromNow(adminLatestEvent.ingestTs, nowEpochMs, language)
+                      : '-'
+                  }
+                  onNavigate={setAdminPage}
+                />
               ) : null}
 
               {adminPage === 'settings' ? (
-                <section className="panel panel-animate full-width" id="admin-settings-panel">
-                  <h2>{t('settings')}</h2>
-                  <label>
-                    <span>{t('defaultLanguageMode')}</span>
-                    <select
-                      className="input"
-                      value={adminSettingsDraftMode}
-                      onChange={(event) =>
-                        setAdminSettingsDraftMode(event.target.value as LanguageMode)
-                      }
-                    >
-                      <option value="DE">{t('modeDe')}</option>
-                      <option value="EN">{t('modeEn')}</option>
-                      <option value="BROWSER_EN_FALLBACK">{t('modeBrowser')}</option>
-                    </select>
-                  </label>
-                  <label>
-                    <span>{t('timeFormat')}</span>
-                    <select
-                      className="input"
-                      value={adminSettingsDraftTimeFormat24h ? '24' : '12'}
-                      onChange={(event) => setAdminSettingsDraftTimeFormat24h(event.target.value === '24')}
-                    >
-                      <option value="24">{t('timeFormat24h')}</option>
-                      <option value="12">{t('timeFormat12h')}</option>
-                    </select>
-                  </label>
-                  <label className="checkbox-inline">
-                    <input
-                      type="checkbox"
-                      checked={adminSettingsDraftVirtualVisible}
-                      onChange={(event) => setAdminSettingsDraftVirtualVisible(event.target.checked)}
-                    />
-                    <span>{t('virtualVisibleToStudents')}</span>
-                  </label>
-                  <button
-                    className="button"
-                    type="button"
-                    onClick={saveAdminSettings}
-                    disabled={busyKey === 'admin-settings'}
-                  >
-                    {t('saveSettings')}
-                  </button>
-                </section>
+                <AdminSettingsSection
+                  t={t}
+                  mode={adminSettingsDraftMode}
+                  timeFormat24h={adminSettingsDraftTimeFormat24h}
+                  studentVirtualDeviceVisible={adminSettingsDraftVirtualVisible}
+                  busy={busyKey === 'admin-settings'}
+                  onModeChange={setAdminSettingsDraftMode}
+                  onTimeFormat24hChange={setAdminSettingsDraftTimeFormat24h}
+                  onStudentVirtualDeviceVisibleChange={setAdminSettingsDraftVirtualVisible}
+                  onSave={saveAdminSettings}
+                />
               ) : null}
 
               {adminPage === 'systemStatus' ? (
-                <section className="panel panel-animate full-width system-status-panel">
-                  <div className="panel-header">
-                    <h2>{t('systemStatus')}</h2>
-                    <button
-                      className="button secondary"
-                      type="button"
-                      onClick={refreshAdminData}
-                      disabled={busyKey === 'admin-refresh' || busyKey === 'admin-reset-events'}
-                    >
-                      {t('refresh')}
-                    </button>
-                  </div>
-
-                  {!adminSystemStatus ? (
-                    <p className="muted">{t('loading')}</p>
-                  ) : (
-                    <>
-                    <div className="system-status-grid">
-                      <article className="system-status-card">
-                        <h3>{t('eventsLast10Minutes')}</h3>
-                        <div className="system-status-chart">
-                          {systemStatusSeries.map((point) => {
-                            const heightPct =
-                              systemStatusMaxEventCount <= 0 || point.eventCount <= 0
-                                ? 0
-                                : Math.max(6, Math.round((point.eventCount / systemStatusMaxEventCount) * 100));
-                            const timeLabel = formatMinuteTimestamp(point.minuteTs, language, timeFormat24h);
-                            return (
-                              <div className="system-status-bar-column" key={String(point.minuteTs)}>
-                                <span className="system-status-bar-value">{point.eventCount}</span>
-                                <div className="system-status-bar-track">
-                                  <span className="system-status-bar-fill" style={{ height: `${heightPct}%` }} />
-                                </div>
-                                <span className="system-status-bar-label">{timeLabel}</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </article>
-
-                      <article className="system-status-card">
-                        <h3>{t('cpuLoad')}</h3>
-                        <p className="system-status-value">
-                          {adminSystemStatus.cpuLoadPct === null ? '-' : `${adminSystemStatus.cpuLoadPct.toFixed(1)}%`}
-                        </p>
-                        <h3>{t('ramUsage')}</h3>
-                        <p className="system-status-value">
-                          {adminSystemStatus.ramUsedBytes === null || adminSystemStatus.ramTotalBytes === null
-                            ? '-'
-                            : `${formatBytes(adminSystemStatus.ramUsedBytes, language)} / ${formatBytes(adminSystemStatus.ramTotalBytes, language)}`}
-                        </p>
-                        {systemStatusRamUsagePct !== null ? (
-                          <div className="system-status-progress">
-                            <span style={{ width: `${systemStatusRamUsagePct.toFixed(1)}%` }} />
-                          </div>
-                        ) : null}
-                      </article>
-
-                      <article className="system-status-card">
-                        <h3>{t('databaseSize')}</h3>
-                        <button
-                          className="button secondary system-status-db-button"
-                          type="button"
-                          onClick={() => setResetEventsModalOpen(true)}
-                        >
-                          {formatBytes(adminSystemStatus.postgresSizeBytes, language)}
-                        </button>
-                        <p className="muted">{t('resetStoredEvents')}</p>
-                      </article>
-
-                      <article className="system-status-card">
-                        <h3>{t('websocketSessions')}</h3>
-                        <div className="system-status-sessions">
-                          <div className="system-status-session-row">
-                            <span>{t('wsAdmin')}</span>
-                            <strong>{adminSystemStatus.websocketSessions.admin}</strong>
-                          </div>
-                          <div className="system-status-session-row">
-                            <span>{t('wsStudent')}</span>
-                            <strong>{adminSystemStatus.websocketSessions.student}</strong>
-                          </div>
-                          <div className="system-status-session-row">
-                            <span>{t('wsTotal')}</span>
-                            <strong>{adminSystemStatus.websocketSessions.total}</strong>
-                          </div>
-                        </div>
-                        <p className="muted">{formatTs(adminSystemStatus.generatedAt)}</p>
-                      </article>
-                    </div>
-
-                    <div className="system-transfer-grid">
-                      <article className="system-status-card system-transfer-card">
-                        <h3>{t('systemDataExport')}</h3>
-                        <p className="muted">{t('systemDataSelectParts')}</p>
-                        <div className="system-transfer-parts">
-                          {SYSTEM_DATA_PART_ORDER.map((part) => (
-                            <label key={`export-${part}`} className="checkbox-inline system-transfer-part">
-                              <input
-                                type="checkbox"
-                                checked={systemDataExportSelection[part]}
-                                onChange={(event) => toggleSystemDataExportPart(part, event.target.checked)}
-                                disabled={busyKey === 'admin-system-export'}
-                              />
-                              <span>{systemDataPartLabel(part, t)}</span>
-                            </label>
-                          ))}
-                        </div>
-                        <button
-                          className="button"
-                          type="button"
-                          onClick={exportSystemData}
-                          disabled={busyKey === 'admin-system-export' || selectedSystemDataExportParts.length === 0}
-                        >
-                          {t('systemDataExportAction')}
-                        </button>
-                      </article>
-
-                      <article className="system-status-card system-transfer-card">
-                        <h3>{t('systemDataImport')}</h3>
-                        <label className="system-transfer-file">
-                          <span>{t('systemDataImportFile')}</span>
-                          <input
-                            className="input"
-                            type="file"
-                            accept="application/json,.json"
-                            onChange={(event) => {
-                              const file = event.target.files?.[0];
-                              if (!file) {
-                                return;
-                              }
-                              handleSystemImportFileChange(file).catch((error) => setErrorMessage(toErrorMessage(error)));
-                            }}
-                            disabled={busyKey === 'admin-system-import-verify' || busyKey === 'admin-system-import-apply'}
-                          />
-                        </label>
-                        {systemDataImportFileName ? <p className="muted mono">{systemDataImportFileName}</p> : null}
-                        <div className="system-transfer-actions">
-                          <button
-                            className="button secondary"
-                            type="button"
-                            onClick={verifySystemImport}
-                            disabled={
-                              busyKey === 'admin-system-import-verify' ||
-                              busyKey === 'admin-system-import-apply' ||
-                              !systemDataImportDocument
-                            }
-                          >
-                            {t('systemDataVerifyAction')}
-                          </button>
-                          <button
-                            className="button"
-                            type="button"
-                            onClick={applySystemImport}
-                            disabled={
-                              busyKey === 'admin-system-import-verify' ||
-                              busyKey === 'admin-system-import-apply' ||
-                              !systemDataImportVerify?.valid ||
-                              selectedSystemDataImportParts.length === 0
-                            }
-                          >
-                            {t('systemDataApplyAction')}
-                          </button>
-                        </div>
-
-                        {systemDataImportVerify ? (
-                          <div className="system-transfer-verify">
-                            <p className="muted">
-                              {systemDataImportVerify.valid ? t('systemDataImportValid') : t('systemDataImportInvalid')}
-                              {systemDataImportVerify.exportedAt
-                                ? ` - ${formatTs(systemDataImportVerify.exportedAt)}`
-                                : ''}
-                            </p>
-                            {systemDataImportVerify.warnings.length > 0 ? (
-                              <div>
-                                <strong>{t('systemDataImportWarnings')}</strong>
-                                <ul className="system-transfer-warnings">
-                                  {systemDataImportVerify.warnings.map((warning, index) => (
-                                    <li key={`import-warning-${index}`}>{warning}</li>
-                                  ))}
-                                </ul>
-                              </div>
-                            ) : null}
-                            {systemDataImportVerify.errors.length > 0 ? (
-                              <div>
-                                <strong>{t('systemDataImportErrors')}</strong>
-                                <ul className="system-transfer-errors">
-                                  {systemDataImportVerify.errors.map((error, index) => (
-                                    <li key={`import-error-${index}`}>{error}</li>
-                                  ))}
-                                </ul>
-                              </div>
-                            ) : null}
-
-                            <strong>{t('systemDataImportContains')}</strong>
-                            {systemDataImportVerify.availableParts.length === 0 ? (
-                              <p className="muted">{t('systemDataImportNoSupportedParts')}</p>
-                            ) : (
-                              <div className="system-transfer-parts">
-                                {systemDataImportVerify.availableParts.map((entry) => (
-                                  <label key={`import-${entry.part}`} className="checkbox-inline system-transfer-part">
-                                    <input
-                                      type="checkbox"
-                                      checked={systemDataImportSelection[entry.part]}
-                                      onChange={(event) => toggleSystemDataImportPart(entry.part, event.target.checked)}
-                                      disabled={!systemDataImportVerify.valid || busyKey === 'admin-system-import-apply'}
-                                    />
-                                    <span>
-                                      {systemDataPartLabel(entry.part, t)} ({entry.rowCount})
-                                    </span>
-                                  </label>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        ) : null}
-                      </article>
-                    </div>
-                    </>
-                  )}
-                </section>
+                <SystemStatusSection
+                  t={t}
+                  language={language}
+                  timeFormat24h={timeFormat24h}
+                  busyKey={busyKey}
+                  adminSystemStatus={adminSystemStatus}
+                  systemStatusSeries={systemStatusSeries}
+                  systemStatusMaxEventCount={systemStatusMaxEventCount}
+                  systemStatusRamUsagePct={systemStatusRamUsagePct}
+                  formatTs={formatTs}
+                  refreshAdminData={refreshAdminData}
+                  onOpenResetEventsModal={() => setResetEventsModalOpen(true)}
+                  systemDataExportSelection={systemDataExportSelection}
+                  onToggleSystemDataExportPart={toggleSystemDataExportPart}
+                  onExportSystemData={exportSystemData}
+                  selectedSystemDataExportPartsCount={selectedSystemDataExportParts.length}
+                  systemDataImportFileName={systemDataImportFileName}
+                  onSystemImportFileSelected={handleSystemImportFileSelected}
+                  onVerifySystemImport={verifySystemImport}
+                  onApplySystemImport={applySystemImport}
+                  systemDataImportDocumentPresent={!!systemDataImportDocument}
+                  systemDataImportVerify={systemDataImportVerify}
+                  systemDataImportSelection={systemDataImportSelection}
+                  onToggleSystemDataImportPart={toggleSystemDataImportPart}
+                  selectedSystemDataImportPartsCount={selectedSystemDataImportParts.length}
+                />
               ) : null}
 
               {adminPage === 'groupsTasks' ? (
-                <section className="panel panel-animate">
-                  <h2>{t('groups')}</h2>
-                  <div className="groups-list">
-                    {adminData.groups.map((group) => (
-                      <article key={group.groupKey} className="group-card">
-                        <header>
-                          <strong>{group.groupKey}</strong>
-                          <span className="chip">online: {group.onlineCount}</span>
-                        </header>
-                        <p className="muted">cfg rev {group.config.revision}</p>
-                        <ul>
-                          {group.presence.map((presence) => (
-                            <li key={`${presence.username}-${presence.displayName}`}>
-                              {presence.displayName} - {formatTs(presence.lastSeen)}
-                            </li>
-                          ))}
-                        </ul>
-                      </article>
-                    ))}
-                  </div>
-                </section>
+                <AdminGroupsTasksSection
+                  t={t}
+                  tasks={adminData.tasks}
+                  groups={adminData.groups}
+                  taskLabel={(task) => taskTitle(task, language)}
+                  taskDescriptionLabel={(task) => taskDescription(task, language)}
+                  onActivateTask={activateTask}
+                  isTaskActivationBusy={(taskId) => busyKey === `activate-${taskId}`}
+                  formatTs={formatTs}
+                />
               ) : null}
 
               {adminPage === 'devices' ? (
-                <section className="panel panel-animate full-width">
-                  <div className="panel-header">
-                    <h2>{t('devices')}</h2>
-                    <button
-                      className="button secondary"
-                      type="button"
-                      onClick={refreshAdminData}
-                      disabled={busyKey === 'admin-refresh'}
-                    >
-                      {t('refresh')}
-                    </button>
-                  </div>
-
-                  <div className="devices-grid">
-                    {adminDeviceCards}
-                  </div>
-                </section>
+                <AdminDevicesSection
+                  title={t('devices')}
+                  refreshLabel={t('refresh')}
+                  busy={busyKey === 'admin-refresh'}
+                  onRefresh={refreshAdminData}
+                  cards={adminDeviceCards}
+                />
               ) : null}
 
               {adminPage === 'virtualDevices' ? (
-                <section className="panel panel-animate full-width">
-                  <div className="panel-header">
-                    <h2>{t('virtualDevices')}</h2>
-                    <button
-                      className="button secondary"
-                      type="button"
-                      onClick={refreshAdminData}
-                      disabled={busyKey === 'admin-refresh'}
-                    >
-                      {t('refresh')}
-                    </button>
-                  </div>
-
-                  <div className="devices-grid">
-                    {adminVirtualDeviceCards}
-                  </div>
-                </section>
+                <AdminDevicesSection
+                  title={t('virtualDevices')}
+                  refreshLabel={t('refresh')}
+                  busy={busyKey === 'admin-refresh'}
+                  onRefresh={refreshAdminData}
+                  cards={adminVirtualDeviceCards}
+                />
               ) : null}
 
               {adminPage === 'feed' ? (
-                <section className="panel panel-animate feed-panel full-width">
-                  <h2>{t('liveFeed')}</h2>
-                  <div className="toolbar">
-                    <button
-                      className="button secondary"
-                      type="button"
-                      onClick={() => setAdminFeedPaused((value) => !value)}
-                    >
-                      {adminFeedPaused ? t('resume') : t('pause')}
-                    </button>
-                    <button
-                      className="button secondary"
-                      type="button"
-                      onClick={() =>
-                        setFeedViewMode((mode) => (mode === 'rendered' ? 'raw' : 'rendered'))
-                      }
-                    >
-                      {feedViewMode === 'rendered' ? t('switchToRawFeed') : t('switchToRenderedFeed')}
-                    </button>
-                    <button
-                      className="button secondary"
-                      type="button"
-                      onClick={() => {
-                        setAdminData((previous) => {
-                          if (!previous) {
-                            return previous;
-                          }
-                          return { ...previous, events: [] };
-                        });
-                      }}
-                    >
-                      {t('clear')}
-                    </button>
-
-                <input
-                  className="input"
-                  placeholder={t('topicFilter')}
-                  value={adminTopicFilter}
-                  onChange={(event) => setAdminTopicFilter(event.target.value)}
-                />
-
-                <input
-                  className="input"
-                  placeholder={t('device')}
-                  value={adminDeviceFilter}
-                  onChange={(event) => setAdminDeviceFilter(event.target.value)}
-                />
-
-                <select
-                  className="input"
-                  value={adminCategoryFilter}
-                  onChange={(event) =>
-                    setAdminCategoryFilter(event.target.value as EventCategory | 'ALL')
+                <AdminFeedSection
+                  t={t}
+                  adminFeedPaused={adminFeedPaused}
+                  feedViewMode={feedViewMode}
+                  onTogglePause={() => setAdminFeedPaused((value) => !value)}
+                  onToggleFeedViewMode={() =>
+                    setFeedViewMode((mode) => (mode === 'rendered' ? 'raw' : 'rendered'))
                   }
-                >
-                  {CATEGORY_OPTIONS.map((category) => (
-                    <option key={category} value={category}>
-                      {category}
-                    </option>
-                  ))}
-                </select>
-
-                <label className="checkbox-inline">
-                  <input
-                    type="checkbox"
-                    checked={adminIncludeInternal}
-                    onChange={(event) => setAdminIncludeInternal(event.target.checked)}
-                  />
-                  <span>{t('includeInternal')}</span>
-                </label>
-                  </div>
-
-                  <div className="feed-table-wrap">
-                    <table className="feed-table">
-                      <thead>
-                        <tr>
-                          <th>INGEST TS</th>
-                          <th>DEVICE ID</th>
-                          <th>EVENT TYPE</th>
-                          <th>{feedViewMode === 'rendered' ? t('value') : t('rawPayload')}</th>
-                          <th>{t('category')}</th>
-                          <th>TOPIC</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {adminVisibleFeed.length === 0 ? (
-                          <tr>
-                            <td colSpan={6} className="muted">
-                              {t('noEvents')}
-                            </td>
-                          </tr>
-                        ) : (
-                          adminFeedRows
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </section>
+                  onClearFeed={() => {
+                    setAdminData((previous) => {
+                      if (!previous) {
+                        return previous;
+                      }
+                      return { ...previous, events: [] };
+                    });
+                  }}
+                  adminTopicFilter={adminTopicFilter}
+                  onAdminTopicFilterChange={setAdminTopicFilter}
+                  adminDeviceFilter={adminDeviceFilter}
+                  onAdminDeviceFilterChange={setAdminDeviceFilter}
+                  adminCategoryFilter={adminCategoryFilter}
+                  onAdminCategoryFilterChange={setAdminCategoryFilter}
+                  categoryOptions={CATEGORY_OPTIONS}
+                  adminIncludeInternal={adminIncludeInternal}
+                  onAdminIncludeInternalChange={setAdminIncludeInternal}
+                  adminVisibleFeedCount={adminVisibleFeed.length}
+                  adminFeedRows={adminFeedRows}
+                />
               ) : null}
             </div>
           </div>
         ) : null}
       </main>
 
-      {selectedEvent ? (
-        <div className="event-modal-backdrop" onClick={() => setSelectedEvent(null)}>
-          <div className="event-modal" onClick={(event) => event.stopPropagation()}>
-            <div className="panel-header">
-              <h2>{t('eventDetails')}</h2>
-              <div className="event-modal-actions">
-                <button
-                  className="button secondary"
-                  type="button"
-                  onClick={() =>
-                    setEventDetailsViewMode((mode) => (mode === 'rendered' ? 'raw' : 'rendered'))
-                  }
-                >
-                  {eventDetailsViewMode === 'rendered'
-                    ? t('switchToRawEvent')
-                    : t('switchToRenderedEvent')}
-                </button>
-                <button className="button" type="button" onClick={() => setSelectedEvent(null)}>
-                  {t('close')}
-                </button>
-              </div>
-            </div>
-
-            {eventDetailsViewMode === 'rendered' ? (
-              <>
-                <div className="event-details-grid">
-                  {selectedEventFields.map(([key, value]) => (
-                    <div key={key} className="event-details-row">
-                      <div className="event-details-key">{key}</div>
-                      <div className="event-details-value mono">{value}</div>
-                    </div>
-                  ))}
-                </div>
-                <h3 className="event-modal-subtitle">{t('payload')}</h3>
-                <pre className="event-modal-pre">
-                  {JSON.stringify(
-                    tryParsePayload(selectedEvent.payloadJson) ?? selectedEvent.payloadJson,
-                    null,
-                    2
-                  )}
-                </pre>
-              </>
-            ) : (
-              <pre className="event-modal-pre event-modal-pre-raw">{selectedEventRawJson}</pre>
-            )}
-          </div>
-        </div>
-      ) : null}
-
-      {virtualControlDeviceId && selectedAdminVirtualDevice && virtualControlPatch ? (
-        <div className="event-modal-backdrop" onClick={closeVirtualControlModal}>
-          <div className="event-modal virtual-device-modal" onClick={(event) => event.stopPropagation()}>
-            <div className="panel-header">
-              <h2>
-                {t('virtualDeviceControls')}: {virtualControlDeviceId}
-              </h2>
-              <button className="button secondary" type="button" onClick={closeVirtualControlModal}>
-                {t('close')}
-              </button>
-            </div>
-
-            <p className="muted">
-              {t('groupConfig')}: {selectedAdminVirtualDevice.groupKey}
-            </p>
-
-            <div className="virtual-controls-grid">
-              <label className="checkbox-inline">
-                <input
-                  type="checkbox"
-                  checked={Boolean(virtualControlPatch.buttonRedPressed)}
-                  onChange={(event) => setModalVirtualField('buttonRedPressed', event.target.checked)}
-                />
-                <span>Red</span>
-              </label>
-              <label className="checkbox-inline">
-                <input
-                  type="checkbox"
-                  checked={Boolean(virtualControlPatch.buttonBlackPressed)}
-                  onChange={(event) => setModalVirtualField('buttonBlackPressed', event.target.checked)}
-                />
-                <span>Black</span>
-              </label>
-              <label className="checkbox-inline">
-                <input
-                  type="checkbox"
-                  checked={Boolean(virtualControlPatch.ledGreenOn)}
-                  onChange={(event) => setModalVirtualField('ledGreenOn', event.target.checked)}
-                />
-                <span>{t('commandGreenLed')}</span>
-              </label>
-              <label className="checkbox-inline">
-                <input
-                  type="checkbox"
-                  checked={Boolean(virtualControlPatch.ledOrangeOn)}
-                  onChange={(event) => setModalVirtualField('ledOrangeOn', event.target.checked)}
-                />
-                <span>{t('commandOrangeLed')}</span>
-              </label>
-              <label>
-                <span>{t('metricTemp')}</span>
-                <input
-                  className="input"
-                  type="number"
-                  step="0.1"
-                  value={virtualControlPatch.temperatureC ?? 0}
-                  onChange={(event) => {
-                    const next = Number.isFinite(event.target.valueAsNumber)
-                      ? event.target.valueAsNumber
-                      : (virtualControlPatch.temperatureC ?? 0);
-                    setModalVirtualField('temperatureC', next);
-                  }}
-                />
-              </label>
-              <label>
-                <span>{t('metricHumidity')}</span>
-                <input
-                  className="input"
-                  type="number"
-                  step="0.1"
-                  value={virtualControlPatch.humidityPct ?? 0}
-                  onChange={(event) => {
-                    const next = Number.isFinite(event.target.valueAsNumber)
-                      ? event.target.valueAsNumber
-                      : (virtualControlPatch.humidityPct ?? 0);
-                    setModalVirtualField('humidityPct', next);
-                  }}
-                />
-              </label>
-              <label>
-                <span>{t('metricBrightness')}</span>
-                <input
-                  className="input"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  max="3.3"
-                  value={virtualControlPatch.brightness ?? 0}
-                  onChange={(event) => {
-                    const raw = Number.isFinite(event.target.valueAsNumber)
-                      ? event.target.valueAsNumber
-                      : (virtualControlPatch.brightness ?? 0);
-                    const next = Math.min(3.3, Math.max(0, raw));
-                    setModalVirtualField('brightness', Number(next.toFixed(2)));
-                  }}
-                />
-              </label>
-              <label>
-                <span>{t('metricCounter')}</span>
-                <input
-                  className="input"
-                  type="number"
-                  step="1"
-                  min="0"
-                  value={virtualControlPatch.counterValue ?? 0}
-                  onChange={(event) => {
-                    const raw = Number.isFinite(event.target.valueAsNumber)
-                      ? event.target.valueAsNumber
-                      : (virtualControlPatch.counterValue ?? 0);
-                    setModalVirtualField('counterValue', Math.max(0, Math.round(raw)));
-                  }}
-                />
-              </label>
-            </div>
-
-            <div className="event-modal-actions">
-              <button className="button" type="button" onClick={saveAdminVirtualDevice} disabled={virtualControlBusy}>
-                {t('applyVirtualState')}
-              </button>
-              <button className="button secondary" type="button" onClick={closeVirtualControlModal}>
-                {t('close')}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {resetEventsModalOpen ? (
-        <div className="event-modal-backdrop" onClick={() => setResetEventsModalOpen(false)}>
-          <div className="event-modal counter-reset-modal" onClick={(event) => event.stopPropagation()}>
-            <div className="panel-header">
-              <h2>{t('resetStoredEventsConfirmTitle')}</h2>
-              <button className="button secondary" type="button" onClick={() => setResetEventsModalOpen(false)}>
-                {t('close')}
-              </button>
-            </div>
-            <p>{t('resetStoredEventsConfirmBody')}</p>
-            <div className="event-modal-actions">
-              <button
-                className="button danger"
-                type="button"
-                onClick={resetStoredEvents}
-                disabled={busyKey === 'admin-reset-events'}
-              >
-                {t('resetStoredEvents')}
-              </button>
-              <button className="button secondary" type="button" onClick={() => setResetEventsModalOpen(false)}>
-                {t('close')}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {counterResetTarget ? (
-        <div className="event-modal-backdrop" onClick={closeCounterResetModal}>
-          <div className="event-modal counter-reset-modal" onClick={(event) => event.stopPropagation()}>
-            <div className="panel-header">
-              <h2>{t('counterResetDialogTitle')}</h2>
-              <button className="button secondary" type="button" onClick={closeCounterResetModal}>
-                {t('close')}
-              </button>
-            </div>
-            <p>
-              {t('counterResetDialogBody')} <strong>{counterResetTarget.deviceId}</strong>?
-            </p>
-            <div className="event-modal-actions">
-              <button
-                className="button danger"
-                type="button"
-                onClick={confirmCounterReset}
-                disabled={counterResetBusy}
-              >
-                {t('commandCounterReset')}
-              </button>
-              <button className="button secondary" type="button" onClick={closeCounterResetModal}>
-                {t('close')}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {pinEditorDeviceId ? (
-        <div className="event-modal-backdrop" onClick={closePinEditor}>
-          <div className="event-modal pin-editor-modal" onClick={(event) => event.stopPropagation()}>
-            <div className="panel-header">
-              <h2>
-                {t('pinSettingsForDevice')}: {pinEditorDeviceId}
-              </h2>
-              <button className="button secondary" type="button" onClick={closePinEditor}>
-                {t('close')}
-              </button>
-            </div>
-
-            <label className="form-grid">
-              <span>{t('pin')}</span>
-              <input
-                className="input mono"
-                value={pinEditorValue}
-                onChange={(event) => setPinEditorValue(event.target.value)}
-                disabled={pinEditorLoading || busyKey === `pin-save-${pinEditorDeviceId}`}
-              />
-            </label>
-
-            {pinEditorLoading ? <p className="muted">{t('loading')}</p> : null}
-
-            <div className="event-modal-actions">
-              <button
-                className="button"
-                type="button"
-                onClick={savePinEditor}
-                disabled={pinEditorLoading || busyKey === `pin-save-${pinEditorDeviceId}`}
-              >
-                {t('savePin')}
-              </button>
-              <button className="button secondary" type="button" onClick={closePinEditor}>
-                {t('close')}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <AppModals
+        t={t}
+        selectedEvent={selectedEvent}
+        selectedEventFields={selectedEventFields}
+        selectedEventRawJson={selectedEventRawJson}
+        selectedEventPayloadPretty={selectedEventPayloadPretty}
+        eventDetailsViewMode={eventDetailsViewMode}
+        onToggleEventDetailsViewMode={() =>
+          setEventDetailsViewMode((mode) => (mode === 'rendered' ? 'raw' : 'rendered'))
+        }
+        onCloseSelectedEvent={() => setSelectedEvent(null)}
+        virtualControlDeviceId={virtualControlDeviceId}
+        selectedAdminVirtualDevice={selectedAdminVirtualDevice}
+        virtualControlPatch={virtualControlPatch}
+        onCloseVirtualControlModal={closeVirtualControlModal}
+        onSetModalVirtualField={setModalVirtualField}
+        onSaveAdminVirtualDevice={saveAdminVirtualDevice}
+        virtualControlBusy={virtualControlBusy}
+        resetEventsModalOpen={resetEventsModalOpen}
+        onCloseResetEventsModal={() => setResetEventsModalOpen(false)}
+        onResetStoredEvents={resetStoredEvents}
+        resetEventsBusy={busyKey === 'admin-reset-events'}
+        counterResetTarget={counterResetTarget}
+        onCloseCounterResetModal={closeCounterResetModal}
+        onConfirmCounterReset={confirmCounterReset}
+        counterResetBusy={counterResetBusy}
+        pinEditorDeviceId={pinEditorDeviceId}
+        pinEditorValue={pinEditorValue}
+        onPinEditorValueChange={setPinEditorValue}
+        pinEditorLoading={pinEditorLoading}
+        pinEditorSaveBusy={pinEditorDeviceId ? busyKey === `pin-save-${pinEditorDeviceId}` : false}
+        onSavePinEditor={savePinEditor}
+        onClosePinEditor={closePinEditor}
+      />
     </div>
   );
 }

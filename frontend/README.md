@@ -46,3 +46,16 @@ The root `docker-compose.yml` includes a `frontend` service that serves the buil
 ```bash
 npm --prefix frontend run build
 ```
+
+## Quality checks
+
+```bash
+npm --prefix frontend run lint
+npm --prefix frontend run test
+```
+
+Watch mode:
+
+```bash
+npm --prefix frontend run test:watch
+```

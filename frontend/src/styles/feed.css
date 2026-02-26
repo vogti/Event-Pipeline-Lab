@@ -1,0 +1,74 @@
+.feed-panel {
+  overflow: hidden;
+}
+
+.feed-table-wrap {
+  border-radius: 11px;
+  border: 1px solid rgba(30, 53, 70, 0.16);
+  max-height: 380px;
+  overflow: auto;
+  background: rgba(255, 255, 255, 0.75);
+  contain: paint;
+}
+
+.feed-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: 'IBM Plex Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-size: 0.76rem;
+}
+
+.feed-table th,
+.feed-table td {
+  border-bottom: 1px solid rgba(45, 68, 84, 0.1);
+  text-align: left;
+  padding: 0.35rem 0.45rem;
+  vertical-align: top;
+}
+
+.feed-row-clickable {
+  cursor: pointer;
+}
+
+.feed-row-new {
+  animation: feed-row-highlight 1s ease-out;
+}
+
+.feed-row-clickable:hover {
+  background: rgba(228, 241, 247, 0.65);
+}
+
+.feed-row-clickable:focus-visible {
+  outline: 2px solid rgba(15, 122, 143, 0.55);
+  outline-offset: -2px;
+}
+
+.feed-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: rgba(236, 247, 251, 0.96);
+  color: #2a4a61;
+  font-size: 0.71rem;
+  text-transform: uppercase;
+}
+
+@keyframes feed-row-highlight {
+  0% {
+    background: rgba(255, 223, 153, 0.75);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+.raw-cell {
+  max-width: 380px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mono {
+  font-family: 'IBM Plex Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
+}

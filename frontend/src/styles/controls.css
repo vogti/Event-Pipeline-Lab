@@ -1,0 +1,169 @@
+.form-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.form-grid label,
+.config-grid label {
+  display: grid;
+  gap: 0.38rem;
+  color: #385367;
+  font-size: 0.9rem;
+}
+
+.split-grid {
+  margin-top: 0.8rem;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.6rem;
+  align-items: end;
+}
+
+.input {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid rgba(43, 68, 86, 0.24);
+  background: #fcfdff;
+  color: #1e2d3a;
+  padding: 0.5rem 0.62rem;
+  min-height: 2.15rem;
+}
+
+.input:focus {
+  outline: none;
+  border-color: #0f7a8f;
+  box-shadow: 0 0 0 3px rgba(15, 122, 143, 0.12);
+}
+
+.button {
+  border: 1px solid rgba(15, 88, 112, 0.45);
+  background: linear-gradient(140deg, #0f7a8f, #0d5f79);
+  color: #f7fdff;
+  border-radius: 11px;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  transition: box-shadow 0.15s ease;
+}
+
+.button:hover:enabled {
+  box-shadow: 0 6px 18px rgba(8, 64, 80, 0.2);
+}
+
+.button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.button.secondary {
+  border-color: rgba(46, 65, 81, 0.35);
+  background: rgba(231, 239, 244, 0.95);
+  color: #274054;
+}
+
+.button.ghost {
+  border-color: rgba(14, 86, 74, 0.35);
+  background: rgba(209, 239, 229, 0.7);
+  color: #0d5a4b;
+}
+
+.button.danger {
+  border-color: rgba(127, 35, 35, 0.34);
+  background: linear-gradient(140deg, #9f4040, #7f2c2c);
+}
+
+.button.tiny {
+  font-size: 0.78rem;
+  padding: 0.36rem 0.55rem;
+}
+
+.button.active {
+  border-color: rgba(10, 95, 55, 0.5);
+  background: linear-gradient(145deg, #20865a, #1a6b4b);
+}
+
+.chip-row {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.chip {
+  display: inline-flex;
+  border-radius: 999px;
+  padding: 0.24rem 0.58rem;
+  font-size: 0.75rem;
+  background: rgba(20, 66, 97, 0.1);
+  color: #19496a;
+}
+
+.chip.ok {
+  background: rgba(31, 130, 82, 0.13);
+  color: #1f7c50;
+}
+
+.chip.warn {
+  background: rgba(164, 82, 28, 0.16);
+  color: #8f4a20;
+}
+
+.meta-row {
+  margin: 0.65rem 0;
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  font-size: 0.84rem;
+  color: #3e596d;
+}
+
+.muted {
+  color: #5a7487;
+  font-size: 0.86rem;
+}
+
+.alert {
+  border-radius: 12px;
+  padding: 0.6rem 0.78rem;
+  border: 1px solid transparent;
+}
+
+.alert.error {
+  color: #7e2525;
+  border-color: rgba(153, 35, 35, 0.25);
+  background: rgba(250, 233, 233, 0.9);
+}
+
+.alert.info {
+  color: #245061;
+  border-color: rgba(18, 91, 112, 0.25);
+  background: rgba(229, 245, 250, 0.9);
+}
+
+.config-grid,
+.button-grid,
+.toolbar {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.button-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.checkbox-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #355268;
+  font-size: 0.84rem;
+}
+
+.toolbar {
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  margin-bottom: 0.8rem;
+}
+
+.loading {
+  font-size: 1rem;
+  color: #2f4b60;
+}

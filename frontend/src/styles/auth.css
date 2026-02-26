@@ -1,0 +1,47 @@
+.login-panel {
+  max-width: 520px;
+  margin: 0 auto;
+  background: linear-gradient(165deg, rgba(255, 251, 241, 0.97), rgba(228, 244, 250, 0.95));
+  border-color: rgba(17, 78, 102, 0.2);
+  box-shadow: 0 20px 44px rgba(18, 40, 60, 0.14);
+}
+
+.login-panel-header {
+  display: grid;
+  gap: 0.25rem;
+  margin-bottom: 0.8rem;
+}
+
+.login-panel-subtitle {
+  margin: 0;
+  color: #3a5d73;
+}
+
+.login-form {
+  margin-top: 0.3rem;
+}
+
+.login-hint {
+  margin-top: 0.75rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 10px;
+  border: 1px solid rgba(34, 73, 95, 0.18);
+  background: rgba(241, 248, 252, 0.72);
+}
+
+.student-onboarding-panel {
+  max-width: 620px;
+  margin: 0 auto;
+  background: linear-gradient(160deg, rgba(251, 246, 232, 0.97), rgba(233, 245, 251, 0.96));
+}
+
+.student-onboarding-form {
+  margin-top: 0.6rem;
+}
+
+.student-onboarding-language {
+  display: grid;
+  gap: 0.35rem;
+  color: #355268;
+  font-size: 0.9rem;
+}
