@@ -78,6 +78,18 @@ describe('shared helpers', () => {
     expect(eventValueSummary(telemetryEvent)).toBe('');
   });
 
+  it('shows params.mqtt.connected for status.mqtt events', () => {
+    const mqttStatusEvent = createEvent({
+      id: 'event-status-mqtt',
+      topic: 'epld01/events/rpc',
+      eventType: 'status.mqtt',
+      category: 'STATUS',
+      payloadJson: '{"params":{"mqtt":{"connected":true}}}'
+    });
+
+    expect(eventValueSummary(mqttStatusEvent)).toBe('true');
+  });
+
   it('rejects timestamp-like loose counter values but accepts explicit counter fields', () => {
     const timestampLikeCounter = extractCounterValueFromPayload({ value: 1700000000 }, true);
     const explicitCounter = extractCounterValueFromPayload({ counter: 7 }, true);

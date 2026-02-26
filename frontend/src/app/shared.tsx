@@ -838,6 +838,17 @@ function eventValueSummary(event: CanonicalEvent): string {
     return '';
   }
 
+  if (lowerEventType === 'status.mqtt' || lowerEventType.startsWith('status.mqtt.')) {
+    const mqttConnected = firstBoolean(parsedPayload, [
+      ['params', 'mqtt', 'connected'],
+      ['mqtt', 'connected'],
+      ['connected']
+    ]);
+    if (mqttConnected !== null) {
+      return String(mqttConnected);
+    }
+  }
+
   const temperature =
     firstNumber(parsedPayload, [
       ['temperature'],
