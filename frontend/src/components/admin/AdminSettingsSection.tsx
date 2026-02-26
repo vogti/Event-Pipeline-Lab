@@ -6,10 +6,13 @@ interface AdminSettingsSectionProps {
   mode: LanguageMode;
   timeFormat24h: boolean;
   studentVirtualDeviceVisible: boolean;
+  adminDeviceId: string | null;
+  physicalDeviceOptions: string[];
   busy: boolean;
   onModeChange: (mode: LanguageMode) => void;
   onTimeFormat24hChange: (value: boolean) => void;
   onStudentVirtualDeviceVisibleChange: (value: boolean) => void;
+  onAdminDeviceIdChange: (value: string | null) => void;
   onSave: () => void;
 }
 
@@ -18,12 +21,20 @@ export function AdminSettingsSection({
   mode,
   timeFormat24h,
   studentVirtualDeviceVisible,
+  adminDeviceId,
+  physicalDeviceOptions,
   busy,
   onModeChange,
   onTimeFormat24hChange,
   onStudentVirtualDeviceVisibleChange,
+  onAdminDeviceIdChange,
   onSave
 }: AdminSettingsSectionProps) {
+  const adminDeviceOptions =
+    adminDeviceId && !physicalDeviceOptions.includes(adminDeviceId)
+      ? [adminDeviceId, ...physicalDeviceOptions]
+      : physicalDeviceOptions;
+
   return (
     <section className="panel panel-animate full-width" id="admin-settings-panel">
       <h2>{t('settings')}</h2>
@@ -57,6 +68,24 @@ export function AdminSettingsSection({
           onChange={(event) => onStudentVirtualDeviceVisibleChange(event.target.checked)}
         />
         <span>{t('virtualVisibleToStudents')}</span>
+      </label>
+      <label>
+        <span>{t('adminDeviceSetting')}</span>
+        <select
+          className="input"
+          value={adminDeviceId ?? ''}
+          onChange={(event) => {
+            const next = event.target.value.trim();
+            onAdminDeviceIdChange(next.length > 0 ? next : null);
+          }}
+        >
+          <option value="">{t('adminDeviceNone')}</option>
+          {adminDeviceOptions.map((deviceId) => (
+            <option key={deviceId} value={deviceId}>
+              {deviceId}
+            </option>
+          ))}
+        </select>
       </label>
       <button
         className="button"

@@ -597,6 +597,7 @@ function sameAppSettings(a: AppSettings, b: AppSettings): boolean {
     a.defaultLanguageMode === b.defaultLanguageMode &&
     a.timeFormat24h === b.timeFormat24h &&
     a.studentVirtualDeviceVisible === b.studentVirtualDeviceVisible &&
+    a.adminDeviceId === b.adminDeviceId &&
     a.updatedAt === b.updatedAt &&
     a.updatedBy === b.updatedBy
   );

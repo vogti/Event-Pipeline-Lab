@@ -7,9 +7,12 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import ch.marcovogt.epl.admin.AppSettingsService;
 import ch.marcovogt.epl.authsession.AppRole;
 import ch.marcovogt.epl.authsession.AuthAccount;
 import ch.marcovogt.epl.authsession.AuthAccountRepository;
+import ch.marcovogt.epl.authsession.AuthSessionRepository;
+import ch.marcovogt.epl.groupcollaborationsync.GroupStateRepository;
 import ch.marcovogt.epl.virtualdevice.VirtualDeviceState;
 import ch.marcovogt.epl.virtualdevice.VirtualDeviceStateRepository;
 import java.util.Optional;
@@ -24,7 +27,19 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class DeviceDiscoveryProvisioningServiceTest {
 
     @Mock
+    private AppSettingsService appSettingsService;
+
+    @Mock
+    private DeviceStatusRepository deviceStatusRepository;
+
+    @Mock
     private AuthAccountRepository authAccountRepository;
+
+    @Mock
+    private AuthSessionRepository authSessionRepository;
+
+    @Mock
+    private GroupStateRepository groupStateRepository;
 
     @Mock
     private VirtualDeviceStateRepository virtualDeviceStateRepository;
@@ -34,6 +49,7 @@ class DeviceDiscoveryProvisioningServiceTest {
 
     @Test
     void shouldProvisionStudentAccountAndVirtualDeviceForNewPhysicalDevice() {
+        when(appSettingsService.isAdminDevice("epld12")).thenReturn(false);
         when(authAccountRepository.findById("epld12")).thenReturn(Optional.empty());
         when(virtualDeviceStateRepository.findById("eplvd12")).thenReturn(Optional.empty());
         when(authAccountRepository.save(any(AuthAccount.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -61,6 +77,7 @@ class DeviceDiscoveryProvisioningServiceTest {
     void shouldIgnoreNonPhysicalDeviceIds() {
         service.ensureProvisionedForPhysicalDevice("eplvd03");
 
+        verify(appSettingsService, never()).isAdminDevice(anyString());
         verify(authAccountRepository, never()).findById(anyString());
         verify(authAccountRepository, never()).save(any());
         verify(virtualDeviceStateRepository, never()).findById(anyString());

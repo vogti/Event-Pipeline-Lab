@@ -69,6 +69,7 @@ interface UseRealtimeSyncParams {
   setAdminSettingsDraftMode: Dispatch<SetStateAction<LanguageMode>>;
   setAdminSettingsDraftTimeFormat24h: Dispatch<SetStateAction<boolean>>;
   setAdminSettingsDraftVirtualVisible: Dispatch<SetStateAction<boolean>>;
+  setAdminSettingsDraftAdminDeviceId: Dispatch<SetStateAction<string | null>>;
   setDefaultLanguageMode: Dispatch<SetStateAction<LanguageMode>>;
   setTimeFormat24h: Dispatch<SetStateAction<boolean>>;
   setFeedScenarioConfig: Dispatch<SetStateAction<FeedScenarioConfig | null>>;
@@ -104,6 +105,7 @@ export function useRealtimeSync({
   setAdminSettingsDraftMode,
   setAdminSettingsDraftTimeFormat24h,
   setAdminSettingsDraftVirtualVisible,
+  setAdminSettingsDraftAdminDeviceId,
   setDefaultLanguageMode,
   setTimeFormat24h,
   setFeedScenarioConfig,
@@ -477,6 +479,7 @@ export function useRealtimeSync({
         setAdminSettingsDraftMode(settings.defaultLanguageMode);
         setAdminSettingsDraftTimeFormat24h(settings.timeFormat24h);
         setAdminSettingsDraftVirtualVisible(settings.studentVirtualDeviceVisible);
+        setAdminSettingsDraftAdminDeviceId(settings.adminDeviceId);
         setDefaultLanguageMode(settings.defaultLanguageMode);
         setTimeFormat24h(settings.timeFormat24h);
       },
@@ -639,6 +642,7 @@ export function useRealtimeSync({
     setAdminSettingsDraftMode,
     setAdminSettingsDraftTimeFormat24h,
     setAdminSettingsDraftVirtualVisible,
+    setAdminSettingsDraftAdminDeviceId,
     setDefaultLanguageMode,
     setFeedScenarioConfig,
     setErrorMessage,

@@ -4,6 +4,7 @@ import ch.marcovogt.epl.auditlogging.AdminAuditLogger;
 import ch.marcovogt.epl.authsession.AppRole;
 import ch.marcovogt.epl.authsession.RequestAuth;
 import ch.marcovogt.epl.authsession.SessionPrincipal;
+import ch.marcovogt.epl.deviceregistryhealth.DeviceDiscoveryProvisioningService;
 import ch.marcovogt.epl.realtimewebsocket.RealtimeSyncService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -20,17 +21,20 @@ public class AdminSettingsController {
 
     private final RequestAuth requestAuth;
     private final AppSettingsService appSettingsService;
+    private final DeviceDiscoveryProvisioningService deviceDiscoveryProvisioningService;
     private final AdminAuditLogger adminAuditLogger;
     private final RealtimeSyncService realtimeSyncService;
 
     public AdminSettingsController(
             RequestAuth requestAuth,
             AppSettingsService appSettingsService,
+            DeviceDiscoveryProvisioningService deviceDiscoveryProvisioningService,
             AdminAuditLogger adminAuditLogger,
             RealtimeSyncService realtimeSyncService
     ) {
         this.requestAuth = requestAuth;
         this.appSettingsService = appSettingsService;
+        this.deviceDiscoveryProvisioningService = deviceDiscoveryProvisioningService;
         this.adminAuditLogger = adminAuditLogger;
         this.realtimeSyncService = realtimeSyncService;
     }
@@ -51,8 +55,10 @@ public class AdminSettingsController {
                 body.defaultLanguageMode(),
                 body.timeFormat24h(),
                 body.studentVirtualDeviceVisible(),
+                body.adminDeviceId(),
                 principal.username()
         );
+        deviceDiscoveryProvisioningService.reconcileForCurrentSettings();
 
         adminAuditLogger.logAction(
                 "admin.settings.update",
@@ -60,12 +66,14 @@ public class AdminSettingsController {
                 Map.of(
                         "defaultLanguageMode", settings.getDefaultLanguageMode().name(),
                         "timeFormat24h", settings.isTimeFormat24h(),
-                        "studentVirtualDeviceVisible", settings.isStudentVirtualDeviceVisible()
+                        "studentVirtualDeviceVisible", settings.isStudentVirtualDeviceVisible(),
+                        "adminDeviceId", settings.getAdminDeviceId() == null ? "" : settings.getAdminDeviceId()
                 )
         );
 
         AppSettingsDto dto = AppSettingsDto.from(settings);
         realtimeSyncService.broadcastSettingsUpdated(dto);
+        realtimeSyncService.broadcastAdminGroupsUpdated();
         return dto;
     }
 }

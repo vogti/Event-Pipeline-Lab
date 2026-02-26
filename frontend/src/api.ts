@@ -419,13 +419,19 @@ export const api = {
     token: string,
     defaultLanguageMode: LanguageMode,
     timeFormat24h: boolean,
-    studentVirtualDeviceVisible: boolean
+    studentVirtualDeviceVisible: boolean,
+    adminDeviceId: string | null
   ): Promise<AppSettings> {
     return request<AppSettings>(
       '/api/admin/settings',
       {
         method: 'POST',
-        body: JSON.stringify({ defaultLanguageMode, timeFormat24h, studentVirtualDeviceVisible })
+        body: JSON.stringify({
+          defaultLanguageMode,
+          timeFormat24h,
+          studentVirtualDeviceVisible,
+          adminDeviceId
+        })
       },
       token
     );

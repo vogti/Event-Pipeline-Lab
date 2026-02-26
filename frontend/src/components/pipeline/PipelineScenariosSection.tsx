@@ -1,14 +1,10 @@
 import type { I18nKey } from '../../i18n';
 import { PipelineScenarioEditor } from './PipelineScenarioEditor';
-import type { TimestampValue } from '../../types';
 
 interface PipelineScenariosSectionProps {
   t: (key: I18nKey) => string;
   overlays: string[];
   busy: boolean;
-  updatedAt: TimestampValue;
-  updatedBy: string | null;
-  formatTs: (value: TimestampValue) => string;
   onOverlaysChange: (scenarioOverlays: string[]) => void;
   onSave: () => void;
 }
@@ -17,9 +13,6 @@ export function PipelineScenariosSection({
   t,
   overlays,
   busy,
-  updatedAt,
-  updatedBy,
-  formatTs,
   onOverlaysChange,
   onSave
 }: PipelineScenariosSectionProps) {
@@ -43,10 +36,6 @@ export function PipelineScenariosSection({
         disabled={busy}
         onChange={onOverlaysChange}
       />
-
-      <p className="muted">
-        {t('updatedBy')}: {updatedBy ?? '-'} | {t('updatedAt')}: {formatTs(updatedAt)}
-      </p>
     </section>
   );
 }

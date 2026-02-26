@@ -103,6 +103,10 @@ public class RealtimeSyncService {
         adminBroadcaster.broadcast("settings.updated", settingsDto);
     }
 
+    public void broadcastAdminGroupsUpdated() {
+        adminBroadcaster.broadcast("admin.groups.updated", "settings");
+    }
+
     public void broadcastFeedScenarios(FeedScenarioConfigDto configDto) {
         studentBroadcaster.broadcastToAll("scenarios.updated", configDto);
         adminBroadcaster.broadcast("scenarios.updated", configDto);

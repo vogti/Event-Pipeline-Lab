@@ -138,6 +138,7 @@ export interface AppSettings {
   defaultLanguageMode: LanguageMode;
   timeFormat24h: boolean;
   studentVirtualDeviceVisible: boolean;
+  adminDeviceId: string | null;
   updatedAt: TimestampValue;
   updatedBy: string;
 }

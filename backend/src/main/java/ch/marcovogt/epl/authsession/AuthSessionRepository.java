@@ -22,4 +22,12 @@ public interface AuthSessionRepository extends JpaRepository<AuthSession, UUID> 
             where s.active = true and s.expiresAt < :now
             """)
     int deactivateExpired(@Param("now") Instant now);
+
+    @Modifying
+    @Query("""
+            update AuthSession s
+            set s.active = false
+            where s.active = true and s.username = :username
+            """)
+    int deactivateByUsername(@Param("username") String username);
 }

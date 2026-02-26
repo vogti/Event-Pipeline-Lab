@@ -1,5 +1,6 @@
 package ch.marcovogt.epl.authsession;
 
+import ch.marcovogt.epl.admin.AppSettingsService;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -18,6 +19,7 @@ public class AuthService {
 
     private final AuthAccountRepository authAccountRepository;
     private final AuthSessionRepository authSessionRepository;
+    private final AppSettingsService appSettingsService;
     private final Duration sessionTtl;
     private final Duration presenceWindow;
     private final Clock clock;
@@ -25,11 +27,13 @@ public class AuthService {
     public AuthService(
             AuthAccountRepository authAccountRepository,
             AuthSessionRepository authSessionRepository,
+            AppSettingsService appSettingsService,
             @Value("${epl.auth.session-ttl:PT8H}") Duration sessionTtl,
             @Value("${epl.auth.presence-window:PT45S}") Duration presenceWindow
     ) {
         this.authAccountRepository = authAccountRepository;
         this.authSessionRepository = authSessionRepository;
+        this.appSettingsService = appSettingsService;
         this.sessionTtl = sessionTtl;
         this.presenceWindow = presenceWindow;
         this.clock = Clock.systemUTC();
@@ -41,6 +45,9 @@ public class AuthService {
                 .orElseThrow(() -> AuthExceptions.invalidCredentials());
 
         if (!account.getPinCode().equals(pin)) {
+            throw AuthExceptions.invalidCredentials();
+        }
+        if (account.getRole() == AppRole.STUDENT && appSettingsService.isAdminDevice(account.getUsername())) {
             throw AuthExceptions.invalidCredentials();
         }
 
@@ -119,10 +126,12 @@ public class AuthService {
 
     @Transactional(readOnly = true)
     public List<String> listStudentGroupKeys() {
-        return authAccountRepository.findByRoleOrderByUsernameAsc(AppRole.STUDENT)
+        String adminDeviceId = appSettingsService.getAdminDeviceId();
+        return authAccountRepository.findByRoleAndEnabledTrueOrderByUsernameAsc(AppRole.STUDENT)
                 .stream()
                 .map(AuthAccount::getGroupKey)
                 .filter(groupKey -> groupKey != null && !groupKey.isBlank())
+                .filter(groupKey -> adminDeviceId == null || !adminDeviceId.equalsIgnoreCase(groupKey))
                 .distinct()
                 .toList();
     }

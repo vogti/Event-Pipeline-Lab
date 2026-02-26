@@ -25,6 +25,9 @@ public class AppSettings {
     @Column(name = "student_virtual_device_visible", nullable = false)
     private boolean studentVirtualDeviceVisible;
 
+    @Column(name = "admin_device_id", length = 64)
+    private String adminDeviceId;
+
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
@@ -61,6 +64,14 @@ public class AppSettings {
 
     public void setStudentVirtualDeviceVisible(boolean studentVirtualDeviceVisible) {
         this.studentVirtualDeviceVisible = studentVirtualDeviceVisible;
+    }
+
+    public String getAdminDeviceId() {
+        return adminDeviceId;
+    }
+
+    public void setAdminDeviceId(String adminDeviceId) {
+        this.adminDeviceId = adminDeviceId;
     }
 
     public Instant getUpdatedAt() {

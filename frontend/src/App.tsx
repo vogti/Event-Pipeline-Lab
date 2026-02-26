@@ -177,6 +177,7 @@ export default function App() {
   const [adminSettingsDraftMode, setAdminSettingsDraftMode] = useState<LanguageMode>('BROWSER_EN_FALLBACK');
   const [adminSettingsDraftTimeFormat24h, setAdminSettingsDraftTimeFormat24h] = useState(true);
   const [adminSettingsDraftVirtualVisible, setAdminSettingsDraftVirtualVisible] = useState(true);
+  const [adminSettingsDraftAdminDeviceId, setAdminSettingsDraftAdminDeviceId] = useState<string | null>(null);
   const [adminDeviceSnapshots, setAdminDeviceSnapshots] = useState<Record<string, DeviceTelemetrySnapshot>>({});
   const [adminDeviceIpById, setAdminDeviceIpById] = useState<Record<string, string>>({});
   const [adminPipeline, setAdminPipeline] = useState<PipelineView | null>(null);
@@ -427,6 +428,7 @@ export default function App() {
     setAdminSettingsDraftMode('BROWSER_EN_FALLBACK');
     setAdminSettingsDraftTimeFormat24h(true);
     setAdminSettingsDraftVirtualVisible(true);
+    setAdminSettingsDraftAdminDeviceId(null);
     setAdminDeviceSnapshots({});
     setAdminDeviceIpById({});
     setAdminPipeline(null);
@@ -639,6 +641,7 @@ export default function App() {
     setAdminSettingsDraftMode(settings.defaultLanguageMode);
     setAdminSettingsDraftTimeFormat24h(settings.timeFormat24h);
     setAdminSettingsDraftVirtualVisible(settings.studentVirtualDeviceVisible);
+    setAdminSettingsDraftAdminDeviceId(settings.adminDeviceId);
     setDefaultLanguageMode(settings.defaultLanguageMode);
     setTimeFormat24h(settings.timeFormat24h);
     setAdminSystemStatus(systemStatus);
@@ -769,24 +772,51 @@ export default function App() {
   );
   const adminGroups = useMemo(() => adminData?.groups ?? [], [adminData?.groups]);
   const adminTasks = useMemo(() => adminData?.tasks ?? [], [adminData?.tasks]);
+  const adminConfiguredPipelineDevice = useMemo(
+    () => adminData?.settings.adminDeviceId?.trim() ?? '',
+    [adminData?.settings.adminDeviceId]
+  );
+  const adminPipelineGroupOptions = useMemo(() => {
+    const keys: string[] = [];
+    if (adminConfiguredPipelineDevice.length > 0) {
+      keys.push(adminConfiguredPipelineDevice);
+    }
+    for (const group of adminGroups) {
+      if (!keys.includes(group.groupKey)) {
+        keys.push(group.groupKey);
+      }
+    }
+    return keys;
+  }, [adminConfiguredPipelineDevice, adminGroups]);
+  const adminPipelineOptionSignature = useMemo(
+    () => adminPipelineGroupOptions.join('|'),
+    [adminPipelineGroupOptions]
+  );
   const hasAdminData = adminData !== null;
 
   useEffect(() => {
-    const groupKeys = adminGroups.map((group) => group.groupKey);
-    if (groupKeys.length === 0) {
+    if (adminPipelineGroupOptions.length === 0) {
       setAdminPipelineGroupKey('');
       adminPipelineGroupKeyRef.current = '';
       setAdminPipeline(null);
       setAdminPipelineDraft(null);
       return;
     }
-    if (!adminPipelineGroupKey || !groupKeys.includes(adminPipelineGroupKey)) {
-      const firstGroupKey = groupKeys[0];
-      setAdminPipelineGroupKey(firstGroupKey);
-      adminPipelineGroupKeyRef.current = firstGroupKey;
-      void loadAdminPipelineForGroup(firstGroupKey);
+    if (!adminPipelineGroupKey || !adminPipelineGroupOptions.includes(adminPipelineGroupKey)) {
+      const preferredGroupKey = adminConfiguredPipelineDevice.length > 0
+        ? adminConfiguredPipelineDevice
+        : adminPipelineGroupOptions[0];
+      setAdminPipelineGroupKey(preferredGroupKey);
+      adminPipelineGroupKeyRef.current = preferredGroupKey;
+      void loadAdminPipelineForGroup(preferredGroupKey);
     }
-  }, [adminGroupKeysSignature, adminGroups, adminPipelineGroupKey, loadAdminPipelineForGroup]);
+  }, [
+    adminConfiguredPipelineDevice,
+    adminPipelineGroupKey,
+    adminPipelineGroupOptions,
+    adminPipelineOptionSignature,
+    loadAdminPipelineForGroup
+  ]);
 
   useEffect(() => {
     const taskIds = adminTasks.map((task) => task.id);
@@ -1195,6 +1225,7 @@ export default function App() {
     setAdminSettingsDraftMode,
     setAdminSettingsDraftTimeFormat24h,
     setAdminSettingsDraftVirtualVisible,
+    setAdminSettingsDraftAdminDeviceId,
     setDefaultLanguageMode,
     setTimeFormat24h,
     setFeedScenarioConfig,
@@ -1830,7 +1861,8 @@ export default function App() {
         token,
         adminSettingsDraftMode,
         adminSettingsDraftTimeFormat24h,
-        adminSettingsDraftVirtualVisible
+        adminSettingsDraftVirtualVisible,
+        adminSettingsDraftAdminDeviceId
       );
       setAdminData((previous) => {
         if (!previous) {
@@ -1845,6 +1877,7 @@ export default function App() {
       setTimeFormat24h(updated.timeFormat24h);
       setAdminSettingsDraftTimeFormat24h(updated.timeFormat24h);
       setAdminSettingsDraftVirtualVisible(updated.studentVirtualDeviceVisible);
+      setAdminSettingsDraftAdminDeviceId(updated.adminDeviceId);
       setInfoMessage(t('settingsUpdated'));
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
@@ -2279,6 +2312,7 @@ export default function App() {
       setAdminSettingsDraftMode(settings.defaultLanguageMode);
       setAdminSettingsDraftTimeFormat24h(settings.timeFormat24h);
       setAdminSettingsDraftVirtualVisible(settings.studentVirtualDeviceVisible);
+      setAdminSettingsDraftAdminDeviceId(settings.adminDeviceId);
       setDefaultLanguageMode(settings.defaultLanguageMode);
       setTimeFormat24h(settings.timeFormat24h);
       setAdminSystemStatus((previous) => (sameAdminSystemStatus(previous, systemStatus) ? previous : systemStatus));
@@ -2824,6 +2858,7 @@ export default function App() {
     if (!adminDevices) {
       return null;
     }
+    const configuredAdminDeviceId = adminData?.settings.adminDeviceId ?? null;
     return adminDevices.map((device) => {
       const snapshot = adminDeviceSnapshots[device.deviceId];
       const uptimeNow = estimateUptimeNow(snapshot, nowEpochMs);
@@ -2888,24 +2923,28 @@ export default function App() {
         busyKey?.startsWith(`admin-command-${device.deviceId}-LED_ORANGE-`) ?? false;
       const counterBusy = busyKey === `admin-command-${device.deviceId}-COUNTER_RESET-undefined`;
       const rssiTooltipId = `rssi-tooltip-${device.deviceId}`;
+      const isConfiguredAdminDevice = configuredAdminDeviceId === device.deviceId;
 
       return (
         <article className="device-card" key={device.deviceId}>
           <header>
             <strong>{device.deviceId}</strong>
             <div className="device-header-actions">
-              <button
-                className="icon-button"
-                type="button"
-                title={t('pinSettings')}
-                aria-label={`${t('pinSettings')} ${device.deviceId}`}
-                onClick={() => openPinEditor(device.deviceId)}
-              >
-                <SettingsIcon />
-              </button>
+              {!isConfiguredAdminDevice ? (
+                <button
+                  className="icon-button"
+                  type="button"
+                  title={t('pinSettings')}
+                  aria-label={`${t('pinSettings')} ${device.deviceId}`}
+                  onClick={() => openPinEditor(device.deviceId)}
+                >
+                  <SettingsIcon />
+                </button>
+              ) : null}
               <span className={`chip ${device.online ? 'ok' : 'warn'}`}>
                 {statusLabel(device.online, language)}
               </span>
+              {isConfiguredAdminDevice ? <span className="chip">{t('adminDeviceSetting')}</span> : null}
             </div>
           </header>
 
@@ -3026,6 +3065,7 @@ export default function App() {
     });
   }, [
     adminData?.devices,
+    adminData?.settings.adminDeviceId,
     adminDeviceIpById,
     adminDeviceSnapshots,
     busyKey,
@@ -3426,10 +3466,13 @@ export default function App() {
                   mode={adminSettingsDraftMode}
                   timeFormat24h={adminSettingsDraftTimeFormat24h}
                   studentVirtualDeviceVisible={adminSettingsDraftVirtualVisible}
+                  adminDeviceId={adminSettingsDraftAdminDeviceId}
+                  physicalDeviceOptions={adminData.devices.map((device) => device.deviceId)}
                   busy={busyKey === 'admin-settings'}
                   onModeChange={setAdminSettingsDraftMode}
                   onTimeFormat24hChange={setAdminSettingsDraftTimeFormat24h}
                   onStudentVirtualDeviceVisibleChange={setAdminSettingsDraftVirtualVisible}
+                  onAdminDeviceIdChange={setAdminSettingsDraftAdminDeviceId}
                   onSave={saveAdminSettings}
                 />
               ) : null}
@@ -3504,9 +3547,6 @@ export default function App() {
                   t={t}
                   overlays={feedScenarioDraft}
                   busy={busyKey === 'admin-scenarios'}
-                  updatedAt={feedScenarioConfig?.updatedAt ?? null}
-                  updatedBy={feedScenarioConfig?.updatedBy ?? null}
-                  formatTs={formatTs}
                   onOverlaysChange={changeFeedScenarioOverlays}
                   onSave={saveAdminFeedScenarios}
                 />
@@ -3517,7 +3557,7 @@ export default function App() {
                   t={t}
                   title={t('pipelineBuilder')}
                   view={adminPipelineDraft ?? adminPipeline}
-                  groupOptions={adminData.groups.map((group) => group.groupKey)}
+                  groupOptions={adminPipelineGroupOptions}
                   selectedGroupKey={adminPipelineGroupKey}
                   onSelectGroup={selectAdminPipelineGroup}
                   draftProcessing={adminPipelineDraft?.processing ?? adminPipeline?.processing ?? null}
