@@ -1310,7 +1310,6 @@ export default function App() {
       link.click();
       link.remove();
       window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
-      setInfoMessage(`${t('systemDataExportDone')}: ${fileName}`);
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {

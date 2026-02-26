@@ -57,6 +57,7 @@ public class AdminSystemStatusService {
         List<SystemStatusEventRatePoint> eventRate = loadEventRateLast10Minutes(nowMinute);
         ResourceMetrics metrics = readResourceMetrics();
         long postgresSizeBytes = readPostgresSizeBytes();
+        long storedEventCount = readCanonicalEventCount();
         int adminSessions = adminWebSocketBroadcaster.activeSessionCount();
         int studentSessions = studentWebSocketBroadcaster.activeSessionCount();
 
@@ -67,6 +68,7 @@ public class AdminSystemStatusService {
                 metrics.ramUsedBytes(),
                 metrics.ramTotalBytes(),
                 postgresSizeBytes,
+                storedEventCount,
                 new WebSocketSessionStats(adminSessions, studentSessions, adminSessions + studentSessions)
         );
     }

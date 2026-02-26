@@ -81,6 +81,50 @@
   background: linear-gradient(145deg, #20865a, #1a6b4b);
 }
 
+.panel-refresh-button {
+  width: 1.95rem;
+  height: 1.95rem;
+  border-radius: 999px;
+  border: 1px solid rgba(45, 67, 84, 0.16);
+  background: rgba(242, 248, 252, 0.48);
+  color: #3a5d73;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.panel-refresh-button:hover:enabled {
+  border-color: rgba(24, 88, 117, 0.28);
+  background: rgba(225, 240, 248, 0.74);
+  color: #1d516d;
+}
+
+.panel-refresh-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.panel-refresh-icon {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.panel-refresh-icon.spinning {
+  animation: panel-refresh-spin 0.9s linear infinite;
+}
+
+@keyframes panel-refresh-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .chip-row {
   margin-top: 0.75rem;
   display: flex;

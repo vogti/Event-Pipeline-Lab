@@ -1,5 +1,5 @@
 .system-status-panel {
-  gap: 0.8rem;
+  gap: 1rem;
 }
 
 .system-status-grid {
@@ -85,8 +85,37 @@
   background: linear-gradient(90deg, #1f8a59, #0f7a8f);
 }
 
-.system-status-db-button {
+.system-status-db-value {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.32rem;
+}
+
+.system-status-db-separator {
+  color: #5e7688;
+}
+
+.system-status-db-events {
+  font-size: 0.88rem;
+  color: #355368;
+  font-weight: 600;
+}
+
+.system-status-reset-link {
+  border: none;
+  background: transparent;
+  color: #0f6e88;
+  padding: 0;
   width: fit-content;
+  font-size: 0.82rem;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 0.1em;
+}
+
+.system-status-reset-link:hover {
+  color: #0a5670;
 }
 
 .system-status-sessions {
@@ -107,6 +136,7 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.7rem;
+  margin-top: 0.3rem;
 }
 
 .system-transfer-card {

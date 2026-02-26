@@ -483,6 +483,7 @@ function sameAdminSystemStatus(
     a.ramUsedBytes === b.ramUsedBytes &&
     a.ramTotalBytes === b.ramTotalBytes &&
     a.postgresSizeBytes === b.postgresSizeBytes &&
+    a.storedEventCount === b.storedEventCount &&
     a.websocketSessions.admin === b.websocketSessions.admin &&
     a.websocketSessions.student === b.websocketSessions.student &&
     a.websocketSessions.total === b.websocketSessions.total

@@ -10,6 +10,7 @@ public record AdminSystemStatusResponse(
         Long ramUsedBytes,
         Long ramTotalBytes,
         long postgresSizeBytes,
+        long storedEventCount,
         WebSocketSessionStats websocketSessions
 ) {
 }

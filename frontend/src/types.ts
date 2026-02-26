@@ -136,6 +136,7 @@ export interface AdminSystemStatus {
   ramUsedBytes: number | null;
   ramTotalBytes: number | null;
   postgresSizeBytes: number;
+  storedEventCount: number;
   websocketSessions: WebSocketSessionStats;
 }
 

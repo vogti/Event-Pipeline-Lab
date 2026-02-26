@@ -66,17 +66,42 @@ export function SystemStatusSection({
   onToggleSystemDataImportPart,
   selectedSystemDataImportPartsCount
 }: SystemStatusSectionProps) {
+  const refreshBusy = busyKey === 'admin-refresh' || busyKey === 'admin-reset-events';
+  const locale = language === 'de' ? 'de-CH' : 'en-US';
+
   return (
     <section className="panel panel-animate full-width system-status-panel">
       <div className="panel-header">
         <h2>{t('systemStatus')}</h2>
         <button
-          className="button secondary"
+          className="panel-refresh-button"
           type="button"
           onClick={refreshAdminData}
-          disabled={busyKey === 'admin-refresh' || busyKey === 'admin-reset-events'}
+          disabled={refreshBusy}
+          aria-label={t('refresh')}
+          title={t('refresh')}
         >
-          {t('refresh')}
+          <svg
+            className={`panel-refresh-icon${refreshBusy ? ' spinning' : ''}`}
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path
+              d="M20 12a8 8 0 1 1-2.34-5.66"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+            <path
+              d="M20 4v6h-6"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
         </button>
       </div>
 
@@ -127,14 +152,20 @@ export function SystemStatusSection({
 
             <article className="system-status-card">
               <h3>{t('databaseSize')}</h3>
+              <p className="system-status-value system-status-db-value">
+                {formatBytes(adminSystemStatus.postgresSizeBytes, language)}
+                <span className="system-status-db-separator">•</span>
+                <span className="system-status-db-events">
+                  {new Intl.NumberFormat(locale).format(adminSystemStatus.storedEventCount)} {t('eventsUnit')}
+                </span>
+              </p>
               <button
-                className="button secondary system-status-db-button"
+                className="system-status-reset-link"
                 type="button"
                 onClick={onOpenResetEventsModal}
               >
-                {formatBytes(adminSystemStatus.postgresSizeBytes, language)}
+                {t('resetStoredEvents')}
               </button>
-              <p className="muted">{t('resetStoredEvents')}</p>
             </article>
 
             <article className="system-status-card">
