@@ -66,6 +66,8 @@ epl:
       - epld/+/event/#
       - epld/+/status/#
       - epld/+/ack/#
+      - +/event/#
+      - +/command/#
       - +/events/rpc
       - +/telemetry
       - +/online

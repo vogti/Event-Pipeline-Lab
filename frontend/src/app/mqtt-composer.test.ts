@@ -16,7 +16,7 @@ describe('mqtt composer', () => {
     draft.buttonPressed = true;
 
     const result = buildGuidedMqttMessage(draft, 1_700_000_000_000);
-    expect(result.topic).toBe('epld/epld01/event/button');
+    expect(result.topic).toBe('epld01/event/button');
     expect(JSON.parse(result.payload)).toMatchObject({
       button: 'black',
       action: 'press',
@@ -56,7 +56,7 @@ describe('mqtt composer', () => {
     draft.ledOn = false;
 
     const result = buildGuidedMqttMessage(draft);
-    expect(result.topic).toBe('epld/epld04/cmd/led/orange');
+    expect(result.topic).toBe('epld04/command/switch:1');
     expect(result.payload).toBe('off');
   });
 

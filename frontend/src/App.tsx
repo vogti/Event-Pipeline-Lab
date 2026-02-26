@@ -1383,7 +1383,6 @@ export default function App() {
 
     try {
       await api.adminPublishMqttEvent(token, topic, payload, mqttEventDraft.qos, mqttEventDraft.retained);
-      setInfoMessage(t('mqttEventSent'));
       setMqttModalOpen(false);
     } catch (error) {
       setErrorMessage(toErrorMessage(error));

@@ -36,7 +36,7 @@ function toJson(payload: unknown): string {
 }
 
 function topicPrefixForPhysical(deviceId: string): string {
-  return `epld/${deviceId}`;
+  return deviceId;
 }
 
 function firstOrBlank(values: string[]): string {
@@ -68,8 +68,10 @@ function topicForTemplate(draft: MqttEventDraft, deviceId: string): string {
       return `${prefix}/event/button`;
     case 'counter':
       return `${prefix}/event/counter`;
-    case 'led':
-      return `${prefix}/cmd/led/${draft.ledColor}`;
+    case 'led': {
+      const channel = draft.ledColor === 'green' ? 0 : 1;
+      return `${prefix}/command/switch:${channel}`;
+    }
     case 'dht22':
       return `${prefix}/event/sensor/dht22`;
     case 'ldr':

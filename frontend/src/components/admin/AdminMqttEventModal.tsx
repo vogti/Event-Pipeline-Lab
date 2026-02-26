@@ -367,12 +367,13 @@ export function AdminMqttEventModal({
 
             <label>
               <span>{t('mqttTopicPreview')}</span>
-              <input className="input mono" value={guidedTopic} readOnly />
+              <input className="input mono mqtt-preview-input" value={guidedTopic} readOnly />
             </label>
             <label>
               <span>{t('mqttPayloadPreview')}</span>
-              <textarea className="input mqtt-compose-textarea mono" value={guidedPayload} readOnly />
+              <textarea className="input mqtt-compose-textarea mono mqtt-preview-input" value={guidedPayload} readOnly />
             </label>
+            <p className="mqtt-preview-help muted">{t('mqttPreviewReadonly')}</p>
           </>
         ) : (
           <>
@@ -397,16 +398,18 @@ export function AdminMqttEventModal({
           </>
         )}
 
-        <label className="checkbox-inline">
-          <input
-            type="checkbox"
-            checked={draft.retained}
-            onChange={(event) => onDraftChange('retained', event.target.checked)}
-            disabled={busy}
-          />
-          <span>{t('mqttRetained')}</span>
-        </label>
-        <p className="muted">{t('mqttRetainedHelp')}</p>
+        <div className="mqtt-retained-block">
+          <label className="checkbox-inline">
+            <input
+              type="checkbox"
+              checked={draft.retained}
+              onChange={(event) => onDraftChange('retained', event.target.checked)}
+              disabled={busy}
+            />
+            <span>{t('mqttRetained')}</span>
+          </label>
+          <p className="muted mqtt-retained-help">{t('mqttRetainedHelp')}</p>
+        </div>
 
         <div className="event-modal-actions">
           <button className="button" type="button" onClick={onSubmit} disabled={busy}>
