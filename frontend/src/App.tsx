@@ -1361,11 +1361,21 @@ export default function App() {
       setErrorMessage(t('mqttPayloadRequired'));
       return;
     }
-    try {
-      JSON.parse(payload);
-    } catch {
-      setErrorMessage(t('mqttPayloadInvalidJson'));
-      return;
+    const payloadLooksLikeJsonLiteral =
+      payload.startsWith('{') ||
+      payload.startsWith('[') ||
+      payload.startsWith('"') ||
+      payload === 'true' ||
+      payload === 'false' ||
+      payload === 'null' ||
+      /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(payload);
+    if (payloadLooksLikeJsonLiteral) {
+      try {
+        JSON.parse(payload);
+      } catch {
+        setErrorMessage(t('mqttPayloadInvalidJson'));
+        return;
+      }
     }
 
     setBusyKey('admin-mqtt-publish');

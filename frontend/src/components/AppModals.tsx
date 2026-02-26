@@ -1,6 +1,7 @@
 import type { I18nKey } from '../i18n';
 import type { CounterResetTarget, VirtualDevicePatch } from '../app/shared-types';
 import type { CanonicalEvent, VirtualDeviceState } from '../types';
+import { CloseIcon } from '../app/shared-icons';
 
 interface AppModalsProps {
   t: (key: I18nKey) => string;
@@ -80,8 +81,14 @@ export function AppModals({
                     ? t('switchToRawEvent')
                     : t('switchToRenderedEvent')}
                 </button>
-                <button className="button" type="button" onClick={onCloseSelectedEvent}>
-                  {t('close')}
+                <button
+                  className="modal-close-button"
+                  type="button"
+                  onClick={onCloseSelectedEvent}
+                  aria-label={t('close')}
+                  title={t('close')}
+                >
+                  <CloseIcon />
                 </button>
               </div>
             </div>
@@ -113,8 +120,14 @@ export function AppModals({
               <h2>
                 {t('virtualDeviceControls')}: {virtualControlDeviceId}
               </h2>
-              <button className="button secondary" type="button" onClick={onCloseVirtualControlModal}>
-                {t('close')}
+              <button
+                className="modal-close-button"
+                type="button"
+                onClick={onCloseVirtualControlModal}
+                aria-label={t('close')}
+                title={t('close')}
+              >
+                <CloseIcon />
               </button>
             </div>
 
@@ -238,8 +251,14 @@ export function AppModals({
           <div className="event-modal counter-reset-modal" onClick={(event) => event.stopPropagation()}>
             <div className="panel-header">
               <h2>{t('resetStoredEventsConfirmTitle')}</h2>
-              <button className="button secondary" type="button" onClick={onCloseResetEventsModal}>
-                {t('close')}
+              <button
+                className="modal-close-button"
+                type="button"
+                onClick={onCloseResetEventsModal}
+                aria-label={t('close')}
+                title={t('close')}
+              >
+                <CloseIcon />
               </button>
             </div>
             <p>{t('resetStoredEventsConfirmBody')}</p>
@@ -260,8 +279,14 @@ export function AppModals({
           <div className="event-modal counter-reset-modal" onClick={(event) => event.stopPropagation()}>
             <div className="panel-header">
               <h2>{t('counterResetDialogTitle')}</h2>
-              <button className="button secondary" type="button" onClick={onCloseCounterResetModal}>
-                {t('close')}
+              <button
+                className="modal-close-button"
+                type="button"
+                onClick={onCloseCounterResetModal}
+                aria-label={t('close')}
+                title={t('close')}
+              >
+                <CloseIcon />
               </button>
             </div>
             <p>
@@ -286,8 +311,14 @@ export function AppModals({
               <h2>
                 {t('pinSettingsForDevice')}: {pinEditorDeviceId}
               </h2>
-              <button className="button secondary" type="button" onClick={onClosePinEditor}>
-                {t('close')}
+              <button
+                className="modal-close-button"
+                type="button"
+                onClick={onClosePinEditor}
+                aria-label={t('close')}
+                title={t('close')}
+              >
+                <CloseIcon />
               </button>
             </div>
 

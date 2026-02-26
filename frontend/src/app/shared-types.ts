@@ -61,7 +61,15 @@ export interface DeviceTelemetrySnapshot {
 }
 
 export type MqttComposerTargetType = 'physical' | 'virtual' | 'custom';
-export type MqttComposerTemplate = 'button' | 'counter' | 'dht22' | 'ldr' | 'heartbeat' | 'wifi' | 'custom';
+export type MqttComposerTemplate =
+  | 'button'
+  | 'counter'
+  | 'led'
+  | 'dht22'
+  | 'ldr'
+  | 'heartbeat'
+  | 'wifi'
+  | 'custom';
 export type MqttComposerMode = 'guided' | 'raw';
 
 export interface MqttEventDraft {
@@ -70,6 +78,8 @@ export interface MqttEventDraft {
   deviceId: string;
   buttonColor: 'red' | 'black';
   buttonPressed: boolean;
+  ledColor: 'green' | 'orange';
+  ledOn: boolean;
   counterValue: number;
   temperatureC: number;
   humidityPct: number;

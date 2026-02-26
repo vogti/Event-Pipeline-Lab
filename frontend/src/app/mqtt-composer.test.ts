@@ -47,6 +47,19 @@ describe('mqtt composer', () => {
     expect(normalizeMqttTemplateForTarget('virtual', 'wifi')).toBe('button');
   });
 
+  it('builds physical led command topics with plain on/off payload', () => {
+    const draft = createMqttEventDraft();
+    draft.targetType = 'physical';
+    draft.template = 'led';
+    draft.deviceId = 'epld04';
+    draft.ledColor = 'orange';
+    draft.ledOn = false;
+
+    const result = buildGuidedMqttMessage(draft);
+    expect(result.topic).toBe('epld/epld04/cmd/led/orange');
+    expect(result.payload).toBe('off');
+  });
+
   it('resolves default device id from available target list', () => {
     expect(resolveMqttDeviceId('physical', '', ['epld03'], ['eplvd03'])).toBe('epld03');
     expect(resolveMqttDeviceId('virtual', 'eplvd05', ['epld03'], ['eplvd03'])).toBe('eplvd03');

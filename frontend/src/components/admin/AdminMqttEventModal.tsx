@@ -3,6 +3,7 @@ import {
   normalizeMqttTemplateForTarget,
   supportedMqttTemplates
 } from '../../app/mqtt-composer';
+import { CloseIcon } from '../../app/shared-icons';
 import type {
   MqttComposerMode,
   MqttComposerTargetType,
@@ -35,6 +36,8 @@ function templateLabelKey(template: MqttComposerTemplate): I18nKey {
       return 'mqttTemplateButton';
     case 'counter':
       return 'mqttTemplateCounter';
+    case 'led':
+      return 'mqttTemplateLed';
     case 'dht22':
       return 'mqttTemplateDht22';
     case 'ldr':
@@ -87,12 +90,16 @@ export function AdminMqttEventModal({
       <div className="event-modal mqtt-compose-modal" onClick={(event) => event.stopPropagation()}>
         <div className="panel-header">
           <h2>{t('sendMqttEvent')}</h2>
-          <button className="button secondary" type="button" onClick={onClose}>
-            {t('close')}
+          <button
+            className="modal-close-button"
+            type="button"
+            onClick={onClose}
+            aria-label={t('close')}
+            title={t('close')}
+          >
+            <CloseIcon />
           </button>
         </div>
-
-        <p className="muted">{t('mqttComposerHint')}</p>
 
         <div className="mqtt-compose-mode-row">
           <button
@@ -169,9 +176,9 @@ export function AdminMqttEventModal({
               onChange={(event) => onDraftChange('qos', Number(event.target.value) as 0 | 1 | 2)}
               disabled={busy}
             >
-              <option value={0}>0</option>
-              <option value={1}>1</option>
-              <option value={2}>2</option>
+              <option value={0}>{t('mqttQos0')}</option>
+              <option value={1}>{t('mqttQos1')}</option>
+              <option value={2}>{t('mqttQos2')}</option>
             </select>
           </label>
         </div>
@@ -222,6 +229,35 @@ export function AdminMqttEventModal({
                   disabled={busy}
                 />
               </label>
+            ) : null}
+
+            {normalizedTemplate === 'led' ? (
+              <div className="mqtt-compose-grid">
+                <label>
+                  <span>{t('mqttLed')}</span>
+                  <select
+                    className="input"
+                    value={draft.ledColor}
+                    onChange={(event) => onDraftChange('ledColor', event.target.value as 'green' | 'orange')}
+                    disabled={busy}
+                  >
+                    <option value="green">{t('commandGreenLed')}</option>
+                    <option value="orange">{t('commandOrangeLed')}</option>
+                  </select>
+                </label>
+                <label>
+                  <span>{t('mqttLedState')}</span>
+                  <select
+                    className="input"
+                    value={draft.ledOn ? 'on' : 'off'}
+                    onChange={(event) => onDraftChange('ledOn', event.target.value === 'on')}
+                    disabled={busy}
+                  >
+                    <option value="on">{t('stateOn')}</option>
+                    <option value="off">{t('stateOff')}</option>
+                  </select>
+                </label>
+              </div>
             ) : null}
 
             {normalizedTemplate === 'dht22' ? (
@@ -370,6 +406,7 @@ export function AdminMqttEventModal({
           />
           <span>{t('mqttRetained')}</span>
         </label>
+        <p className="muted">{t('mqttRetainedHelp')}</p>
 
         <div className="event-modal-actions">
           <button className="button" type="button" onClick={onSubmit} disabled={busy}>

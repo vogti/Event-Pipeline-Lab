@@ -8,6 +8,7 @@ export interface MqttMessageDraft {
 const PHYSICAL_TEMPLATES: MqttComposerTemplate[] = [
   'button',
   'counter',
+  'led',
   'dht22',
   'ldr',
   'heartbeat',
@@ -18,6 +19,7 @@ const PHYSICAL_TEMPLATES: MqttComposerTemplate[] = [
 const VIRTUAL_TEMPLATES: MqttComposerTemplate[] = [
   'button',
   'counter',
+  'led',
   'dht22',
   'ldr',
   'custom'
@@ -41,16 +43,16 @@ function firstOrBlank(values: string[]): string {
   return values[0] ?? '';
 }
 
-function topicForTemplate(targetType: MqttComposerTargetType, deviceId: string, template: MqttComposerTemplate): string {
-  if (targetType === 'custom') {
+function topicForTemplate(draft: MqttEventDraft, deviceId: string): string {
+  if (draft.targetType === 'custom') {
     return '';
   }
 
-  if (targetType === 'virtual') {
+  if (draft.targetType === 'virtual') {
     if (!deviceId) {
       return '';
     }
-    if (template === 'custom') {
+    if (draft.template === 'custom') {
       return '';
     }
     return `${deviceId}/events/rpc`;
@@ -61,11 +63,13 @@ function topicForTemplate(targetType: MqttComposerTargetType, deviceId: string, 
   }
 
   const prefix = topicPrefixForPhysical(deviceId);
-  switch (template) {
+  switch (draft.template) {
     case 'button':
       return `${prefix}/event/button`;
     case 'counter':
       return `${prefix}/event/counter`;
+    case 'led':
+      return `${prefix}/cmd/led/${draft.ledColor}`;
     case 'dht22':
       return `${prefix}/event/sensor/dht22`;
     case 'ldr':
@@ -105,6 +109,17 @@ function virtualPayload(draft: MqttEventDraft, nowTsSeconds: number): string {
         ts: nowTsSeconds,
         'input:2': { state: true },
         'counter:0': { value: Math.max(0, Math.round(draft.counterValue)) }
+      }
+    });
+  }
+
+  if (draft.template === 'led') {
+    const channel = draft.ledColor === 'green' ? 'switch:0' : 'switch:1';
+    return toJson({
+      ...base,
+      params: {
+        ts: nowTsSeconds,
+        [channel]: { output: draft.ledOn }
       }
     });
   }
@@ -151,6 +166,10 @@ function physicalPayload(draft: MqttEventDraft, nowTsSeconds: number): string {
       counter: Math.max(0, Math.round(draft.counterValue)),
       ts: nowTsSeconds
     });
+  }
+
+  if (draft.template === 'led') {
+    return draft.ledOn ? 'on' : 'off';
   }
 
   if (draft.template === 'dht22') {
@@ -243,6 +262,8 @@ export function createMqttEventDraft(): MqttEventDraft {
     deviceId: '',
     buttonColor: 'red',
     buttonPressed: true,
+    ledColor: 'green',
+    ledOn: true,
     counterValue: 0,
     temperatureC: 23.0,
     humidityPct: 45.0,
@@ -273,14 +294,16 @@ export function buildGuidedMqttMessage(
   }
 
   if (draft.targetType === 'virtual') {
+    const normalizedDraft = { ...draft, deviceId: normalizedDeviceId };
     return {
-      topic: topicForTemplate('virtual', normalizedDeviceId, draft.template),
-      payload: virtualPayload({ ...draft, deviceId: normalizedDeviceId }, nowTsSeconds)
+      topic: topicForTemplate(normalizedDraft, normalizedDeviceId),
+      payload: virtualPayload(normalizedDraft, nowTsSeconds)
     };
   }
 
+  const normalizedDraft = { ...draft, deviceId: normalizedDeviceId };
   return {
-    topic: topicForTemplate('physical', normalizedDeviceId, draft.template),
-    payload: physicalPayload({ ...draft, deviceId: normalizedDeviceId }, nowTsSeconds)
+    topic: topicForTemplate(normalizedDraft, normalizedDeviceId),
+    payload: physicalPayload(normalizedDraft, nowTsSeconds)
   };
 }
