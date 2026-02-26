@@ -42,6 +42,25 @@ public class MqttCommandPublisher {
         );
     }
 
+    public void publishCustom(String topic, String payload, int qos, boolean retained) {
+        if (topic == null || topic.isBlank()) {
+            throw new IllegalArgumentException("topic must not be blank");
+        }
+        if (payload == null) {
+            throw new IllegalArgumentException("payload must not be null");
+        }
+        if (qos < 0 || qos > 2) {
+            throw new IllegalArgumentException("qos must be between 0 and 2");
+        }
+
+        String normalizedTopic = topic.trim();
+        if (normalizedTopic.contains("+") || normalizedTopic.contains("#")) {
+            throw new IllegalArgumentException("topic must not contain MQTT wildcards");
+        }
+
+        mqttGatewayClient.publish(normalizedTopic, payload, qos, retained);
+    }
+
     private void publishRpc(String deviceId, String method, String paramsJson) {
         long id = rpcRequestId.incrementAndGet();
         String payload = "{\"id\":" + id

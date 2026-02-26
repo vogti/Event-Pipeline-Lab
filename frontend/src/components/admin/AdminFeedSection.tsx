@@ -9,6 +9,7 @@ interface AdminFeedSectionProps {
   onTogglePause: () => void;
   onToggleFeedViewMode: () => void;
   onClearFeed: () => void;
+  onOpenSendEventModal: () => void;
   adminTopicFilter: string;
   onAdminTopicFilterChange: (value: string) => void;
   adminDeviceFilter: string;
@@ -29,6 +30,7 @@ export function AdminFeedSection({
   onTogglePause,
   onToggleFeedViewMode,
   onClearFeed,
+  onOpenSendEventModal,
   adminTopicFilter,
   onAdminTopicFilterChange,
   adminDeviceFilter,
@@ -53,6 +55,9 @@ export function AdminFeedSection({
         </button>
         <button className="button secondary" type="button" onClick={onClearFeed}>
           {t('clear')}
+        </button>
+        <button className="button ghost" type="button" onClick={onOpenSendEventModal}>
+          {t('sendMqttEvent')}
         </button>
 
         <input

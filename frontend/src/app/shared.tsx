@@ -24,6 +24,10 @@ import type {
   EventDetailsViewMode,
   FeedViewMode,
   MetricIconKind,
+  MqttComposerMode,
+  MqttComposerTargetType,
+  MqttComposerTemplate,
+  MqttEventDraft,
   StudentViewData,
   VirtualDevicePatch,
   WsConnectionState
@@ -1513,5 +1517,9 @@ export type {
   CounterResetTarget,
   VirtualDevicePatch,
   DeviceTelemetrySnapshot,
-  MetricIconKind
+  MetricIconKind,
+  MqttComposerMode,
+  MqttComposerTargetType,
+  MqttComposerTemplate,
+  MqttEventDraft
 };

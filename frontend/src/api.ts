@@ -269,6 +269,23 @@ export const api = {
     return request<AdminSystemStatus>('/api/admin/system-status', undefined, token);
   },
 
+  adminPublishMqttEvent(
+    token: string,
+    topic: string,
+    payload: string,
+    qos: 0 | 1 | 2,
+    retained: boolean
+  ): Promise<void> {
+    return request<void>(
+      '/api/admin/events/publish',
+      {
+        method: 'POST',
+        body: JSON.stringify({ topic, payload, qos, retained })
+      },
+      token
+    );
+  },
+
   adminExportSystemData(token: string, parts: SystemDataPart[]): Promise<Blob> {
     return requestBlob(
       '/api/admin/system-status/export',

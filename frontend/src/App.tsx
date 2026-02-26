@@ -66,11 +66,16 @@ import type {
   AdminPage,
   CounterResetTarget,
   VirtualDevicePatch,
-  DeviceTelemetrySnapshot
+  DeviceTelemetrySnapshot,
+  MqttComposerMode,
+  MqttComposerTargetType,
+  MqttComposerTemplate,
+  MqttEventDraft
 } from './app/shared';
 import { SystemStatusSection } from './components/admin/SystemStatusSection';
 import { AdminDevicesSection } from './components/admin/AdminDevicesSection';
 import { AdminFeedSection } from './components/admin/AdminFeedSection';
+import { AdminMqttEventModal } from './components/admin/AdminMqttEventModal';
 import { AdminDashboardSection } from './components/admin/AdminDashboardSection';
 import { AdminGroupsTasksSection } from './components/admin/AdminGroupsTasksSection';
 import { AdminPageNav } from './components/admin/AdminPageNav';
@@ -89,6 +94,12 @@ import { StudentVirtualDeviceSection } from './components/student/StudentVirtual
 import { AppModals } from './components/AppModals';
 import { useAdminSystemStatusPolling } from './hooks/useAdminSystemStatusPolling';
 import { useRealtimeSync } from './hooks/useRealtimeSync';
+import {
+  buildGuidedMqttMessage,
+  createMqttEventDraft,
+  normalizeMqttTemplateForTarget,
+  resolveMqttDeviceId
+} from './app/mqtt-composer';
 
 export default function App() {
   const [token, setToken] = useState<string | null>(() => getStoredToken());
@@ -140,6 +151,9 @@ export default function App() {
   const [pinEditorDeviceId, setPinEditorDeviceId] = useState<string | null>(null);
   const [pinEditorValue, setPinEditorValue] = useState('');
   const [pinEditorLoading, setPinEditorLoading] = useState(false);
+  const [mqttModalOpen, setMqttModalOpen] = useState(false);
+  const [mqttComposerMode, setMqttComposerMode] = useState<MqttComposerMode>('guided');
+  const [mqttEventDraft, setMqttEventDraft] = useState<MqttEventDraft>(() => createMqttEventDraft());
   const [adminPage, setAdminPage] = useState<AdminPage>('dashboard');
   const [recentFeedEventIds, setRecentFeedEventIds] = useState<Record<string, true>>({});
   const [systemDataExportSelection, setSystemDataExportSelection] = useState<Record<SystemDataPart, boolean>>(
@@ -351,6 +365,9 @@ export default function App() {
     setPinEditorDeviceId(null);
     setPinEditorValue('');
     setPinEditorLoading(false);
+    setMqttModalOpen(false);
+    setMqttComposerMode('guided');
+    setMqttEventDraft(createMqttEventDraft());
     setAdminPage('dashboard');
     setSystemDataExportSelection(createSystemDataPartSelection(true));
     setSystemDataImportFileName('');
@@ -625,6 +642,21 @@ export default function App() {
   }, [virtualControlDeviceId]);
 
   useEffect(() => {
+    if (!mqttModalOpen) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setMqttModalOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [mqttModalOpen]);
+
+  useEffect(() => {
     const timerId = window.setInterval(() => {
       setNowEpochMs(Date.now());
     }, 60_000);
@@ -738,6 +770,37 @@ export default function App() {
     setDefaultLanguageMode,
     setTimeFormat24h
   });
+
+  const adminPhysicalDeviceIds = useMemo(() => {
+    return adminData?.devices.map((entry) => entry.deviceId) ?? [];
+  }, [adminData?.devices]);
+
+  const adminVirtualDeviceIds = useMemo(() => {
+    return adminData?.virtualDevices.map((entry) => entry.deviceId) ?? [];
+  }, [adminData?.virtualDevices]);
+
+  const guidedMqttMessage = useMemo(() => {
+    return buildGuidedMqttMessage(mqttEventDraft);
+  }, [mqttEventDraft]);
+
+  useEffect(() => {
+    if (mqttComposerMode !== 'guided') {
+      return;
+    }
+    setMqttEventDraft((previous) => {
+      if (
+        previous.rawTopic === guidedMqttMessage.topic &&
+        previous.rawPayload === guidedMqttMessage.payload
+      ) {
+        return previous;
+      }
+      return {
+        ...previous,
+        rawTopic: guidedMqttMessage.topic,
+        rawPayload: guidedMqttMessage.payload
+      };
+    });
+  }, [guidedMqttMessage.payload, guidedMqttMessage.topic, mqttComposerMode]);
 
   const handleLogin = async () => {
     setBusyKey('login');
@@ -1166,6 +1229,152 @@ export default function App() {
       const updated = await api.updateAdminDevicePin(token, pinEditorDeviceId, nextPin);
       setPinEditorValue(updated.pin);
       setInfoMessage(t('pinSaved'));
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const setMqttDraftField = useCallback(<K extends keyof MqttEventDraft>(key: K, value: MqttEventDraft[K]) => {
+    setMqttEventDraft((previous) => {
+      if (previous[key] === value) {
+        return previous;
+      }
+      return {
+        ...previous,
+        [key]: value
+      };
+    });
+  }, []);
+
+  const setMqttTargetType = useCallback((targetType: MqttComposerTargetType) => {
+    setMqttEventDraft((previous) => {
+      if (previous.targetType === targetType) {
+        return previous;
+      }
+      const nextTemplate = normalizeMqttTemplateForTarget(targetType, previous.template);
+      const nextDeviceId = resolveMqttDeviceId(
+        targetType,
+        previous.deviceId,
+        adminPhysicalDeviceIds,
+        adminVirtualDeviceIds
+      );
+      return {
+        ...previous,
+        targetType,
+        template: nextTemplate,
+        deviceId: nextDeviceId
+      };
+    });
+  }, [adminPhysicalDeviceIds, adminVirtualDeviceIds]);
+
+  const setMqttTemplate = useCallback((template: MqttComposerTemplate) => {
+    setMqttEventDraft((previous) => {
+      const nextTemplate = normalizeMqttTemplateForTarget(previous.targetType, template);
+      if (previous.template === nextTemplate) {
+        return previous;
+      }
+      return {
+        ...previous,
+        template: nextTemplate
+      };
+    });
+  }, []);
+
+  const setMqttDeviceId = useCallback((deviceId: string) => {
+    setMqttEventDraft((previous) => {
+      if (previous.deviceId === deviceId) {
+        return previous;
+      }
+      return {
+        ...previous,
+        deviceId
+      };
+    });
+  }, []);
+
+  const openMqttEventModal = useCallback(() => {
+    setMqttComposerMode('guided');
+    setMqttEventDraft((previous) => {
+      let nextTargetType = previous.targetType;
+      if (nextTargetType === 'physical' && adminPhysicalDeviceIds.length === 0) {
+        nextTargetType = adminVirtualDeviceIds.length > 0 ? 'virtual' : 'custom';
+      }
+      if (nextTargetType === 'virtual' && adminVirtualDeviceIds.length === 0) {
+        nextTargetType = adminPhysicalDeviceIds.length > 0 ? 'physical' : 'custom';
+      }
+
+      const nextTemplate = normalizeMqttTemplateForTarget(nextTargetType, previous.template);
+      const nextDeviceId = resolveMqttDeviceId(
+        nextTargetType,
+        previous.deviceId,
+        adminPhysicalDeviceIds,
+        adminVirtualDeviceIds
+      );
+
+      const nextDraft = {
+        ...previous,
+        targetType: nextTargetType,
+        template: nextTemplate,
+        deviceId: nextDeviceId
+      };
+      const guided = buildGuidedMqttMessage(nextDraft);
+      return {
+        ...nextDraft,
+        rawTopic: guided.topic,
+        rawPayload: guided.payload
+      };
+    });
+    setMqttModalOpen(true);
+  }, [adminPhysicalDeviceIds, adminVirtualDeviceIds]);
+
+  const closeMqttEventModal = useCallback(() => {
+    setMqttModalOpen(false);
+  }, []);
+
+  const setMqttComposerModeWithSync = useCallback((mode: MqttComposerMode) => {
+    setMqttComposerMode(mode);
+    if (mode !== 'raw') {
+      return;
+    }
+    setMqttEventDraft((previous) => ({
+      ...previous,
+      rawTopic: guidedMqttMessage.topic,
+      rawPayload: guidedMqttMessage.payload
+    }));
+  }, [guidedMqttMessage.payload, guidedMqttMessage.topic]);
+
+  const sendAdminMqttEvent = async () => {
+    if (!token || !session || session.role !== 'ADMIN') {
+      return;
+    }
+
+    const topic = (mqttComposerMode === 'raw' ? mqttEventDraft.rawTopic : guidedMqttMessage.topic).trim();
+    const payload = (mqttComposerMode === 'raw' ? mqttEventDraft.rawPayload : guidedMqttMessage.payload).trim();
+
+    if (!topic) {
+      setErrorMessage(t('mqttTopicRequired'));
+      return;
+    }
+    if (!payload) {
+      setErrorMessage(t('mqttPayloadRequired'));
+      return;
+    }
+    try {
+      JSON.parse(payload);
+    } catch {
+      setErrorMessage(t('mqttPayloadInvalidJson'));
+      return;
+    }
+
+    setBusyKey('admin-mqtt-publish');
+    setErrorMessage(null);
+
+    try {
+      await api.adminPublishMqttEvent(token, topic, payload, mqttEventDraft.qos, mqttEventDraft.retained);
+      setInfoMessage(t('mqttEventSent'));
+      setMqttModalOpen(false);
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
@@ -2335,6 +2544,7 @@ export default function App() {
                       return { ...previous, events: [] };
                     });
                   }}
+                  onOpenSendEventModal={openMqttEventModal}
                   adminTopicFilter={adminTopicFilter}
                   onAdminTopicFilterChange={setAdminTopicFilter}
                   adminDeviceFilter={adminDeviceFilter}
@@ -2352,6 +2562,25 @@ export default function App() {
           </div>
         ) : null}
       </main>
+
+      <AdminMqttEventModal
+        t={t}
+        open={mqttModalOpen}
+        busy={busyKey === 'admin-mqtt-publish'}
+        mode={mqttComposerMode}
+        draft={mqttEventDraft}
+        physicalDeviceIds={adminPhysicalDeviceIds}
+        virtualDeviceIds={adminVirtualDeviceIds}
+        guidedTopic={guidedMqttMessage.topic}
+        guidedPayload={guidedMqttMessage.payload}
+        onClose={closeMqttEventModal}
+        onSubmit={sendAdminMqttEvent}
+        onModeChange={setMqttComposerModeWithSync}
+        onTargetTypeChange={setMqttTargetType}
+        onTemplateChange={setMqttTemplate}
+        onDeviceIdChange={setMqttDeviceId}
+        onDraftChange={setMqttDraftField}
+      />
 
       <AppModals
         t={t}

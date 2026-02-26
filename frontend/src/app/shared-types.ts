@@ -60,6 +60,30 @@ export interface DeviceTelemetrySnapshot {
   uptimeIngestTs: TimestampValue;
 }
 
+export type MqttComposerTargetType = 'physical' | 'virtual' | 'custom';
+export type MqttComposerTemplate = 'button' | 'counter' | 'dht22' | 'ldr' | 'heartbeat' | 'wifi' | 'custom';
+export type MqttComposerMode = 'guided' | 'raw';
+
+export interface MqttEventDraft {
+  targetType: MqttComposerTargetType;
+  template: MqttComposerTemplate;
+  deviceId: string;
+  buttonColor: 'red' | 'black';
+  buttonPressed: boolean;
+  counterValue: number;
+  temperatureC: number;
+  humidityPct: number;
+  brightnessV: number;
+  uptimeSec: number;
+  rssi: number;
+  customTopic: string;
+  customPayload: string;
+  rawTopic: string;
+  rawPayload: string;
+  qos: 0 | 1 | 2;
+  retained: boolean;
+}
+
 export type MetricIconKind =
   | 'temperature'
   | 'humidity'
@@ -67,4 +91,3 @@ export type MetricIconKind =
   | 'counter'
   | 'buttons'
   | 'leds';
-

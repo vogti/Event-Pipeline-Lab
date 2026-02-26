@@ -101,3 +101,31 @@
   color: #385367;
   font-size: 0.86rem;
 }
+
+.mqtt-compose-modal {
+  width: min(820px, 100%);
+}
+
+.mqtt-compose-mode-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.mqtt-compose-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.mqtt-compose-grid label {
+  display: grid;
+  gap: 0.3rem;
+  color: #385367;
+  font-size: 0.86rem;
+}
+
+.mqtt-compose-textarea {
+  min-height: 170px;
+  resize: vertical;
+}

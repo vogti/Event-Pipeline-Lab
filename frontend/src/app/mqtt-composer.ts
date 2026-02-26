@@ -1,0 +1,286 @@
+import type { MqttComposerTargetType, MqttComposerTemplate, MqttEventDraft } from './shared-types';
+
+export interface MqttMessageDraft {
+  topic: string;
+  payload: string;
+}
+
+const PHYSICAL_TEMPLATES: MqttComposerTemplate[] = [
+  'button',
+  'counter',
+  'dht22',
+  'ldr',
+  'heartbeat',
+  'wifi',
+  'custom'
+];
+
+const VIRTUAL_TEMPLATES: MqttComposerTemplate[] = [
+  'button',
+  'counter',
+  'dht22',
+  'ldr',
+  'custom'
+];
+
+const CUSTOM_TEMPLATES: MqttComposerTemplate[] = ['custom'];
+
+function clampBrightnessVoltage(value: number): number {
+  return Math.min(3.3, Math.max(0, value));
+}
+
+function toJson(payload: unknown): string {
+  return JSON.stringify(payload, null, 2);
+}
+
+function topicPrefixForPhysical(deviceId: string): string {
+  return `epld/${deviceId}`;
+}
+
+function firstOrBlank(values: string[]): string {
+  return values[0] ?? '';
+}
+
+function topicForTemplate(targetType: MqttComposerTargetType, deviceId: string, template: MqttComposerTemplate): string {
+  if (targetType === 'custom') {
+    return '';
+  }
+
+  if (targetType === 'virtual') {
+    if (!deviceId) {
+      return '';
+    }
+    if (template === 'custom') {
+      return '';
+    }
+    return `${deviceId}/events/rpc`;
+  }
+
+  if (!deviceId) {
+    return '';
+  }
+
+  const prefix = topicPrefixForPhysical(deviceId);
+  switch (template) {
+    case 'button':
+      return `${prefix}/event/button`;
+    case 'counter':
+      return `${prefix}/event/counter`;
+    case 'dht22':
+      return `${prefix}/event/sensor/dht22`;
+    case 'ldr':
+      return `${prefix}/event/sensor/ldr`;
+    case 'heartbeat':
+      return `${prefix}/status/heartbeat`;
+    case 'wifi':
+      return `${prefix}/status/wifi`;
+    case 'custom':
+      return '';
+    default:
+      return '';
+  }
+}
+
+function virtualPayload(draft: MqttEventDraft, nowTsSeconds: number): string {
+  const base = {
+    deviceId: draft.deviceId,
+    method: 'NotifyStatus'
+  };
+
+  if (draft.template === 'button') {
+    const channel = draft.buttonColor === 'red' ? 'input:0' : 'input:1';
+    return toJson({
+      ...base,
+      params: {
+        ts: nowTsSeconds,
+        [channel]: { state: draft.buttonPressed }
+      }
+    });
+  }
+
+  if (draft.template === 'counter') {
+    return toJson({
+      ...base,
+      params: {
+        ts: nowTsSeconds,
+        'input:2': { state: true },
+        'counter:0': { value: Math.max(0, Math.round(draft.counterValue)) }
+      }
+    });
+  }
+
+  if (draft.template === 'dht22') {
+    const temperature = Number(draft.temperatureC.toFixed(1));
+    const humidity = Number(draft.humidityPct.toFixed(1));
+    return toJson({
+      ...base,
+      params: {
+        ts: nowTsSeconds,
+        'temperature:100': { tC: temperature, value: temperature },
+        'humidity:100': { rh: humidity, value: humidity }
+      }
+    });
+  }
+
+  if (draft.template === 'ldr') {
+    const voltage = Number(clampBrightnessVoltage(draft.brightnessV).toFixed(2));
+    return toJson({
+      ...base,
+      params: {
+        ts: nowTsSeconds,
+        'voltmeter:100': { voltage, value: voltage }
+      }
+    });
+  }
+
+  return draft.customPayload;
+}
+
+function physicalPayload(draft: MqttEventDraft, nowTsSeconds: number): string {
+  if (draft.template === 'button') {
+    return toJson({
+      button: draft.buttonColor,
+      action: draft.buttonPressed ? 'press' : 'release',
+      pressed: draft.buttonPressed,
+      ts: nowTsSeconds
+    });
+  }
+
+  if (draft.template === 'counter') {
+    return toJson({
+      counter: Math.max(0, Math.round(draft.counterValue)),
+      ts: nowTsSeconds
+    });
+  }
+
+  if (draft.template === 'dht22') {
+    return toJson({
+      temperature: Number(draft.temperatureC.toFixed(1)),
+      humidity: Number(draft.humidityPct.toFixed(1)),
+      ts: nowTsSeconds
+    });
+  }
+
+  if (draft.template === 'ldr') {
+    return toJson({
+      voltage: Number(clampBrightnessVoltage(draft.brightnessV).toFixed(2)),
+      ts: nowTsSeconds
+    });
+  }
+
+  if (draft.template === 'heartbeat') {
+    return toJson({
+      online: true,
+      sys: {
+        uptime: Math.max(0, Math.round(draft.uptimeSec))
+      },
+      ts: nowTsSeconds
+    });
+  }
+
+  if (draft.template === 'wifi') {
+    const rssi = Math.round(draft.rssi);
+    return toJson({
+      rssi,
+      params: {
+        mqtt: {
+          rssi
+        }
+      },
+      ts: nowTsSeconds
+    });
+  }
+
+  return draft.customPayload;
+}
+
+export function supportedMqttTemplates(targetType: MqttComposerTargetType): MqttComposerTemplate[] {
+  if (targetType === 'physical') {
+    return PHYSICAL_TEMPLATES;
+  }
+  if (targetType === 'virtual') {
+    return VIRTUAL_TEMPLATES;
+  }
+  return CUSTOM_TEMPLATES;
+}
+
+export function normalizeMqttTemplateForTarget(
+  targetType: MqttComposerTargetType,
+  template: MqttComposerTemplate
+): MqttComposerTemplate {
+  const allowed = supportedMqttTemplates(targetType);
+  if (allowed.includes(template)) {
+    return template;
+  }
+  return allowed[0] ?? 'custom';
+}
+
+export function resolveMqttDeviceId(
+  targetType: MqttComposerTargetType,
+  currentDeviceId: string,
+  physicalDeviceIds: string[],
+  virtualDeviceIds: string[]
+): string {
+  if (targetType === 'physical') {
+    if (physicalDeviceIds.includes(currentDeviceId)) {
+      return currentDeviceId;
+    }
+    return firstOrBlank(physicalDeviceIds);
+  }
+  if (targetType === 'virtual') {
+    if (virtualDeviceIds.includes(currentDeviceId)) {
+      return currentDeviceId;
+    }
+    return firstOrBlank(virtualDeviceIds);
+  }
+  return currentDeviceId;
+}
+
+export function createMqttEventDraft(): MqttEventDraft {
+  return {
+    targetType: 'physical',
+    template: 'button',
+    deviceId: '',
+    buttonColor: 'red',
+    buttonPressed: true,
+    counterValue: 0,
+    temperatureC: 23.0,
+    humidityPct: 45.0,
+    brightnessV: 1.5,
+    uptimeSec: 300,
+    rssi: -62,
+    customTopic: '',
+    customPayload: '{\n  "value": true\n}',
+    rawTopic: '',
+    rawPayload: '{\n  "value": true\n}',
+    qos: 1,
+    retained: false
+  };
+}
+
+export function buildGuidedMqttMessage(
+  draft: MqttEventDraft,
+  nowEpochMillis: number = Date.now()
+): MqttMessageDraft {
+  const normalizedDeviceId = draft.deviceId.trim();
+  const nowTsSeconds = Number((nowEpochMillis / 1000).toFixed(3));
+
+  if (draft.targetType === 'custom' || draft.template === 'custom') {
+    return {
+      topic: draft.customTopic.trim(),
+      payload: draft.customPayload
+    };
+  }
+
+  if (draft.targetType === 'virtual') {
+    return {
+      topic: topicForTemplate('virtual', normalizedDeviceId, draft.template),
+      payload: virtualPayload({ ...draft, deviceId: normalizedDeviceId }, nowTsSeconds)
+    };
+  }
+
+  return {
+    topic: topicForTemplate('physical', normalizedDeviceId, draft.template),
+    payload: physicalPayload({ ...draft, deviceId: normalizedDeviceId }, nowTsSeconds)
+  };
+}
