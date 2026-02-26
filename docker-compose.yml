@@ -42,6 +42,9 @@ services:
       MQTT_BROKER_URI: tcp://mosquitto:1883
       MQTT_CLIENT_ID: epl-backend
       EPL_ADMIN_BUFFER_SIZE: 500
+      EPL_LOG_MODE_KAFKA_ENABLED: ${EPL_LOG_MODE_KAFKA_ENABLED:-false}
+      EPL_LOG_MODE_KAFKA_BOOTSTRAP_SERVERS: ${EPL_LOG_MODE_KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      EPL_LOG_MODE_KAFKA_TOPIC: ${EPL_LOG_MODE_KAFKA_TOPIC:-epl.events.log}
     ports:
       - "8080:8080"
     volumes:
@@ -52,6 +55,31 @@ services:
       mosquitto:
         condition: service_started
     restart: unless-stopped
+
+  kafka:
+    image: redpandadata/redpanda:v24.3.6
+    container_name: epl-kafka
+    command:
+      - redpanda
+      - start
+      - --overprovisioned
+      - --smp
+      - "1"
+      - --memory
+      - "512M"
+      - --reserve-memory
+      - "0M"
+      - --node-id
+      - "0"
+      - --check=false
+      - --kafka-addr
+      - 0.0.0.0:9092
+      - --advertise-kafka-addr
+      - kafka:9092
+    ports:
+      - "9092:9092"
+    restart: unless-stopped
+    profiles: ["logmode"]
 
   frontend:
     build:

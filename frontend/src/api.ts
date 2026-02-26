@@ -14,6 +14,8 @@ import type {
   GroupOverview,
   LanguageMode,
   PipelineInputSection,
+  PipelineLogModeStatus,
+  PipelineLogReplayResponse,
   PipelineCompareRow,
   PipelineProcessingSection,
   PipelineSinkSection,
@@ -504,6 +506,32 @@ export const api = {
       {
         method: 'POST',
         body: JSON.stringify({ groupKey, action })
+      },
+      token
+    );
+  },
+
+  adminPipelineLogModeStatus(token: string): Promise<PipelineLogModeStatus> {
+    return request<PipelineLogModeStatus>(
+      '/api/admin/pipeline/log-mode/status',
+      undefined,
+      token
+    );
+  },
+
+  adminPipelineLogReplay(
+    token: string,
+    args: { groupKey: string; fromOffset?: number | null; maxRecords?: number | null }
+  ): Promise<PipelineLogReplayResponse> {
+    return request<PipelineLogReplayResponse>(
+      '/api/admin/pipeline/log-mode/replay',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          groupKey: args.groupKey,
+          fromOffset: args.fromOffset ?? null,
+          maxRecords: args.maxRecords ?? null
+        })
       },
       token
     );

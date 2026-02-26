@@ -1,5 +1,11 @@
 import type { I18nKey } from '../../i18n';
-import type { PipelineProcessingSection, PipelineView, TimestampValue } from '../../types';
+import type {
+  PipelineLogModeStatus,
+  PipelineLogReplayResponse,
+  PipelineProcessingSection,
+  PipelineView,
+  TimestampValue
+} from '../../types';
 import {
   buildPipelineScenarioOverlays,
   parsePipelineScenarioOverlays,
@@ -25,6 +31,16 @@ interface PipelineBuilderSectionProps {
   onScenarioOverlaysChange?: (nextValue: string[]) => void;
   onSinkTargetsChange?: (nextValue: string) => void;
   onSinkGoalChange?: (nextValue: string) => void;
+  logModeStatus?: PipelineLogModeStatus | null;
+  logModeStatusBusy?: boolean;
+  onRefreshLogModeStatus?: () => void;
+  logReplayFromOffset?: string;
+  onLogReplayFromOffsetChange?: (next: string) => void;
+  logReplayMaxRecords?: number;
+  onLogReplayMaxRecordsChange?: (next: number) => void;
+  onLogReplay?: () => void;
+  logReplayBusy?: boolean;
+  logReplayResult?: PipelineLogReplayResponse | null;
   onResetState?: () => void;
   onRestartStateLost?: () => void;
   onRestartStateRetained?: () => void;
@@ -61,6 +77,32 @@ function scenarioBadgeLabel(t: (key: I18nKey) => string, key: PipelineScenarioKe
   return `${base} ${value}%`;
 }
 
+function inputModeLabel(t: (key: I18nKey) => string, mode: string): string {
+  if (mode === 'LOG_MODE') {
+    return t('pipelineInputModeLog');
+  }
+  return t('pipelineInputModeLive');
+}
+
+function featureBadgeLabelKey(badge: string): I18nKey {
+  switch (badge) {
+    case 'retention':
+      return 'pipelineModeBadgeRetention';
+    case 'replay':
+      return 'pipelineModeBadgeReplay';
+    case 'offsets':
+      return 'pipelineModeBadgeOffsets';
+    case 'consumer_groups':
+      return 'pipelineModeBadgeConsumerGroups';
+    case 'no_offset_replay':
+      return 'pipelineModeBadgeNoReplay';
+    case 'realtime_pubsub':
+      return 'pipelineModeBadgeRealtime';
+    default:
+      return 'pipelineModeBadgeRealtime';
+  }
+}
+
 export function PipelineBuilderSection({
   t,
   title,
@@ -76,6 +118,16 @@ export function PipelineBuilderSection({
   onScenarioOverlaysChange,
   onSinkTargetsChange,
   onSinkGoalChange,
+  logModeStatus,
+  logModeStatusBusy,
+  onRefreshLogModeStatus,
+  logReplayFromOffset,
+  onLogReplayFromOffsetChange,
+  logReplayMaxRecords,
+  onLogReplayMaxRecordsChange,
+  onLogReplay,
+  logReplayBusy,
+  logReplayResult,
   onResetState,
   onRestartStateLost,
   onRestartStateRetained,
@@ -110,6 +162,16 @@ export function PipelineBuilderSection({
   const blockOptions = ['NONE', ...view.permissions.allowedProcessingBlocks.filter((entry) => entry !== 'NONE')];
   const hasEditableSection =
     view.permissions.processingEditable || view.permissions.inputEditable || view.permissions.sinkEditable;
+  const modeFeatureBadges = view.input.mode === 'LOG_MODE'
+    ? ['retention', 'replay', 'offsets', 'consumer_groups']
+    : ['realtime_pubsub', 'no_offset_replay'];
+  const canControlLogMode = Boolean(
+    onRefreshLogModeStatus &&
+    onLogReplay &&
+    onLogReplayFromOffsetChange &&
+    onLogReplayMaxRecordsChange &&
+    typeof logReplayMaxRecords === 'number'
+  );
   const scenarioValues = parsePipelineScenarioOverlays(view.input.scenarioOverlays);
   const activeScenarioBadges = PIPELINE_SCENARIO_DEFINITIONS.flatMap((definition) => {
     const value = scenarioValues[definition.key];
@@ -157,10 +219,87 @@ export function PipelineBuilderSection({
               onChange={(event) => onInputModeChange?.(event.target.value)}
               disabled={!view.permissions.inputEditable}
             >
-              <option value="LIVE_MQTT">LIVE_MQTT</option>
-              <option value="LOG_MODE">LOG_MODE</option>
+              <option value="LIVE_MQTT">{t('pipelineInputModeLive')}</option>
+              <option value="LOG_MODE">{t('pipelineInputModeLog')}</option>
             </select>
           </label>
+          <div className="pipeline-mode-meta">
+            <div className="chip-row">
+              {modeFeatureBadges.map((badge) => (
+                <span className="chip" key={badge}>
+                  {t(featureBadgeLabelKey(badge))}
+                </span>
+              ))}
+            </div>
+            <p className="muted">
+              {t('pipelineInputMode')}: {inputModeLabel(t, view.input.mode)}
+            </p>
+          </div>
+          {canControlLogMode ? (
+            <section className="pipeline-log-mode-box">
+              <div className="pipeline-log-mode-header">
+                <strong>{t('pipelineLogModeStatus')}</strong>
+                <button
+                  className="button tiny ghost"
+                  type="button"
+                  onClick={onRefreshLogModeStatus}
+                  disabled={Boolean(logModeStatusBusy)}
+                >
+                  {t('refresh')}
+                </button>
+              </div>
+              <p className="muted">
+                {logModeStatus?.message ?? t('loading')}
+              </p>
+              <div className="pipeline-log-mode-grid muted">
+                <span>{t('pipelineLogTopic')}: {logModeStatus?.topic ?? '-'}</span>
+                <span>{t('pipelineLogConnected')}: {logModeStatus?.connected ? t('online') : t('offline')}</span>
+                <span>{t('pipelineLogEarliestOffset')}: {logModeStatus?.earliestOffset ?? '-'}</span>
+                <span>{t('pipelineLogLatestOffset')}: {logModeStatus?.latestOffset ?? '-'}</span>
+              </div>
+              {view.input.mode === 'LOG_MODE' ? (
+                <div className="pipeline-log-replay-controls">
+                  <label className="stack pipeline-field">
+                    <span>{t('pipelineReplayFromOffset')}</span>
+                    <input
+                      className="input"
+                      type="number"
+                      min={0}
+                      value={logReplayFromOffset ?? ''}
+                      onChange={(event) => onLogReplayFromOffsetChange?.(event.target.value)}
+                      placeholder={t('pipelineReplayFromOffsetPlaceholder')}
+                    />
+                  </label>
+                  <label className="stack pipeline-field">
+                    <span>{t('pipelineReplayMaxRecords')}</span>
+                    <input
+                      className="input"
+                      type="number"
+                      min={1}
+                      max={1000}
+                      value={logReplayMaxRecords}
+                      onChange={(event) =>
+                        onLogReplayMaxRecordsChange?.(Number.parseInt(event.target.value || '1', 10) || 1)}
+                    />
+                  </label>
+                  <button
+                    className="button small"
+                    type="button"
+                    onClick={onLogReplay}
+                    disabled={Boolean(logReplayBusy) || logModeStatus?.enabled === false}
+                  >
+                    {logReplayBusy ? t('loading') : t('pipelineReplayAction')}
+                  </button>
+                  {logReplayResult ? (
+                    <p className="muted">
+                      {t('pipelineReplayReturned')}: {logReplayResult.returnedCount} | {t('pipelineReplayNextOffset')}:{' '}
+                      {logReplayResult.nextOffset ?? '-'}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+            </section>
+          ) : null}
           <label className="stack pipeline-field">
             <span>{t('pipelineDeviceScope')}</span>
             <select

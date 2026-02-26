@@ -76,3 +76,10 @@ epl:
     session-ttl: PT8H
     presence-window: PT45S
     cleanup-delay-ms: 60000
+  log-mode:
+    kafka:
+      enabled: ${EPL_LOG_MODE_KAFKA_ENABLED:false}
+      bootstrap-servers: ${EPL_LOG_MODE_KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
+      topic: ${EPL_LOG_MODE_KAFKA_TOPIC:epl.events.log}
+      client-id: ${EPL_LOG_MODE_KAFKA_CLIENT_ID:epl-log-mode}
+      replay-default-max-records: ${EPL_LOG_MODE_KAFKA_REPLAY_DEFAULT_MAX_RECORDS:200}

@@ -4,6 +4,7 @@ import ch.marcovogt.epl.deviceregistryhealth.DeviceStatus;
 import ch.marcovogt.epl.deviceregistryhealth.DeviceStatusDto;
 import ch.marcovogt.epl.deviceregistryhealth.DeviceStatusService;
 import ch.marcovogt.epl.eventfeedquery.EventFeedService;
+import ch.marcovogt.epl.pipelinebuilder.PipelineLogModeService;
 import ch.marcovogt.epl.pipelinebuilder.PipelineObservabilityUpdateDto;
 import ch.marcovogt.epl.pipelinebuilder.PipelineStateService;
 import ch.marcovogt.epl.realtimewebsocket.AdminWebSocketBroadcaster;
@@ -27,6 +28,7 @@ public class EventIngestionService {
     private final AdminWebSocketBroadcaster adminWebSocketBroadcaster;
     private final RealtimeSyncService realtimeSyncService;
     private final PipelineStateService pipelineStateService;
+    private final PipelineLogModeService pipelineLogModeService;
     private final Clock clock;
 
     public EventIngestionService(
@@ -36,7 +38,8 @@ public class EventIngestionService {
             EventFeedService eventFeedService,
             AdminWebSocketBroadcaster adminWebSocketBroadcaster,
             RealtimeSyncService realtimeSyncService,
-            PipelineStateService pipelineStateService
+            PipelineStateService pipelineStateService,
+            PipelineLogModeService pipelineLogModeService
     ) {
         this.canonicalEventNormalizer = canonicalEventNormalizer;
         this.canonicalEventRepository = canonicalEventRepository;
@@ -45,6 +48,7 @@ public class EventIngestionService {
         this.adminWebSocketBroadcaster = adminWebSocketBroadcaster;
         this.realtimeSyncService = realtimeSyncService;
         this.pipelineStateService = pipelineStateService;
+        this.pipelineLogModeService = pipelineLogModeService;
         this.clock = Clock.systemUTC();
     }
 
@@ -59,6 +63,7 @@ public class EventIngestionService {
         eventFeedService.appendToLiveBuffer(eventDto);
         adminWebSocketBroadcaster.broadcastEvent(eventDto);
         realtimeSyncService.broadcastEventToStudents(eventDto);
+        pipelineLogModeService.publish(eventDto);
 
         try {
             PipelineObservabilityUpdateDto observabilityUpdate = pipelineStateService.recordObservabilityEvent(eventDto);

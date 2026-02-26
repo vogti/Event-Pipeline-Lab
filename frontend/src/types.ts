@@ -302,6 +302,34 @@ export interface PipelineCompareRow {
   slotBlocks: string[];
 }
 
+export interface PipelineLogModeStatus {
+  enabled: boolean;
+  connected: boolean;
+  kafkaBacked: boolean;
+  topic: string;
+  earliestOffset: number | null;
+  latestOffset: number | null;
+  replayDefaultMaxRecords: number;
+  featureBadges: string[];
+  message: string;
+}
+
+export interface PipelineLogReplayRecord {
+  partition: number;
+  offset: number;
+  timestamp: TimestampValue;
+  event: CanonicalEvent;
+}
+
+export interface PipelineLogReplayResponse {
+  topic: string;
+  groupKey: string;
+  requestedFromOffset: number | null;
+  nextOffset: number | null;
+  returnedCount: number;
+  records: PipelineLogReplayRecord[];
+}
+
 export interface StudentBootstrap {
   me: AuthMe;
   activeTask: TaskInfo;

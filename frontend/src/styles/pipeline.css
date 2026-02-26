@@ -36,6 +36,42 @@
   gap: 0.3rem;
 }
 
+.pipeline-mode-meta {
+  margin-bottom: 0.4rem;
+}
+
+.pipeline-mode-meta .muted {
+  margin: 0.35rem 0 0;
+}
+
+.pipeline-log-mode-box {
+  border: 1px dashed rgba(72, 118, 148, 0.38);
+  border-radius: 10px;
+  display: grid;
+  gap: 0.45rem;
+  margin-bottom: 0.55rem;
+  padding: 0.5rem;
+}
+
+.pipeline-log-mode-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.pipeline-log-mode-grid {
+  display: grid;
+  gap: 0.2rem 0.8rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.pipeline-log-replay-controls {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 0.45rem;
+  padding-top: 0.45rem;
+}
+
 .pipeline-scenario-editor {
   display: grid;
   gap: 0.45rem;
@@ -155,6 +191,10 @@
 
 @media (max-width: 980px) {
   .pipeline-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pipeline-log-mode-grid {
     grid-template-columns: 1fr;
   }
 

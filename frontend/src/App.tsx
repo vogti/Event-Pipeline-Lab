@@ -7,6 +7,8 @@ import type {
   DeviceCommandType,
   EventCategory,
   LanguageMode,
+  PipelineLogModeStatus,
+  PipelineLogReplayResponse,
   PipelineObservabilityUpdate,
   PipelineCompareRow,
   PipelineProcessingSection,
@@ -176,6 +178,10 @@ export default function App() {
   const [adminPipeline, setAdminPipeline] = useState<PipelineView | null>(null);
   const [adminPipelineDraft, setAdminPipelineDraft] = useState<PipelineView | null>(null);
   const [adminPipelineGroupKey, setAdminPipelineGroupKey] = useState('');
+  const [adminPipelineLogModeStatus, setAdminPipelineLogModeStatus] = useState<PipelineLogModeStatus | null>(null);
+  const [adminPipelineReplayFromOffset, setAdminPipelineReplayFromOffset] = useState('');
+  const [adminPipelineReplayMaxRecords, setAdminPipelineReplayMaxRecords] = useState(200);
+  const [adminPipelineReplayResult, setAdminPipelineReplayResult] = useState<PipelineLogReplayResponse | null>(null);
   const [adminPipelineTaskId, setAdminPipelineTaskId] = useState('');
   const [adminTaskPipelineConfig, setAdminTaskPipelineConfig] = useState<TaskPipelineConfig | null>(null);
   const [adminTaskPipelineConfigDraft, setAdminTaskPipelineConfigDraft] = useState<TaskPipelineConfig | null>(null);
@@ -418,6 +424,10 @@ export default function App() {
     setAdminPipeline(null);
     setAdminPipelineDraft(null);
     setAdminPipelineGroupKey('');
+    setAdminPipelineLogModeStatus(null);
+    setAdminPipelineReplayFromOffset('');
+    setAdminPipelineReplayMaxRecords(200);
+    setAdminPipelineReplayResult(null);
     setAdminPipelineTaskId('');
     setAdminTaskPipelineConfig(null);
     setAdminTaskPipelineConfigDraft(null);
@@ -547,6 +557,25 @@ export default function App() {
     }
   }, [reportBackgroundError, token]);
 
+  const loadAdminPipelineLogModeStatus = useCallback(async () => {
+    if (!token) {
+      setAdminPipelineLogModeStatus(null);
+      return;
+    }
+    try {
+      const status = await api.adminPipelineLogModeStatus(token);
+      setAdminPipelineLogModeStatus(status);
+      setAdminPipelineReplayMaxRecords((previous) => {
+        if (previous > 0) {
+          return previous;
+        }
+        return status.replayDefaultMaxRecords;
+      });
+    } catch (error) {
+      reportBackgroundError('adminPipelineLogModeStatus', error);
+    }
+  }, [reportBackgroundError, token]);
+
   const loadDashboards = useCallback(async (auth: AuthMe, activeToken: string) => {
     if (auth.role === 'STUDENT') {
       const [bootstrap, pipeline] = await Promise.all([
@@ -573,14 +602,16 @@ export default function App() {
       return;
     }
 
-    const [tasks, devices, virtualDevices, groups, settings, events, systemStatus] = await Promise.all([
+    const logModeStatusPromise = api.adminPipelineLogModeStatus(activeToken).catch(() => null);
+    const [tasks, devices, virtualDevices, groups, settings, events, systemStatus, logModeStatus] = await Promise.all([
       api.adminTasks(activeToken),
       api.adminDevices(activeToken),
       api.adminVirtualDevices(activeToken),
       api.adminGroups(activeToken),
       api.adminSettings(activeToken),
       api.eventsFeed(activeToken, { limit: MAX_FEED_EVENTS, includeInternal: true }),
-      api.adminSystemStatus(activeToken)
+      api.adminSystemStatus(activeToken),
+      logModeStatusPromise
     ]);
 
     setAdminData({
@@ -598,6 +629,10 @@ export default function App() {
     setDefaultLanguageMode(settings.defaultLanguageMode);
     setTimeFormat24h(settings.timeFormat24h);
     setAdminSystemStatus(systemStatus);
+    setAdminPipelineLogModeStatus(logModeStatus);
+    setAdminPipelineReplayFromOffset('');
+    setAdminPipelineReplayMaxRecords(logModeStatus?.replayDefaultMaxRecords ?? 200);
+    setAdminPipelineReplayResult(null);
     setAdminPage('dashboard');
 
     const initialGroupKey = groups[0]?.groupKey ?? '';
@@ -788,6 +823,13 @@ export default function App() {
     adminTaskActivitySignature,
     loadAdminPipelineCompare
   ]);
+
+  useEffect(() => {
+    if (!token || session?.role !== 'ADMIN' || !hasAdminData) {
+      return;
+    }
+    void loadAdminPipelineLogModeStatus();
+  }, [token, session?.role, hasAdminData, loadAdminPipelineLogModeStatus]);
 
   useEffect(() => {
     const virtualDevice = studentData?.virtualDevice;
@@ -1348,6 +1390,7 @@ export default function App() {
     (groupKey: string) => {
       setAdminPipelineGroupKey(groupKey);
       adminPipelineGroupKeyRef.current = groupKey;
+      setAdminPipelineReplayResult(null);
       void loadAdminPipelineForGroup(groupKey);
     },
     [loadAdminPipelineForGroup]
@@ -1395,6 +1438,67 @@ export default function App() {
       } else {
         setInfoMessage(t('pipelineRestartDone'));
       }
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const refreshAdminPipelineLogModeStatus = async () => {
+    if (!token || !session || session.role !== 'ADMIN') {
+      return;
+    }
+    setBusyKey('admin-pipeline-log-status');
+    setErrorMessage(null);
+    try {
+      const status = await api.adminPipelineLogModeStatus(token);
+      setAdminPipelineLogModeStatus(status);
+      setAdminPipelineReplayMaxRecords((previous) => {
+        if (previous > 0) {
+          return previous;
+        }
+        return status.replayDefaultMaxRecords;
+      });
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const replayAdminPipelineLog = async () => {
+    if (!token || !session || session.role !== 'ADMIN' || !adminPipelineGroupKey) {
+      return;
+    }
+
+    const fromOffsetRaw = adminPipelineReplayFromOffset.trim();
+    let fromOffset: number | null = null;
+    if (fromOffsetRaw.length > 0) {
+      const parsedOffset = Number.parseInt(fromOffsetRaw, 10);
+      if (!Number.isFinite(parsedOffset) || parsedOffset < 0) {
+        setErrorMessage(t('pipelineReplayOffsetInvalid'));
+        return;
+      }
+      fromOffset = parsedOffset;
+    }
+
+    const normalizedMaxRecords = Math.max(1, Math.min(1000, Math.round(adminPipelineReplayMaxRecords || 0)));
+    setAdminPipelineReplayMaxRecords(normalizedMaxRecords);
+
+    setBusyKey('admin-pipeline-log-replay');
+    setErrorMessage(null);
+    try {
+      const replay = await api.adminPipelineLogReplay(token, {
+        groupKey: adminPipelineGroupKey,
+        fromOffset,
+        maxRecords: normalizedMaxRecords
+      });
+      setAdminPipelineReplayResult(replay);
+      if (replay.nextOffset !== null && replay.nextOffset !== undefined) {
+        setAdminPipelineReplayFromOffset(String(replay.nextOffset));
+      }
+      setInfoMessage(t('pipelineReplayDone'));
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
@@ -2082,14 +2186,16 @@ export default function App() {
     setErrorMessage(null);
 
     try {
-      const [tasks, devices, virtualDevices, groups, events, settings, systemStatus] = await Promise.all([
+      const logModeStatusPromise = api.adminPipelineLogModeStatus(token).catch(() => null);
+      const [tasks, devices, virtualDevices, groups, events, settings, systemStatus, logModeStatus] = await Promise.all([
         api.adminTasks(token),
         api.adminDevices(token),
         api.adminVirtualDevices(token),
         api.adminGroups(token),
         api.eventsFeed(token, { limit: MAX_FEED_EVENTS, includeInternal: true }),
         api.adminSettings(token),
-        api.adminSystemStatus(token)
+        api.adminSystemStatus(token),
+        logModeStatusPromise
       ]);
       setAdminData((previous) => {
         if (!previous) {
@@ -2113,6 +2219,13 @@ export default function App() {
       setDefaultLanguageMode(settings.defaultLanguageMode);
       setTimeFormat24h(settings.timeFormat24h);
       setAdminSystemStatus((previous) => (sameAdminSystemStatus(previous, systemStatus) ? previous : systemStatus));
+      setAdminPipelineLogModeStatus(logModeStatus);
+      setAdminPipelineReplayMaxRecords((previous) => {
+        if (previous > 0) {
+          return previous;
+        }
+        return logModeStatus?.replayDefaultMaxRecords ?? 200;
+      });
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
@@ -3247,6 +3360,16 @@ export default function App() {
                     onScenarioOverlaysChange={changeAdminPipelineScenarioOverlays}
                     onSinkTargetsChange={changeAdminPipelineSinkTargets}
                     onSinkGoalChange={changeAdminPipelineSinkGoal}
+                    logModeStatus={adminPipelineLogModeStatus}
+                    logModeStatusBusy={busyKey === 'admin-pipeline-log-status'}
+                    onRefreshLogModeStatus={refreshAdminPipelineLogModeStatus}
+                    logReplayFromOffset={adminPipelineReplayFromOffset}
+                    onLogReplayFromOffsetChange={setAdminPipelineReplayFromOffset}
+                    logReplayMaxRecords={adminPipelineReplayMaxRecords}
+                    onLogReplayMaxRecordsChange={setAdminPipelineReplayMaxRecords}
+                    onLogReplay={replayAdminPipelineLog}
+                    logReplayBusy={busyKey === 'admin-pipeline-log-replay'}
+                    logReplayResult={adminPipelineReplayResult}
                     onSave={saveAdminPipeline}
                     saveBusy={busyKey === 'admin-pipeline' || busyKey === 'admin-pipeline-load'}
                     onResetState={() => {

@@ -1,4 +1,4 @@
-# Event Pipeline Lab (EPL) - Phase 1 + Phase 2 + PBV Stage 1-2
+# Event Pipeline Lab (EPL) - Phase 1 + Phase 2 + PBV Stage 1-6
 
 This repository currently delivers:
 
@@ -6,6 +6,7 @@ This repository currently delivers:
 - **Phase 2**: auth/session, task activation + capability gating, group shared config + presence sync, admin/student REST APIs, authenticated WebSocket channels, and React frontend dashboards
 - **PBV Stage 1**: task-bound Pipeline Builder state model (Input/Processing/Sink), constrained processing slots, student/admin APIs, real-time per-group pipeline sync, and initial PBV UI in student/admin
 - **PBV Stage 2**: task-level PBV configuration controls (student visibility, allowed processing blocks, slot count), admin compare view across groups, and active-task live propagation
+- **PBV Stage 6**: optional Kafka-backed log mode (status, offsets, replay controls in admin PBV)
 
 Backend package namespace: `ch.marcovogt.epl`.
 Build system: **Gradle**.
@@ -102,8 +103,30 @@ PBV is implemented in staged increments to keep lecture reliability high.
 5. **Stage 5 (implemented)**  
    - Stateful block introspection (window/dedup store size, TTL, reset)  
    - Restart semantics (state lost vs retained simulation)
-6. **Stage 6 (next)**  
-   - Optional Kafka-backed log mode integration (replay/offset framing in PBV)
+6. **Stage 6 (implemented)**  
+   - Optional Kafka-backed log mode integration  
+   - Admin PBV log mode status (`topic`, connectivity, earliest/latest offset)  
+   - Admin PBV replay from offset with bounded record count  
+   - Replay events update PBV observability in real time
+
+## Stage 6 Log Mode (Kafka-backed)
+
+Start stack with Kafka/Redpanda enabled:
+
+```bash
+docker compose --profile logmode up -d --build
+```
+
+Backend log mode env (already wired in `docker-compose.yml`):
+
+- `EPL_LOG_MODE_KAFKA_ENABLED=true`
+- `EPL_LOG_MODE_KAFKA_BOOTSTRAP_SERVERS=kafka:9092`
+- `EPL_LOG_MODE_KAFKA_TOPIC=epl.events.log`
+
+Admin API:
+
+- `GET /api/admin/pipeline/log-mode/status`
+- `POST /api/admin/pipeline/log-mode/replay`
 
 ## Update Running Deployment
 
