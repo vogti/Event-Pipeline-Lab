@@ -2,7 +2,9 @@ package ch.marcovogt.epl.admin;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -16,14 +18,21 @@ import ch.marcovogt.epl.eventingestionnormalization.CanonicalEventRepository;
 import ch.marcovogt.epl.groupcollaborationsync.GroupStateRepository;
 import ch.marcovogt.epl.taskscenarioengine.TaskStateRepository;
 import ch.marcovogt.epl.virtualdevice.VirtualDeviceStateRepository;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -138,5 +147,104 @@ class SystemDataTransferServiceTest {
 
         assertThat(imported.importedParts())
                 .containsExactly(new SystemDataImportPartInfo(SystemDataPart.EVENT_DATA, 0));
+    }
+
+    @Test
+    void exportArchiveShouldContainSchemaAndPartData() throws Exception {
+        AppSettings appSettings = new AppSettings();
+        appSettings.setId((short) 1);
+        appSettings.setDefaultLanguageMode(LanguageMode.EN);
+        appSettings.setTimeFormat24h(true);
+        appSettings.setStudentVirtualDeviceVisible(true);
+        appSettings.setUpdatedAt(Instant.parse("2026-02-26T10:00:00Z"));
+        appSettings.setUpdatedBy("admin");
+        when(appSettingsRepository.findAll(any(Sort.class))).thenReturn(List.of(appSettings));
+
+        byte[] archiveBytes = service.exportDataArchive(Set.of(SystemDataPart.APP_SETTINGS));
+        Map<String, String> entries = unzipUtf8Entries(archiveBytes);
+
+        assertThat(entries).containsKey("schema.json");
+        assertThat(entries).containsKey("parts/app_settings.json");
+        assertThat(entries.get("schema.json")).contains("\"format\":\"EPL_SYSTEM_DATA_ZIP_V1\"");
+        assertThat(entries.get("schema.json")).contains("\"part\":\"APP_SETTINGS\"");
+        assertThat(entries.get("parts/app_settings.json")).contains("\"defaultLanguageMode\":\"EN\"");
+    }
+
+    @Test
+    void verifyArchiveShouldDetectAvailableParts() {
+        byte[] archiveBytes = createArchive(
+                """
+                        {
+                          "format":"EPL_SYSTEM_DATA_ZIP_V1",
+                          "schemaVersion":1,
+                          "exportedAt":"2026-02-26T10:00:00Z",
+                          "parts":[{"part":"APP_SETTINGS","file":"parts/app_settings.json","rowCount":1}]
+                        }
+                        """,
+                Map.of(
+                        "parts/app_settings.json",
+                        """
+                                [{
+                                  "id":1,
+                                  "defaultLanguageMode":"EN",
+                                  "timeFormat24h":true,
+                                  "studentVirtualDeviceVisible":true,
+                                  "updatedAt":"2026-02-26T10:00:00Z",
+                                  "updatedBy":"admin"
+                                }]
+                                """
+                )
+        );
+
+        SystemDataImportVerifyResponse verified = service.verifyImportArchive(archiveBytes);
+
+        assertThat(verified.valid()).isTrue();
+        assertThat(verified.availableParts())
+                .containsExactly(new SystemDataImportPartInfo(SystemDataPart.APP_SETTINGS, 1));
+    }
+
+    @Test
+    void verifyArchiveShouldReportMissingSchema() {
+        byte[] archiveBytes = createArchive(null, Map.of("parts/app_settings.json", "[]"));
+
+        SystemDataImportVerifyResponse verified = service.verifyImportArchive(archiveBytes);
+
+        assertThat(verified.valid()).isFalse();
+        assertThat(verified.errors()).anyMatch(message -> message.contains("schema.json"));
+    }
+
+    private byte[] createArchive(String schemaJson, Map<String, String> partFiles) {
+        try (java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream();
+             java.util.zip.ZipOutputStream zip = new java.util.zip.ZipOutputStream(output)) {
+            if (schemaJson != null) {
+                zip.putNextEntry(new ZipEntry("schema.json"));
+                zip.write(schemaJson.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                zip.closeEntry();
+            }
+            for (Map.Entry<String, String> entry : partFiles.entrySet()) {
+                zip.putNextEntry(new ZipEntry(entry.getKey()));
+                zip.write(entry.getValue().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                zip.closeEntry();
+            }
+            zip.finish();
+            return output.toByteArray();
+        } catch (IOException ex) {
+            throw new RuntimeException(ex);
+        }
+    }
+
+    private Map<String, String> unzipUtf8Entries(byte[] archiveBytes) throws IOException {
+        Map<String, String> entries = new LinkedHashMap<>();
+        try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(archiveBytes))) {
+            ZipEntry entry;
+            while ((entry = zip.getNextEntry()) != null) {
+                if (entry.isDirectory()) {
+                    continue;
+                }
+                byte[] payload = zip.readAllBytes();
+                entries.put(entry.getName(), new String(payload, java.nio.charset.StandardCharsets.UTF_8));
+            }
+        }
+        return entries;
     }
 }

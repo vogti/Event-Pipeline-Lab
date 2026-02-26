@@ -9,7 +9,6 @@ import type {
   SystemDataImportApplyResponse,
   SystemDataImportVerifyResponse,
   SystemDataPart,
-  SystemDataTransferDocument,
   DeviceStatus,
   GroupConfig,
   GroupOverview,
@@ -94,7 +93,8 @@ async function request<T>(
   token?: string
 ): Promise<T> {
   const headers = new Headers(options.headers ?? {});
-  if (!headers.has('Content-Type') && options.body !== undefined) {
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
+  if (!headers.has('Content-Type') && options.body !== undefined && !isFormData) {
     headers.set('Content-Type', 'application/json');
   }
   if (token) {
@@ -118,6 +118,35 @@ async function request<T>(
   }
 
   return (await parseResponseBody(response)) as T;
+}
+
+async function requestBlob(
+  path: string,
+  options: RequestInit = {},
+  token?: string
+): Promise<Blob> {
+  const headers = new Headers(options.headers ?? {});
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
+  if (!headers.has('Content-Type') && options.body !== undefined && !isFormData) {
+    headers.set('Content-Type', 'application/json');
+  }
+  if (token) {
+    headers.set('X-EPL-Session', token);
+  }
+
+  const response = await fetch(path, {
+    ...options,
+    headers,
+    credentials: 'include'
+  });
+
+  if (!response.ok) {
+    const details = await parseResponseBody(response);
+    const fallback = defaultMessageForStatus(response.status);
+    throw new ApiError(response.status, messageFromErrorPayload(details, fallback), details);
+  }
+
+  return response.blob();
 }
 
 export const api = {
@@ -240,8 +269,8 @@ export const api = {
     return request<AdminSystemStatus>('/api/admin/system-status', undefined, token);
   },
 
-  adminExportSystemData(token: string, parts: SystemDataPart[]): Promise<SystemDataTransferDocument> {
-    return request<SystemDataTransferDocument>(
+  adminExportSystemData(token: string, parts: SystemDataPart[]): Promise<Blob> {
+    return requestBlob(
       '/api/admin/system-status/export',
       {
         method: 'POST',
@@ -253,13 +282,15 @@ export const api = {
 
   adminVerifySystemDataImport(
     token: string,
-    document: SystemDataTransferDocument
+    file: File
   ): Promise<SystemDataImportVerifyResponse> {
+    const formData = new FormData();
+    formData.append('file', file, file.name);
     return request<SystemDataImportVerifyResponse>(
       '/api/admin/system-status/import/verify',
       {
         method: 'POST',
-        body: JSON.stringify({ document })
+        body: formData
       },
       token
     );
@@ -267,14 +298,19 @@ export const api = {
 
   adminApplySystemDataImport(
     token: string,
-    document: SystemDataTransferDocument,
+    file: File,
     selectedParts: SystemDataPart[]
   ): Promise<SystemDataImportApplyResponse> {
+    const formData = new FormData();
+    formData.append('file', file, file.name);
+    for (const part of selectedParts) {
+      formData.append('selectedParts', part);
+    }
     return request<SystemDataImportApplyResponse>(
       '/api/admin/system-status/import/apply',
       {
         method: 'POST',
-        body: JSON.stringify({ document, selectedParts })
+        body: formData
       },
       token
     );

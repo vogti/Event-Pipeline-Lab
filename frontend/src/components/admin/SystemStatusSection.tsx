@@ -33,7 +33,7 @@ interface SystemStatusSectionProps {
   onSystemImportFileSelected: (file: File) => void;
   onVerifySystemImport: () => void;
   onApplySystemImport: () => void;
-  systemDataImportDocumentPresent: boolean;
+  systemDataImportFilePresent: boolean;
   systemDataImportVerify: SystemDataImportVerifyResponse | null;
   systemDataImportSelection: Record<SystemDataPart, boolean>;
   onToggleSystemDataImportPart: (part: SystemDataPart, checked: boolean) => void;
@@ -60,7 +60,7 @@ export function SystemStatusSection({
   onSystemImportFileSelected,
   onVerifySystemImport,
   onApplySystemImport,
-  systemDataImportDocumentPresent,
+  systemDataImportFilePresent,
   systemDataImportVerify,
   systemDataImportSelection,
   onToggleSystemDataImportPart,
@@ -191,7 +191,7 @@ export function SystemStatusSection({
                 <input
                   className="input"
                   type="file"
-                  accept="application/json,.json"
+                  accept="application/zip,.zip,application/json,.json"
                   onChange={(event) => {
                     const file = event.target.files?.[0];
                     if (!file) {
@@ -211,7 +211,7 @@ export function SystemStatusSection({
                   disabled={
                     busyKey === 'admin-system-import-verify' ||
                     busyKey === 'admin-system-import-apply' ||
-                    !systemDataImportDocumentPresent
+                    !systemDataImportFilePresent
                   }
                 >
                   {t('systemDataVerifyAction')}
@@ -289,4 +289,3 @@ export function SystemStatusSection({
     </section>
   );
 }
-

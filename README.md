@@ -220,34 +220,37 @@ UI path:
 - Select which sections should be exported/imported.
 - Import flow is 2-step: `Verify import` first, then `Import selected`.
 
-CLI example (requires `jq`):
+Archive format:
+
+- Export produces a ZIP archive.
+- `schema.json` contains format/schema metadata and the list of exported parts.
+- Each selected part is stored as its own JSON file under `parts/`.
+
+CLI example:
 
 ```bash
-# Export selected sections to a JSON file
+# Export selected sections to a ZIP archive
 docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST \
   http://backend:8080/api/admin/system-status/export \
   -H "X-EPL-Session: ${ADMIN_TOKEN}" \
   -H 'Content-Type: application/json' \
   -d '{"parts":["APP_SETTINGS","TASK_STATE","GROUP_STATE","AUTH_ACCOUNTS","DEVICE_STATUS","VIRTUAL_DEVICE_STATE","EVENT_DATA"]}' \
-  > /tmp/epl-system-export.json
+  > /tmp/epl-system-export.zip
 
-# Verify an import file
-jq -n --slurpfile doc /tmp/epl-system-export.json '{document:$doc[0]}' > /tmp/epl-system-import-verify.json
-docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST \
+# Verify an import archive (multipart upload)
+docker run --rm --network epl_default -v /tmp:/tmp curlimages/curl:8.12.1 -sS -X POST \
   http://backend:8080/api/admin/system-status/import/verify \
   -H "X-EPL-Session: ${ADMIN_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  --data-binary @/tmp/epl-system-import-verify.json
+  -F "file=@/tmp/epl-system-export.zip;type=application/zip"
 
-# Apply selected sections from an import file
-jq -n --slurpfile doc /tmp/epl-system-export.json \
-  '{document:$doc[0],selectedParts:["APP_SETTINGS","TASK_STATE","GROUP_STATE"]}' \
-  > /tmp/epl-system-import-apply.json
-docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST \
+# Apply selected sections from the import archive (multipart upload)
+docker run --rm --network epl_default -v /tmp:/tmp curlimages/curl:8.12.1 -sS -X POST \
   http://backend:8080/api/admin/system-status/import/apply \
   -H "X-EPL-Session: ${ADMIN_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  --data-binary @/tmp/epl-system-import-apply.json
+  -F "file=@/tmp/epl-system-export.zip;type=application/zip" \
+  -F "selectedParts=APP_SETTINGS" \
+  -F "selectedParts=TASK_STATE" \
+  -F "selectedParts=GROUP_STATE"
 ```
 
 ## WebSocket Channels

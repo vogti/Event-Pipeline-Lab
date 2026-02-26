@@ -18,6 +18,10 @@ import ch.marcovogt.epl.taskscenarioengine.TaskState;
 import ch.marcovogt.epl.taskscenarioengine.TaskStateRepository;
 import ch.marcovogt.epl.virtualdevice.VirtualDeviceState;
 import ch.marcovogt.epl.virtualdevice.VirtualDeviceStateRepository;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -28,6 +32,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -38,6 +45,9 @@ import org.springframework.web.server.ResponseStatusException;
 public class SystemDataTransferService {
 
     private static final int SCHEMA_VERSION = 1;
+    private static final String ARCHIVE_FORMAT = "EPL_SYSTEM_DATA_ZIP_V1";
+    private static final String SCHEMA_FILE = "schema.json";
+    private static final String PARTS_DIR = "parts/";
 
     private static final TypeReference<List<AppSettings>> APP_SETTINGS_LIST = new TypeReference<>() {
     };
@@ -109,6 +119,44 @@ public class SystemDataTransferService {
     }
 
     @Transactional(readOnly = true)
+    public byte[] exportDataArchive(Set<SystemDataPart> parts) {
+        SystemDataTransferDocument document = exportData(parts);
+        return writeArchive(document);
+    }
+
+    @Transactional(readOnly = true)
+    public SystemDataImportVerifyResponse verifyImportArchive(byte[] payloadBytes) {
+        try {
+            SystemDataTransferDocument document = readImportDocument(payloadBytes);
+            return verifyImportDocument(document);
+        } catch (ResponseStatusException ex) {
+            String reason = ex.getReason();
+            String message = reason == null || reason.isBlank() ? rootMessage(ex) : reason;
+            return new SystemDataImportVerifyResponse(
+                    false,
+                    null,
+                    null,
+                    List.of(),
+                    List.of(message),
+                    List.of()
+            );
+        }
+    }
+
+    @Transactional
+    public SystemDataImportApplyResponse applyImportArchive(
+            byte[] payloadBytes,
+            Set<SystemDataPart> selectedParts
+    ) {
+        SystemDataTransferDocument document = readImportDocument(payloadBytes);
+        return applyImport(document, selectedParts);
+    }
+
+    public int schemaVersion() {
+        return SCHEMA_VERSION;
+    }
+
+    @Transactional(readOnly = true)
     public SystemDataImportVerifyResponse verifyImportDocument(SystemDataTransferDocument document) {
         VerificationResult verification = verifyDocument(document);
         Integer schemaVersion = document == null ? null : document.schemaVersion();
@@ -159,6 +207,203 @@ public class SystemDataTransferService {
         }
 
         return new SystemDataImportApplyResponse(Instant.now(clock), importedParts);
+    }
+
+    private byte[] writeArchive(SystemDataTransferDocument document) {
+        if (document == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "document is required");
+        }
+        ArchiveSchema schema = buildArchiveSchema(document);
+
+        try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+             ZipOutputStream zip = new ZipOutputStream(outputStream, StandardCharsets.UTF_8)) {
+            writeZipEntry(zip, SCHEMA_FILE, objectMapper.writeValueAsBytes(schema));
+
+            for (ArchivePartRef partRef : schema.parts()) {
+                JsonNode payload = document.parts().get(partRef.part());
+                writeZipEntry(zip, partRef.file(), objectMapper.writeValueAsBytes(payload));
+            }
+
+            zip.finish();
+            return outputStream.toByteArray();
+        } catch (IOException ex) {
+            throw new ResponseStatusException(
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Failed to create export archive",
+                    ex
+            );
+        }
+    }
+
+    private SystemDataTransferDocument readImportDocument(byte[] payloadBytes) {
+        if (payloadBytes == null || payloadBytes.length == 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Import archive is empty");
+        }
+        if (looksLikeJsonDocument(payloadBytes)) {
+            return readJsonDocument(payloadBytes);
+        }
+        return readZipDocument(payloadBytes);
+    }
+
+    private boolean looksLikeJsonDocument(byte[] payloadBytes) {
+        String preview = new String(payloadBytes, StandardCharsets.UTF_8).trim();
+        return preview.startsWith("{");
+    }
+
+    private SystemDataTransferDocument readJsonDocument(byte[] payloadBytes) {
+        try {
+            return objectMapper.readValue(payloadBytes, SystemDataTransferDocument.class);
+        } catch (IOException ex) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Import file is not a valid JSON document",
+                    ex
+            );
+        }
+    }
+
+    private SystemDataTransferDocument readZipDocument(byte[] payloadBytes) {
+        Map<String, byte[]> entries = readZipEntries(payloadBytes);
+        byte[] schemaBytes = entries.get(SCHEMA_FILE);
+        if (schemaBytes == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Import archive is missing " + SCHEMA_FILE
+            );
+        }
+
+        ArchiveSchema schema;
+        try {
+            schema = objectMapper.readValue(schemaBytes, ArchiveSchema.class);
+        } catch (IOException ex) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Schema file is invalid",
+                    ex
+            );
+        }
+        if (schema.format() != null && !ARCHIVE_FORMAT.equals(schema.format())) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Unsupported archive format " + schema.format()
+            );
+        }
+
+        Map<String, JsonNode> parts = new LinkedHashMap<>();
+        for (ArchivePartRef partRef : safeArchiveParts(schema)) {
+            byte[] partBytes = entries.get(partRef.file());
+            if (partBytes == null) {
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "Import archive is missing part file " + partRef.file()
+                );
+            }
+            try {
+                parts.put(partRef.part(), objectMapper.readTree(partBytes));
+            } catch (IOException ex) {
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "Part file " + partRef.file() + " is invalid JSON",
+                        ex
+                );
+            }
+        }
+
+        int schemaVersion = schema.schemaVersion() == null ? 0 : schema.schemaVersion();
+        return new SystemDataTransferDocument(schemaVersion, schema.exportedAt(), parts);
+    }
+
+    private Map<String, byte[]> readZipEntries(byte[] payloadBytes) {
+        Map<String, byte[]> entries = new LinkedHashMap<>();
+        try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(payloadBytes), StandardCharsets.UTF_8)) {
+            ZipEntry entry;
+            while ((entry = zip.getNextEntry()) != null) {
+                if (entry.isDirectory()) {
+                    continue;
+                }
+
+                String name = normalizeEntryName(entry.getName());
+                if (entries.containsKey(name)) {
+                    throw new ResponseStatusException(
+                            HttpStatus.BAD_REQUEST,
+                            "Import archive contains duplicate file " + name
+                    );
+                }
+
+                ByteArrayOutputStream entryBuffer = new ByteArrayOutputStream();
+                zip.transferTo(entryBuffer);
+                entries.put(name, entryBuffer.toByteArray());
+            }
+        } catch (ResponseStatusException ex) {
+            throw ex;
+        } catch (IOException ex) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Import file is not a valid zip archive",
+                    ex
+            );
+        }
+        return entries;
+    }
+
+    private String normalizeEntryName(String rawName) {
+        if (rawName == null || rawName.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Import archive contains empty file name");
+        }
+        String normalized = rawName.replace('\\', '/').trim();
+        if (normalized.startsWith("/") || normalized.contains("../")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Import archive contains invalid file path");
+        }
+        return normalized;
+    }
+
+    private List<ArchivePartRef> safeArchiveParts(ArchiveSchema schema) {
+        if (schema == null || schema.parts() == null) {
+            return List.of();
+        }
+
+        List<ArchivePartRef> refs = new ArrayList<>();
+        for (ArchivePartRef partRef : schema.parts()) {
+            if (partRef == null || partRef.part() == null || partRef.part().isBlank()) {
+                continue;
+            }
+            if (partRef.file() == null || partRef.file().isBlank()) {
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "Schema entry for part " + partRef.part() + " is missing file name"
+                );
+            }
+            refs.add(new ArchivePartRef(partRef.part().trim(), normalizeEntryName(partRef.file()), partRef.rowCount()));
+        }
+        return refs;
+    }
+
+    private ArchiveSchema buildArchiveSchema(SystemDataTransferDocument document) {
+        List<ArchivePartRef> partRefs = new ArrayList<>();
+        for (Map.Entry<String, JsonNode> entry : document.parts().entrySet()) {
+            String partKey = entry.getKey();
+            String fileName = partFileName(partKey);
+            long rowCount = entry.getValue() != null && entry.getValue().isArray() ? entry.getValue().size() : 0;
+            partRefs.add(new ArchivePartRef(partKey, fileName, rowCount));
+        }
+        return new ArchiveSchema(
+                ARCHIVE_FORMAT,
+                document.schemaVersion(),
+                document.exportedAt(),
+                partRefs
+        );
+    }
+
+    private String partFileName(String partKey) {
+        String normalized = partKey == null ? "unknown" : partKey.trim().toLowerCase();
+        return PARTS_DIR + normalized + ".json";
+    }
+
+    private void writeZipEntry(ZipOutputStream zip, String entryName, byte[] payload) throws IOException {
+        ZipEntry entry = new ZipEntry(entryName);
+        zip.putNextEntry(entry);
+        zip.write(payload);
+        zip.closeEntry();
     }
 
     private JsonNode exportPartNode(SystemDataPart part) {
@@ -411,5 +656,20 @@ public class SystemDataTransferService {
                     .map(entry -> new SystemDataImportPartInfo(entry.getKey(), entry.getValue().size()))
                     .toList();
         }
+    }
+
+    private record ArchiveSchema(
+            String format,
+            Integer schemaVersion,
+            Instant exportedAt,
+            List<ArchivePartRef> parts
+    ) {
+    }
+
+    private record ArchivePartRef(
+            String part,
+            String file,
+            Long rowCount
+    ) {
     }
 }

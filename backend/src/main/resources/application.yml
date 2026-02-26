@@ -21,6 +21,10 @@ spring:
           time_zone: UTC
   flyway:
     enabled: true
+  servlet:
+    multipart:
+      max-file-size: ${EPL_MULTIPART_MAX_FILE_SIZE:256MB}
+      max-request-size: ${EPL_MULTIPART_MAX_REQUEST_SIZE:256MB}
 management:
   endpoints:
     web:

@@ -9,7 +9,6 @@ import type {
   LanguageMode,
   SystemDataImportVerifyResponse,
   SystemDataPart,
-  SystemDataTransferDocument,
   TimestampValue,
   VirtualDeviceState
 } from './types';
@@ -147,7 +146,7 @@ export default function App() {
     () => createSystemDataPartSelection(true)
   );
   const [systemDataImportFileName, setSystemDataImportFileName] = useState('');
-  const [systemDataImportDocument, setSystemDataImportDocument] = useState<SystemDataTransferDocument | null>(null);
+  const [systemDataImportFile, setSystemDataImportFile] = useState<File | null>(null);
   const [systemDataImportVerify, setSystemDataImportVerify] = useState<SystemDataImportVerifyResponse | null>(null);
   const [systemDataImportSelection, setSystemDataImportSelection] = useState<Record<SystemDataPart, boolean>>(
     () => createSystemDataPartSelection(false)
@@ -355,7 +354,7 @@ export default function App() {
     setAdminPage('dashboard');
     setSystemDataExportSelection(createSystemDataPartSelection(true));
     setSystemDataImportFileName('');
-    setSystemDataImportDocument(null);
+    setSystemDataImportFile(null);
     setSystemDataImportVerify(null);
     setSystemDataImportSelection(createSystemDataPartSelection(false));
     adminDataRef.current = null;
@@ -1271,30 +1270,14 @@ export default function App() {
     });
   }, []);
 
-  const handleSystemImportFileChange = useCallback(async (file: File) => {
-    try {
-      const raw = await file.text();
-      const parsed = JSON.parse(raw) as SystemDataTransferDocument;
-      setSystemDataImportFileName(file.name);
-      setSystemDataImportDocument(parsed);
-      setSystemDataImportVerify(null);
-      setSystemDataImportSelection(createSystemDataPartSelection(false));
-      setInfoMessage(null);
-      setErrorMessage(null);
-    } catch (error) {
-      setSystemDataImportFileName(file.name);
-      setSystemDataImportDocument(null);
-      setSystemDataImportVerify(null);
-      setSystemDataImportSelection(createSystemDataPartSelection(false));
-      setErrorMessage(toErrorMessage(error));
-    }
-  }, []);
-
   const handleSystemImportFileSelected = useCallback((file: File) => {
-    handleSystemImportFileChange(file).catch((error) => {
-      setErrorMessage(toErrorMessage(error));
-    });
-  }, [handleSystemImportFileChange]);
+    setSystemDataImportFileName(file.name);
+    setSystemDataImportFile(file);
+    setSystemDataImportVerify(null);
+    setSystemDataImportSelection(createSystemDataPartSelection(false));
+    setInfoMessage(null);
+    setErrorMessage(null);
+  }, []);
 
   const exportSystemData = async () => {
     if (!token || !session || session.role !== 'ADMIN') {
@@ -1309,11 +1292,9 @@ export default function App() {
     setErrorMessage(null);
 
     try {
-      const exportDocument = await api.adminExportSystemData(token, selectedSystemDataExportParts);
-      const exportJson = JSON.stringify(exportDocument, null, 2);
-      const blob = new Blob([exportJson], { type: 'application/json' });
+      const blob = await api.adminExportSystemData(token, selectedSystemDataExportParts);
       const safeStamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const fileName = `epl-export-${safeStamp}.json`;
+      const fileName = `epl-export-${safeStamp}.zip`;
       const objectUrl = URL.createObjectURL(blob);
       const link = window.document.createElement('a');
       link.href = objectUrl;
@@ -1334,7 +1315,7 @@ export default function App() {
     if (!token || !session || session.role !== 'ADMIN') {
       return;
     }
-    if (!systemDataImportDocument) {
+    if (!systemDataImportFile) {
       setErrorMessage(t('systemDataImportNoFile'));
       return;
     }
@@ -1343,7 +1324,7 @@ export default function App() {
     setErrorMessage(null);
 
     try {
-      const verified = await api.adminVerifySystemDataImport(token, systemDataImportDocument);
+      const verified = await api.adminVerifySystemDataImport(token, systemDataImportFile);
       setSystemDataImportVerify(verified);
 
       const selected = createSystemDataPartSelection(false);
@@ -1370,7 +1351,7 @@ export default function App() {
     if (!token || !session || session.role !== 'ADMIN') {
       return;
     }
-    if (!systemDataImportDocument || !systemDataImportVerify || !systemDataImportVerify.valid) {
+    if (!systemDataImportFile || !systemDataImportVerify || !systemDataImportVerify.valid) {
       setErrorMessage(t('systemDataImportInvalid'));
       return;
     }
@@ -1388,7 +1369,7 @@ export default function App() {
     try {
       const imported = await api.adminApplySystemDataImport(
         token,
-        systemDataImportDocument,
+        systemDataImportFile,
         selectedSystemDataImportParts
       );
       const summary = imported.importedParts
@@ -2290,7 +2271,7 @@ export default function App() {
                   onSystemImportFileSelected={handleSystemImportFileSelected}
                   onVerifySystemImport={verifySystemImport}
                   onApplySystemImport={applySystemImport}
-                  systemDataImportDocumentPresent={!!systemDataImportDocument}
+                  systemDataImportFilePresent={!!systemDataImportFile}
                   systemDataImportVerify={systemDataImportVerify}
                   systemDataImportSelection={systemDataImportSelection}
                   onToggleSystemDataImportPart={toggleSystemDataImportPart}
