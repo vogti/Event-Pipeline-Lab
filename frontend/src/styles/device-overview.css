@@ -47,6 +47,28 @@
   padding-right: 0.15rem;
 }
 
+.admin-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.45rem;
+}
+
+.pipeline-task-inline-editor {
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid rgba(36, 66, 86, 0.14);
+  display: grid;
+  gap: 0.55rem;
+}
+
+.task-config-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
 .devices-grid {
   grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
 }

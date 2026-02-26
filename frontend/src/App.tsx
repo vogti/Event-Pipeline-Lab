@@ -84,7 +84,8 @@ import { AdminDevicesSection } from './components/admin/AdminDevicesSection';
 import { AdminFeedSection } from './components/admin/AdminFeedSection';
 import { AdminMqttEventModal } from './components/admin/AdminMqttEventModal';
 import { AdminDashboardSection } from './components/admin/AdminDashboardSection';
-import { AdminGroupsTasksSection } from './components/admin/AdminGroupsTasksSection';
+import { AdminTasksSection } from './components/admin/AdminTasksSection';
+import { AdminGroupsSection } from './components/admin/AdminGroupsSection';
 import { AdminPageNav } from './components/admin/AdminPageNav';
 import { AdminSettingsSection } from './components/admin/AdminSettingsSection';
 import { AppTopBar } from './components/layout/AppTopBar';
@@ -100,8 +101,6 @@ import { StudentCommandsSection } from './components/student/StudentCommandsSect
 import { StudentVirtualDeviceSection } from './components/student/StudentVirtualDeviceSection';
 import { AppModals } from './components/AppModals';
 import { PipelineBuilderSection } from './components/pipeline/PipelineBuilderSection';
-import { PipelineTaskConfigSection } from './components/pipeline/PipelineTaskConfigSection';
-import { PipelineCompareSection } from './components/pipeline/PipelineCompareSection';
 import { PipelineScenariosSection } from './components/pipeline/PipelineScenariosSection';
 import { useAdminSystemStatusPolling } from './hooks/useAdminSystemStatusPolling';
 import { useRealtimeSync } from './hooks/useRealtimeSync';
@@ -1396,6 +1395,38 @@ export default function App() {
     },
     [loadAdminPipelineForGroup]
   );
+
+  const openAdminPipelineBuilderForGroup = useCallback(
+    (groupKey: string) => {
+      selectAdminPipelineGroup(groupKey);
+      setAdminPage('pipeline');
+    },
+    [selectAdminPipelineGroup]
+  );
+
+  const resetAdminGroupProgress = async (groupKey: string) => {
+    if (!token) {
+      return;
+    }
+    setBusyKey(`group-reset-${groupKey}`);
+    setErrorMessage(null);
+    try {
+      const reset = await api.adminResetGroupProgress(token, groupKey);
+      await refreshAdminGroups(token);
+      if (reset.resetVirtualDevice) {
+        const virtualDevices = await api.adminVirtualDevices(token);
+        setAdminData((previous) => (previous ? { ...previous, virtualDevices } : previous));
+      }
+      if (adminPipelineGroupKeyRef.current === groupKey) {
+        await loadAdminPipelineForGroup(groupKey);
+      }
+      setInfoMessage(reset.hadProgress ? t('groupResetDone') : t('groupNoChangesYet'));
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error));
+    } finally {
+      setBusyKey(null);
+    }
+  };
 
   const saveAdminPipeline = async () => {
     if (!token || !adminPipelineDraft || !adminPipelineGroupKey) {
@@ -3312,43 +3343,40 @@ export default function App() {
                 />
               ) : null}
 
-              {adminPage === 'groupsTasks' ? (
-                <>
-                  <AdminGroupsTasksSection
-                    t={t}
-                    tasks={adminData.tasks}
-                    groups={adminData.groups}
-                    taskLabel={(task) => taskTitle(task, language)}
-                    taskDescriptionLabel={(task) => taskDescription(task, language)}
-                    onActivateTask={activateTask}
-                    isTaskActivationBusy={(taskId) => busyKey === `activate-${taskId}`}
-                    formatTs={formatTs}
-                  />
+              {adminPage === 'tasks' ? (
+                <AdminTasksSection
+                  t={t}
+                  tasks={adminData.tasks}
+                  selectedTaskId={adminPipelineTaskId}
+                  taskLabel={(task) => taskTitle(task, language)}
+                  taskDescriptionLabel={(task) => taskDescription(task, language)}
+                  taskConfig={adminTaskPipelineConfigDraft ?? adminTaskPipelineConfig}
+                  taskConfigBusy={
+                    busyKey === 'admin-task-pipeline-config' ||
+                    busyKey === 'admin-task-pipeline-config-load'
+                  }
+                  onActivateTask={activateTask}
+                  isTaskActivationBusy={(taskId) => busyKey === `activate-${taskId}`}
+                  onSelectTask={selectAdminPipelineTask}
+                  onToggleVisibleToStudents={changeTaskPipelineVisibleToStudents}
+                  onSlotCountChange={changeTaskPipelineSlotCount}
+                  onToggleAllowedBlock={toggleTaskPipelineAllowedBlock}
+                  onSaveTaskConfig={saveAdminTaskPipelineConfig}
+                  formatTs={formatTs}
+                />
+              ) : null}
 
-                  <PipelineTaskConfigSection
-                    t={t}
-                    tasks={adminData.tasks}
-                    selectedTaskId={adminPipelineTaskId}
-                    taskLabel={(task) => taskTitle(task, language)}
-                    config={adminTaskPipelineConfigDraft ?? adminTaskPipelineConfig}
-                    busy={
-                      busyKey === 'admin-task-pipeline-config' ||
-                      busyKey === 'admin-task-pipeline-config-load'
-                    }
-                    onSelectTask={selectAdminPipelineTask}
-                    onToggleVisibleToStudents={changeTaskPipelineVisibleToStudents}
-                    onSlotCountChange={changeTaskPipelineSlotCount}
-                    onToggleAllowedBlock={toggleTaskPipelineAllowedBlock}
-                    onSave={saveAdminTaskPipelineConfig}
-                    formatTs={formatTs}
-                  />
-
-                  <PipelineCompareSection
-                    t={t}
-                    rows={adminPipelineCompareRows}
-                    formatTs={formatTs}
-                  />
-                </>
+              {adminPage === 'groups' ? (
+                <AdminGroupsSection
+                  t={t}
+                  groups={adminData.groups}
+                  formatTs={formatTs}
+                  onShowPipelineBuilder={openAdminPipelineBuilderForGroup}
+                  onResetGroupProgress={(groupKey) => {
+                    void resetAdminGroupProgress(groupKey);
+                  }}
+                  isResetBusy={(groupKey) => busyKey === `group-reset-${groupKey}`}
+                />
               ) : null}
 
               {adminPage === 'scenarios' ? (

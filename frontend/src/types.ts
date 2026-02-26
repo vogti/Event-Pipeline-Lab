@@ -123,6 +123,15 @@ export interface GroupOverview {
   onlineCount: number;
   presence: PresenceUser[];
   config: GroupConfig;
+  hasProgress: boolean;
+}
+
+export interface GroupResetProgressResponse {
+  groupKey: string;
+  hadProgress: boolean;
+  resetPipelineStateRows: number;
+  resetVirtualDevice: boolean;
+  resetAt: TimestampValue;
 }
 
 export interface AppSettings {

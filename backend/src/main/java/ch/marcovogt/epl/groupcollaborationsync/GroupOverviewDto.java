@@ -7,6 +7,7 @@ public record GroupOverviewDto(
         String groupKey,
         int onlineCount,
         List<PresenceUserDto> presence,
-        GroupConfigDto config
+        GroupConfigDto config,
+        boolean hasProgress
 ) {
 }

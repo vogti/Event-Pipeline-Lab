@@ -431,6 +431,7 @@ function sameGroupOverview(a: GroupOverview, b: GroupOverview): boolean {
   return (
     a.groupKey === b.groupKey &&
     a.onlineCount === b.onlineCount &&
+    a.hasProgress === b.hasProgress &&
     samePresenceList(a.presence, b.presence) &&
     sameGroupConfigMeta(a.config, b.config)
   );

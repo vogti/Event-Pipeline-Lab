@@ -8,6 +8,9 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+
+import static org.springframework.http.HttpStatus.BAD_REQUEST;
 
 @Service
 public class GroupStateService {
@@ -26,12 +29,7 @@ public class GroupStateService {
     public GroupConfigDto getOrCreate(String groupKey) {
         GroupState state = groupStateRepository.findById(groupKey)
                 .orElseGet(() -> {
-                    GroupState created = new GroupState();
-                    created.setGroupKey(groupKey);
-                    created.setConfigJson("{}");
-                    created.setRevision(0L);
-                    created.setUpdatedAt(Instant.now(clock));
-                    created.setUpdatedBy("system");
+                    GroupState created = createDefaultState(groupKey);
                     return groupStateRepository.save(created);
                 });
 
@@ -53,6 +51,31 @@ public class GroupStateService {
         state.setUpdatedAt(Instant.now(clock));
         state.setUpdatedBy(updatedBy);
 
+        return toDto(groupStateRepository.save(state));
+    }
+
+    @Transactional(readOnly = true)
+    public boolean hasProgress(String groupKey) {
+        if (groupKey == null || groupKey.isBlank()) {
+            return false;
+        }
+        return groupStateRepository.existsByGroupKeyAndRevisionGreaterThan(groupKey.trim(), 0L);
+    }
+
+    @Transactional
+    public GroupConfigDto resetProgress(String groupKey, String actor) {
+        String normalizedGroupKey = normalizeGroupKey(groupKey);
+        GroupState state = groupStateRepository.findById(normalizedGroupKey)
+                .orElseGet(() -> groupStateRepository.save(createDefaultState(normalizedGroupKey)));
+
+        if (state.getRevision() == 0L && "{}".equals(state.getConfigJson())) {
+            return toDto(state);
+        }
+
+        state.setConfigJson("{}");
+        state.setRevision(0L);
+        state.setUpdatedAt(Instant.now(clock));
+        state.setUpdatedBy(actor == null || actor.isBlank() ? "system" : actor);
         return toDto(groupStateRepository.save(state));
     }
 
@@ -84,5 +107,22 @@ public class GroupStateService {
             fallback.put("_raw", raw);
             return fallback;
         }
+    }
+
+    private String normalizeGroupKey(String groupKey) {
+        if (groupKey == null || groupKey.isBlank()) {
+            throw new ResponseStatusException(BAD_REQUEST, "groupKey must not be blank");
+        }
+        return groupKey.trim();
+    }
+
+    private GroupState createDefaultState(String groupKey) {
+        GroupState created = new GroupState();
+        created.setGroupKey(groupKey);
+        created.setConfigJson("{}");
+        created.setRevision(0L);
+        created.setUpdatedAt(Instant.now(clock));
+        created.setUpdatedBy("system");
+        return created;
     }
 }

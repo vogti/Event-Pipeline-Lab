@@ -17,6 +17,17 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class VirtualDeviceService {
 
+    private static final double DEFAULT_TEMPERATURE_C = 22.5;
+    private static final double DEFAULT_HUMIDITY_PCT = 46.0;
+    private static final double DEFAULT_BRIGHTNESS = 1.65;
+    private static final long DEFAULT_COUNTER = 0L;
+    private static final boolean DEFAULT_BUTTON_RED_PRESSED = false;
+    private static final boolean DEFAULT_BUTTON_BLACK_PRESSED = false;
+    private static final boolean DEFAULT_LED_GREEN_ON = false;
+    private static final boolean DEFAULT_LED_ORANGE_ON = false;
+    private static final int DEFAULT_RSSI = 0;
+    private static final String DEFAULT_IP_ADDRESS = "virtual";
+
     private final VirtualDeviceStateRepository virtualDeviceStateRepository;
     private final MqttGatewayClient mqttGatewayClient;
     private final ObjectMapper objectMapper;
@@ -60,6 +71,40 @@ public class VirtualDeviceService {
     @Transactional(readOnly = true)
     public Optional<VirtualDeviceStateDto> findByGroupKey(String groupKey) {
         return virtualDeviceStateRepository.findByGroupKey(groupKey).map(VirtualDeviceStateDto::from);
+    }
+
+    @Transactional(readOnly = true)
+    public boolean hasGroupProgress(String groupKey) {
+        if (groupKey == null || groupKey.isBlank()) {
+            return false;
+        }
+        return virtualDeviceStateRepository.findByGroupKey(groupKey.trim())
+                .map(state -> !matchesDefaults(state))
+                .orElse(false);
+    }
+
+    @Transactional
+    public boolean resetGroupProgress(String groupKey) {
+        if (groupKey == null || groupKey.isBlank()) {
+            return false;
+        }
+        Optional<VirtualDeviceState> existing = virtualDeviceStateRepository.findByGroupKey(groupKey.trim());
+        if (existing.isEmpty()) {
+            return false;
+        }
+        VirtualDeviceState state = existing.get();
+        if (matchesDefaults(state)) {
+            return false;
+        }
+
+        applyPatch(state.getDeviceId(), defaultControlRequest());
+        VirtualDeviceState refreshed = virtualDeviceStateRepository.findById(state.getDeviceId()).orElse(state);
+        if (refreshed.getRssi() != DEFAULT_RSSI || !DEFAULT_IP_ADDRESS.equals(refreshed.getIpAddress())) {
+            refreshed.setRssi(DEFAULT_RSSI);
+            refreshed.setIpAddress(DEFAULT_IP_ADDRESS);
+            virtualDeviceStateRepository.save(refreshed);
+        }
+        return true;
     }
 
     @Transactional
@@ -203,6 +248,33 @@ public class VirtualDeviceService {
         } catch (JsonProcessingException ex) {
             throw new IllegalStateException("Failed to serialize virtual device payload", ex);
         }
+    }
+
+    private VirtualDeviceControlRequest defaultControlRequest() {
+        return new VirtualDeviceControlRequest(
+                DEFAULT_BUTTON_RED_PRESSED,
+                DEFAULT_BUTTON_BLACK_PRESSED,
+                DEFAULT_LED_GREEN_ON,
+                DEFAULT_LED_ORANGE_ON,
+                DEFAULT_TEMPERATURE_C,
+                DEFAULT_HUMIDITY_PCT,
+                DEFAULT_BRIGHTNESS,
+                DEFAULT_COUNTER
+        );
+    }
+
+    private boolean matchesDefaults(VirtualDeviceState state) {
+        return state.isOnline()
+                && state.getRssi() == DEFAULT_RSSI
+                && DEFAULT_IP_ADDRESS.equals(state.getIpAddress())
+                && Double.compare(state.getTemperatureC(), DEFAULT_TEMPERATURE_C) == 0
+                && Double.compare(state.getHumidityPct(), DEFAULT_HUMIDITY_PCT) == 0
+                && Double.compare(state.getBrightness(), DEFAULT_BRIGHTNESS) == 0
+                && state.getCounterValue() == DEFAULT_COUNTER
+                && state.isButtonRedPressed() == DEFAULT_BUTTON_RED_PRESSED
+                && state.isButtonBlackPressed() == DEFAULT_BUTTON_BLACK_PRESSED
+                && state.isLedGreenOn() == DEFAULT_LED_GREEN_ON
+                && state.isLedOrangeOn() == DEFAULT_LED_ORANGE_ON;
     }
 
     private static final class ChangeSet {

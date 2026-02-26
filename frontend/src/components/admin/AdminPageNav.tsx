@@ -39,11 +39,18 @@ export function AdminPageNav({ t, adminPage, onChangePage }: AdminPageNavProps) 
         {t('liveFeed')}
       </button>
       <button
-        className={`button tiny ${adminPage === 'groupsTasks' ? 'active' : 'secondary'}`}
+        className={`button tiny ${adminPage === 'tasks' ? 'active' : 'secondary'}`}
         type="button"
-        onClick={() => onChangePage('groupsTasks')}
+        onClick={() => onChangePage('tasks')}
       >
-        {t('groupsTasks')}
+        {t('tasks')}
+      </button>
+      <button
+        className={`button tiny ${adminPage === 'groups' ? 'active' : 'secondary'}`}
+        type="button"
+        onClick={() => onChangePage('groups')}
+      >
+        {t('groups')}
       </button>
       <button
         className={`button tiny ${adminPage === 'scenarios' ? 'active' : 'secondary'}`}

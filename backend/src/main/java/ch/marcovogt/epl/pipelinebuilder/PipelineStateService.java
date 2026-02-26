@@ -319,6 +319,39 @@ public class PipelineStateService {
         return taskStateService.getActiveTask().pipeline().lecturerMode();
     }
 
+    @Transactional(readOnly = true)
+    public boolean hasGroupProgress(String groupKey) {
+        String normalizedGroupKey = normalizeGroupKey(groupKey);
+        return pipelineStateRepository.existsByOwnerTypeAndOwnerKeyAndRevisionGreaterThan(
+                PipelineOwnerType.GROUP,
+                normalizedGroupKey,
+                0L
+        );
+    }
+
+    @Transactional
+    public int resetGroupProgress(String groupKey) {
+        String normalizedGroupKey = normalizeGroupKey(groupKey);
+        List<PipelineState> states = pipelineStateRepository.findAllByOwnerTypeAndOwnerKey(
+                PipelineOwnerType.GROUP,
+                normalizedGroupKey
+        );
+        if (states.isEmpty()) {
+            return 0;
+        }
+
+        LinkedHashSet<String> affectedTaskIds = new LinkedHashSet<>();
+        for (PipelineState state : states) {
+            affectedTaskIds.add(state.getTaskId());
+        }
+
+        pipelineStateRepository.deleteAll(states);
+        for (String taskId : affectedTaskIds) {
+            pipelineObservabilityService.reset(taskId, normalizedGroupKey);
+        }
+        return states.size();
+    }
+
     @Transactional
     public List<PipelineCompareRowDto> compareForActiveTask(List<String> groupKeys) {
         List<PipelineCompareRowDto> rows = new ArrayList<>();

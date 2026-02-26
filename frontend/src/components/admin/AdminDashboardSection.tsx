@@ -57,8 +57,11 @@ export function AdminDashboardSection({
           <button className="button secondary" type="button" onClick={() => onNavigate('feed')}>
             {t('liveFeed')}
           </button>
-          <button className="button secondary" type="button" onClick={() => onNavigate('groupsTasks')}>
-            {t('groupsTasks')}
+          <button className="button secondary" type="button" onClick={() => onNavigate('tasks')}>
+            {t('tasks')}
+          </button>
+          <button className="button secondary" type="button" onClick={() => onNavigate('groups')}>
+            {t('groups')}
           </button>
           <button className="button secondary" type="button" onClick={() => onNavigate('systemStatus')}>
             {t('systemStatus')}

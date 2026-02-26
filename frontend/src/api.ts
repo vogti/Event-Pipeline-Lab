@@ -12,6 +12,7 @@ import type {
   DeviceStatus,
   GroupConfig,
   GroupOverview,
+  GroupResetProgressResponse,
   LanguageMode,
   PipelineInputSection,
   PipelineLogModeStatus,
@@ -299,6 +300,16 @@ export const api = {
 
   adminGroups(token: string): Promise<GroupOverview[]> {
     return request<GroupOverview[]>('/api/admin/groups', undefined, token);
+  },
+
+  adminResetGroupProgress(token: string, groupKey: string): Promise<GroupResetProgressResponse> {
+    return request<GroupResetProgressResponse>(
+      `/api/admin/groups/${encodeURIComponent(groupKey)}/reset-progress`,
+      {
+        method: 'POST'
+      },
+      token
+    );
   },
 
   adminSettings(token: string): Promise<AppSettings> {
