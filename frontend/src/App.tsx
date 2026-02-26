@@ -641,15 +641,22 @@ export default function App() {
   }, [adminData]);
 
   useEffect(() => {
-    const adminDevices = adminData?.devices;
     const adminEvents = adminData?.events;
-    if (!adminDevices || !adminEvents || adminPage !== 'devices') {
+    if (!adminEvents || adminPage !== 'devices') {
       return;
     }
 
     const latestSnapshots = buildDeviceTelemetrySnapshots(adminEvents);
     if (Object.keys(latestSnapshots).length > 0) {
       setAdminDeviceSnapshots((previous) => mergeTelemetrySnapshotCache(previous, latestSnapshots));
+    }
+  }, [adminData?.events, adminPage]);
+
+  useEffect(() => {
+    const adminDevices = adminData?.devices;
+    const adminEvents = adminData?.events;
+    if (!adminDevices || !adminEvents || adminPage !== 'devices') {
+      return;
     }
 
     const latestIpByDeviceId: Record<string, string> = {};
