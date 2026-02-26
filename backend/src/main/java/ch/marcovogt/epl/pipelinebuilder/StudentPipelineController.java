@@ -46,4 +46,15 @@ public class StudentPipelineController {
         realtimeSyncService.broadcastPipelineState(updated);
         return updated;
     }
+
+    @PostMapping("/state/reset")
+    public PipelineViewDto resetState(
+            HttpServletRequest request,
+            @Valid @RequestBody StudentPipelineStateResetRequest body
+    ) {
+        SessionPrincipal principal = requestAuth.requireRole(request, AppRole.STUDENT);
+        PipelineViewDto updated = pipelineStateService.resetStudentState(principal, body.action());
+        realtimeSyncService.broadcastPipelineState(updated);
+        return updated;
+    }
 }

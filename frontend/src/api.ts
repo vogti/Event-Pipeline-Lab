@@ -450,6 +450,17 @@ export const api = {
     );
   },
 
+  resetStudentPipelineState(token: string): Promise<PipelineView> {
+    return request<PipelineView>(
+      '/api/student/pipeline/state/reset',
+      {
+        method: 'POST',
+        body: JSON.stringify({ action: 'RESET_STATE' })
+      },
+      token
+    );
+  },
+
   adminPipeline(token: string, groupKey: string): Promise<PipelineView> {
     return request<PipelineView>(
       withQuery('/api/admin/pipeline', { groupKey }),
@@ -478,6 +489,21 @@ export const api = {
       {
         method: 'POST',
         body: JSON.stringify({ groupKey, input, processing, sink })
+      },
+      token
+    );
+  },
+
+  controlAdminPipelineState(
+    token: string,
+    groupKey: string,
+    action: 'RESET_STATE' | 'RESTART_STATE_LOST' | 'RESTART_STATE_RETAINED'
+  ): Promise<PipelineView> {
+    return request<PipelineView>(
+      '/api/admin/pipeline/state/control',
+      {
+        method: 'POST',
+        body: JSON.stringify({ groupKey, action })
       },
       token
     );

@@ -54,6 +54,7 @@ class PipelineObservabilityServiceTest {
         assertThat(rateLimitBlock.outCount()).isEqualTo(2);
         assertThat(rateLimitBlock.dropCount()).isEqualTo(8);
         assertThat(rateLimitBlock.dropReasons()).containsEntry("rate_limited", 8L);
+        assertThat(rateLimitBlock.stateType()).isEqualTo("NONE");
         assertThat(rateLimitBlock.samples().size()).isLessThanOrEqualTo(10);
         assertThat(rateLimitBlock.samples()).isNotEmpty();
     }
@@ -77,6 +78,38 @@ class PipelineObservabilityServiceTest {
         assertThat(dedupBlock.outCount()).isEqualTo(1);
         assertThat(dedupBlock.dropCount()).isEqualTo(1);
         assertThat(dedupBlock.dropReasons()).containsEntry("duplicate", 1L);
+        assertThat(dedupBlock.stateType()).isEqualTo("DEDUP_STORE");
+        assertThat(dedupBlock.stateEntryCount()).isGreaterThan(0);
+        assertThat(dedupBlock.stateTtlSeconds()).isEqualTo(10L);
+    }
+
+    @Test
+    void restartLostShouldClearObservedStateWhileRetainedShouldKeep() {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(0, "WINDOW_AGGREGATE", java.util.Map.of()))
+        );
+
+        CanonicalEventDto event = event("window", "{\"counter\":1}");
+        service.recordEvent("task_intro", "epld01", processing, event);
+        service.recordEvent("task_intro", "epld01", processing, event);
+
+        PipelineObservabilityDto before = service.snapshot("task_intro", "epld01", processing);
+        assertThat(before.observedEvents()).isEqualTo(2);
+        assertThat(before.blocks().get(0).stateEntryCount()).isEqualTo(2);
+
+        service.restart("task_intro", "epld01", processing, true);
+        PipelineObservabilityDto retained = service.snapshot("task_intro", "epld01", processing);
+        assertThat(retained.statePersistenceMode()).isEqualTo("PERSISTED");
+        assertThat(retained.lastRestartMode()).isEqualTo("RETAINED");
+        assertThat(retained.blocks().get(0).stateEntryCount()).isEqualTo(2);
+
+        service.restart("task_intro", "epld01", processing, false);
+        PipelineObservabilityDto lost = service.snapshot("task_intro", "epld01", processing);
+        assertThat(lost.statePersistenceMode()).isEqualTo("EPHEMERAL");
+        assertThat(lost.lastRestartMode()).isEqualTo("LOST");
+        assertThat(lost.blocks().get(0).stateEntryCount()).isEqualTo(0);
     }
 
     private CanonicalEventDto event(String suffix, String payloadJson) {

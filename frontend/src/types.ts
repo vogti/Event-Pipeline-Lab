@@ -223,6 +223,8 @@ export interface PipelinePermissions {
   inputEditable: boolean;
   processingEditable: boolean;
   sinkEditable: boolean;
+  stateResetAllowed: boolean;
+  stateRestartAllowed: boolean;
   lecturerMode: boolean;
   allowedProcessingBlocks: string[];
   slotCount: number;
@@ -246,6 +248,10 @@ export interface PipelineSampleEvent {
 export interface PipelineBlockObservability {
   slotIndex: number;
   blockType: string;
+  stateType: string;
+  stateEntryCount: number;
+  stateTtlSeconds: number | null;
+  stateMemoryBytes: number;
   inCount: number;
   outCount: number;
   dropCount: number;
@@ -261,6 +267,10 @@ export interface PipelineObservability {
   sampleEvery: number;
   maxSamplesPerBlock: number;
   observedEvents: number;
+  statePersistenceMode: string;
+  restartCount: number;
+  lastRestartAt: TimestampValue;
+  lastRestartMode: string | null;
   blocks: PipelineBlockObservability[];
 }
 

@@ -83,4 +83,26 @@ public class AdminPipelineController {
 
         return updated;
     }
+
+    @PostMapping("/state/control")
+    public PipelineViewDto controlState(
+            HttpServletRequest request,
+            @Valid @RequestBody PipelineStateControlRequest body
+    ) {
+        SessionPrincipal principal = requestAuth.requireRole(request, AppRole.ADMIN);
+        PipelineViewDto updated = pipelineStateService.controlAdminState(body);
+        realtimeSyncService.broadcastPipelineState(updated);
+
+        adminAuditLogger.logAction(
+                "admin.pipeline.state.control",
+                principal.username(),
+                Map.of(
+                        "taskId", updated.taskId(),
+                        "groupKey", updated.groupKey(),
+                        "action", body.action().name()
+                )
+        );
+
+        return updated;
+    }
 }

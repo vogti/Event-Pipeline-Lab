@@ -48,6 +48,8 @@ function createPipelineView(): PipelineView {
       inputEditable: false,
       processingEditable: true,
       sinkEditable: false,
+      stateResetAllowed: true,
+      stateRestartAllowed: false,
       lecturerMode: false,
       allowedProcessingBlocks: ['FILTER_DEVICE_TOPIC'],
       slotCount: 2
@@ -56,6 +58,10 @@ function createPipelineView(): PipelineView {
       sampleEvery: 10,
       maxSamplesPerBlock: 120,
       observedEvents: 0,
+      statePersistenceMode: 'EPHEMERAL',
+      restartCount: 0,
+      lastRestartAt: null,
+      lastRestartMode: null,
       blocks: []
     },
     revision: 1,
@@ -161,6 +167,10 @@ describe('ws dispatcher', () => {
         sampleEvery: 10,
         maxSamplesPerBlock: 120,
         observedEvents: 3,
+        statePersistenceMode: 'EPHEMERAL',
+        restartCount: 0,
+        lastRestartAt: null,
+        lastRestartMode: null,
         blocks: []
       }
     };

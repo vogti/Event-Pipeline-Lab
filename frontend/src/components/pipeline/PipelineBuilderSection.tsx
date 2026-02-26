@@ -25,6 +25,10 @@ interface PipelineBuilderSectionProps {
   onScenarioOverlaysChange?: (nextValue: string[]) => void;
   onSinkTargetsChange?: (nextValue: string) => void;
   onSinkGoalChange?: (nextValue: string) => void;
+  onResetState?: () => void;
+  onRestartStateLost?: () => void;
+  onRestartStateRetained?: () => void;
+  stateControlBusy?: boolean;
   onSave: () => void;
   saveBusy: boolean;
   formatTs: (value: TimestampValue) => string;
@@ -72,6 +76,10 @@ export function PipelineBuilderSection({
   onScenarioOverlaysChange,
   onSinkTargetsChange,
   onSinkGoalChange,
+  onResetState,
+  onRestartStateLost,
+  onRestartStateRetained,
+  stateControlBusy,
   onSave,
   saveBusy,
   formatTs
@@ -333,6 +341,12 @@ export function PipelineBuilderSection({
         t={t}
         observability={view.observability}
         formatTs={formatTs}
+        canResetState={view.permissions.stateResetAllowed}
+        canRestartState={view.permissions.stateRestartAllowed}
+        controlsBusy={Boolean(stateControlBusy)}
+        onResetState={onResetState}
+        onRestartStateLost={onRestartStateLost}
+        onRestartStateRetained={onRestartStateRetained}
       />
     </section>
   );

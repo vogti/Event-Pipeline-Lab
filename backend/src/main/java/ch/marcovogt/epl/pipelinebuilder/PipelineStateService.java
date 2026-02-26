@@ -85,6 +85,8 @@ public class PipelineStateService {
                         false,
                         config.visibleToStudents(),
                         false,
+                        studentStateResetAllowed(task),
+                        false,
                         config.lecturerMode(),
                         config.allowedProcessingBlocks(),
                         config.slotCount()
@@ -158,6 +160,8 @@ public class PipelineStateService {
                         config.lecturerMode(),
                         true,
                         config.lecturerMode(),
+                        true,
+                        true,
                         config.lecturerMode(),
                         PipelineBlockLibrary.allBlocks(),
                         config.slotCount()
@@ -251,6 +255,51 @@ public class PipelineStateService {
                 effective.processing()
         );
         return new PipelineObservabilityUpdateDto(task.id(), groupKey, observability);
+    }
+
+    @Transactional
+    public PipelineViewDto controlAdminState(PipelineStateControlRequest request) {
+        String groupKey = normalizeGroupKey(request.groupKey());
+        TaskDefinition task = taskStateService.getActiveTask();
+
+        PipelineViewDto view = getAdminView(groupKey);
+        applyStateControl(task.id(), groupKey, view.processing(), request.action());
+        return getAdminView(groupKey);
+    }
+
+    @Transactional
+    public PipelineViewDto resetStudentState(SessionPrincipal principal, PipelineStateControlAction action) {
+        if (action != PipelineStateControlAction.RESET_STATE) {
+            throw new ResponseStatusException(BAD_REQUEST, "Students may only execute RESET_STATE");
+        }
+        TaskDefinition task = taskStateService.getActiveTask();
+        if (!studentStateResetAllowed(task)) {
+            throw new ResponseStatusException(BAD_REQUEST, "State reset is not allowed in this task");
+        }
+
+        String groupKey = normalizeGroupKey(principal.groupKey());
+        PipelineViewDto view = getStudentViewForGroup(groupKey);
+        applyStateControl(task.id(), groupKey, view.processing(), action);
+        return getStudentViewForGroup(groupKey);
+    }
+
+    private void applyStateControl(
+            String taskId,
+            String groupKey,
+            PipelineProcessingSection processing,
+            PipelineStateControlAction action
+    ) {
+        switch (action) {
+            case RESET_STATE -> pipelineObservabilityService.resetStateStores(taskId, groupKey, processing);
+            case RESTART_STATE_LOST -> pipelineObservabilityService.restart(taskId, groupKey, processing, false);
+            case RESTART_STATE_RETAINED -> pipelineObservabilityService.restart(taskId, groupKey, processing, true);
+            default -> throw new ResponseStatusException(BAD_REQUEST, "Unsupported state control action");
+        }
+    }
+
+    private boolean studentStateResetAllowed(TaskDefinition task) {
+        return task.studentCapabilities().allowedConfigOptions().stream()
+                .anyMatch(option -> "pipelineStateReset".equalsIgnoreCase(option));
     }
 
     @Transactional

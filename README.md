@@ -99,10 +99,10 @@ PBV is implemented in staged increments to keep lecture reliability high.
 4. **Stage 4 (implemented)**  
    - Block-level observability counters/latency/backlog  
    - Sample-event inspector + transform diff view (bounded ring buffers)
-5. **Stage 5 (next)**  
+5. **Stage 5 (implemented)**  
    - Stateful block introspection (window/dedup store size, TTL, reset)  
    - Restart semantics (state lost vs retained simulation)
-6. **Stage 6**  
+6. **Stage 6 (next)**  
    - Optional Kafka-backed log mode integration (replay/offset framing in PBV)
 
 ## Update Running Deployment
@@ -244,7 +244,7 @@ docker run --rm --network epl_default curlimages/curl:8.12.1 -sS http://backend:
 docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST http://backend:8080/api/admin/system-status/events/reset -H "X-EPL-Session: ${ADMIN_TOKEN}" -H 'Content-Type: application/json' -d '{"confirm":true}'
 ```
 
-## Pipeline Builder API (Stage 1-4)
+## Pipeline Builder API (Stage 1-5)
 
 ```bash
 # Student: load own group pipeline for active task
@@ -293,6 +293,38 @@ Realtime events:
 
 - `pipeline.state.updated` (full PBV view on config/state changes)
 - `pipeline.observability.updated` (high-frequency observability snapshots per task/group)
+
+State controls:
+
+```bash
+# Admin: reset stateful stores (dedup/window/micro-batch) for one group
+docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST \
+  http://backend:8080/api/admin/pipeline/state/control \
+  -H "X-EPL-Session: ${ADMIN_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d '{"groupKey":"epld01","action":"RESET_STATE"}'
+
+# Admin: simulate restart with state lost
+docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST \
+  http://backend:8080/api/admin/pipeline/state/control \
+  -H "X-EPL-Session: ${ADMIN_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d '{"groupKey":"epld01","action":"RESTART_STATE_LOST"}'
+
+# Admin: simulate restart with state retained
+docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST \
+  http://backend:8080/api/admin/pipeline/state/control \
+  -H "X-EPL-Session: ${ADMIN_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d '{"groupKey":"epld01","action":"RESTART_STATE_RETAINED"}'
+
+# Student (if task allows): reset own group state
+docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST \
+  http://backend:8080/api/student/pipeline/state/reset \
+  -H "X-EPL-Session: ${STUDENT_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d '{"action":"RESET_STATE"}'
+```
 
 ## System Data Export / Import
 

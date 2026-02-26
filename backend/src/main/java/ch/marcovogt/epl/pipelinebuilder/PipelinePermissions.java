@@ -7,6 +7,8 @@ public record PipelinePermissions(
         boolean inputEditable,
         boolean processingEditable,
         boolean sinkEditable,
+        boolean stateResetAllowed,
+        boolean stateRestartAllowed,
         boolean lecturerMode,
         List<String> allowedProcessingBlocks,
         int slotCount

@@ -6,6 +6,10 @@ import java.util.Map;
 public record PipelineBlockObservabilityDto(
         int slotIndex,
         String blockType,
+        String stateType,
+        long stateEntryCount,
+        Long stateTtlSeconds,
+        long stateMemoryBytes,
         long inCount,
         long outCount,
         long dropCount,
@@ -17,4 +21,3 @@ public record PipelineBlockObservabilityDto(
         List<PipelineSampleEventDto> samples
 ) {
 }
-

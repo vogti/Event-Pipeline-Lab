@@ -26,6 +26,8 @@ import org.springframework.stereotype.Service;
 public class PipelineObservabilityService {
 
     private static final Duration DEDUP_TTL = Duration.ofSeconds(10);
+    private static final String MODE_EPHEMERAL = "EPHEMERAL";
+    private static final String MODE_PERSISTED = "PERSISTED";
 
     private final ObjectMapper objectMapper;
     private final Clock clock;
@@ -142,7 +144,16 @@ public class PipelineObservabilityService {
             PipelineProcessingSection processing
     ) {
         if (taskId == null || taskId.isBlank() || groupKey == null || groupKey.isBlank()) {
-            return new PipelineObservabilityDto(sampleEvery, maxSamplesPerBlock, 0L, List.of());
+            return new PipelineObservabilityDto(
+                    sampleEvery,
+                    maxSamplesPerBlock,
+                    0L,
+                    MODE_EPHEMERAL,
+                    0L,
+                    null,
+                    null,
+                    List.of()
+            );
         }
 
         GroupState groupState = stateFor(taskId, groupKey);
@@ -159,6 +170,10 @@ public class PipelineObservabilityService {
             blocks.add(new PipelineBlockObservabilityDto(
                     index,
                     blockType,
+                    stateType(blockType),
+                    stateEntryCount(state, blockType),
+                    stateTtlSeconds(blockType),
+                    stateMemoryBytes(state, blockType),
                     state.inCount,
                     state.outCount,
                     state.dropCount,
@@ -175,6 +190,10 @@ public class PipelineObservabilityService {
                 sampleEvery,
                 maxSamplesPerBlock,
                 groupState.observedEvents,
+                groupState.persistenceMode,
+                groupState.restartCount,
+                groupState.lastRestartAt,
+                groupState.lastRestartMode,
                 blocks
         );
     }
@@ -182,6 +201,56 @@ public class PipelineObservabilityService {
     public synchronized void reset(String taskId, String groupKey) {
         String key = stateKey(taskId, groupKey);
         stateByKey.remove(key);
+    }
+
+    public synchronized void resetStateStores(
+            String taskId,
+            String groupKey,
+            PipelineProcessingSection processing
+    ) {
+        if (taskId == null || taskId.isBlank() || groupKey == null || groupKey.isBlank()) {
+            return;
+        }
+        GroupState state = stateFor(taskId, groupKey);
+        for (int index = 0; index < processing.slotCount(); index++) {
+            String blockType = blockTypeAt(processing, index);
+            BlockState blockState = blockState(state, index, blockType);
+            resetStateStoreForBlock(blockState, blockType);
+        }
+        state.lastUpdatedAt = Instant.now(clock);
+    }
+
+    public synchronized void restart(
+            String taskId,
+            String groupKey,
+            PipelineProcessingSection processing,
+            boolean retainState
+    ) {
+        if (taskId == null || taskId.isBlank() || groupKey == null || groupKey.isBlank()) {
+            return;
+        }
+        GroupState state = stateFor(taskId, groupKey);
+        long nextRestartCount = state.restartCount + 1L;
+        state.restartCount = nextRestartCount;
+        state.lastRestartAt = Instant.now(clock);
+        state.lastRestartMode = retainState ? "RETAINED" : "LOST";
+        state.persistenceMode = retainState ? MODE_PERSISTED : MODE_EPHEMERAL;
+
+        if (!retainState) {
+            reset(taskId, groupKey);
+            state = stateFor(taskId, groupKey);
+            state.persistenceMode = MODE_EPHEMERAL;
+            state.restartCount = nextRestartCount;
+            state.lastRestartAt = Instant.now(clock);
+            state.lastRestartMode = "LOST";
+            return;
+        }
+
+        // Ensure block identities are aligned to current pipeline shape after restart.
+        for (int index = 0; index < processing.slotCount(); index++) {
+            String blockType = blockTypeAt(processing, index);
+            blockState(state, index, blockType);
+        }
     }
 
     private GroupState stateFor(String taskId, String groupKey) {
@@ -323,6 +392,62 @@ public class PipelineObservabilityService {
         }
     }
 
+    private void resetStateStoreForBlock(BlockState state, String blockType) {
+        String normalized = blockType == null ? PipelineBlockLibrary.NONE : blockType.trim().toUpperCase(Locale.ROOT);
+        switch (normalized) {
+            case "DEDUP" -> state.dedupSeenAt.clear();
+            case "WINDOW_AGGREGATE" -> {
+                state.windowCount = 0;
+                state.backlogDepth = 0;
+            }
+            case "MICRO_BATCH" -> {
+                state.microBatchCount = 0;
+                state.backlogDepth = 0;
+            }
+            default -> {
+                // no state store for this block
+            }
+        }
+    }
+
+    private String stateType(String blockType) {
+        String normalized = blockType == null ? PipelineBlockLibrary.NONE : blockType.trim().toUpperCase(Locale.ROOT);
+        return switch (normalized) {
+            case "DEDUP" -> "DEDUP_STORE";
+            case "WINDOW_AGGREGATE" -> "WINDOW_STORE";
+            case "MICRO_BATCH" -> "MICRO_BATCH_BUFFER";
+            default -> "NONE";
+        };
+    }
+
+    private long stateEntryCount(BlockState state, String blockType) {
+        String normalized = blockType == null ? PipelineBlockLibrary.NONE : blockType.trim().toUpperCase(Locale.ROOT);
+        return switch (normalized) {
+            case "DEDUP" -> state.dedupSeenAt.size();
+            case "WINDOW_AGGREGATE" -> state.windowCount;
+            case "MICRO_BATCH" -> state.microBatchCount;
+            default -> 0L;
+        };
+    }
+
+    private Long stateTtlSeconds(String blockType) {
+        String normalized = blockType == null ? PipelineBlockLibrary.NONE : blockType.trim().toUpperCase(Locale.ROOT);
+        return switch (normalized) {
+            case "DEDUP" -> DEDUP_TTL.toSeconds();
+            default -> null;
+        };
+    }
+
+    private long stateMemoryBytes(BlockState state, String blockType) {
+        String normalized = blockType == null ? PipelineBlockLibrary.NONE : blockType.trim().toUpperCase(Locale.ROOT);
+        return switch (normalized) {
+            case "DEDUP" -> state.dedupSeenAt.size() * 96L;
+            case "WINDOW_AGGREGATE" -> 128L + (state.windowCount * 24L);
+            case "MICRO_BATCH" -> 128L + (state.microBatchCount * 24L);
+            default -> 0L;
+        };
+    }
+
     private String blockTypeAt(PipelineProcessingSection processing, int slotIndex) {
         if (processing == null || processing.slots() == null) {
             return PipelineBlockLibrary.NONE;
@@ -433,6 +558,10 @@ public class PipelineObservabilityService {
     private static final class GroupState {
         private long observedEvents;
         private Instant lastUpdatedAt;
+        private String persistenceMode = MODE_EPHEMERAL;
+        private long restartCount;
+        private Instant lastRestartAt;
+        private String lastRestartMode;
         private final Map<Integer, BlockState> blocksBySlotIndex = new LinkedHashMap<>();
     }
 
@@ -561,4 +690,3 @@ public class PipelineObservabilityService {
         }
     }
 }
-

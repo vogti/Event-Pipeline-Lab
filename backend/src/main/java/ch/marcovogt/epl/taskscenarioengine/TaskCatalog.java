@@ -114,7 +114,7 @@ public class TaskCatalog {
                                 true,
                                 true,
                                 false,
-                                List.of("displayMode", "sensorFocus", "commandPanel"),
+                                List.of("displayMode", "sensorFocus", "commandPanel", "pipelineStateReset"),
                                 List.of("LED_GREEN", "LED_ORANGE", "COUNTER_RESET")
                         ),
                         pipelineConfig(
@@ -144,7 +144,13 @@ public class TaskCatalog {
                                 true,
                                 true,
                                 true,
-                                List.of("displayMode", "sensorFocus", "commandPanel", "topicPreset"),
+                                List.of(
+                                        "displayMode",
+                                        "sensorFocus",
+                                        "commandPanel",
+                                        "topicPreset",
+                                        "pipelineStateReset"
+                                ),
                                 List.of("LED_GREEN", "LED_ORANGE", "COUNTER_RESET")
                         ),
                         pipelineConfig(

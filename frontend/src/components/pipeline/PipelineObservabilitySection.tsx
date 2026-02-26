@@ -13,6 +13,12 @@ interface PipelineObservabilitySectionProps {
   t: (key: I18nKey) => string;
   observability: PipelineObservability | null | undefined;
   formatTs: (value: TimestampValue) => string;
+  canResetState: boolean;
+  canRestartState: boolean;
+  controlsBusy: boolean;
+  onResetState?: () => void;
+  onRestartStateLost?: () => void;
+  onRestartStateRetained?: () => void;
 }
 
 function parseJson(value: string | null | undefined): unknown {
@@ -97,7 +103,13 @@ function selectBlockSample(
 export function PipelineObservabilitySection({
   t,
   observability,
-  formatTs
+  formatTs,
+  canResetState,
+  canRestartState,
+  controlsBusy,
+  onResetState,
+  onRestartStateLost,
+  onRestartStateRetained
 }: PipelineObservabilitySectionProps) {
   const [expandedSlot, setExpandedSlot] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<SampleViewMode>('rendered');
@@ -134,9 +146,48 @@ export function PipelineObservabilitySection({
         <h4>{t('pipelineObservability')}</h4>
         <p className="muted">
           {t('pipelineObservedEvents')}: {observability.observedEvents} | {t('pipelineSampling')} 1/
-          {observability.sampleEvery}
+          {observability.sampleEvery} | {t('pipelineStateMode')}: {observability.statePersistenceMode}
+          {' | '}
+          {t('pipelineRestartCount')}: {observability.restartCount}
+          {observability.lastRestartAt ? ` | ${formatTs(observability.lastRestartAt)}` : ''}
+          {observability.lastRestartMode ? ` (${observability.lastRestartMode})` : ''}
         </p>
       </header>
+
+      {canResetState || canRestartState ? (
+        <div className="pipeline-state-controls">
+          {canResetState ? (
+            <button
+              type="button"
+              className="button tiny secondary"
+              onClick={onResetState}
+              disabled={controlsBusy}
+            >
+              {t('pipelineStateReset')}
+            </button>
+          ) : null}
+          {canRestartState ? (
+            <>
+              <button
+                type="button"
+                className="button tiny secondary"
+                onClick={onRestartStateLost}
+                disabled={controlsBusy}
+              >
+                {t('pipelineRestartLost')}
+              </button>
+              <button
+                type="button"
+                className="button tiny secondary"
+                onClick={onRestartStateRetained}
+                disabled={controlsBusy}
+              >
+                {t('pipelineRestartRetained')}
+              </button>
+            </>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="table-wrap">
         <table className="event-table">
@@ -148,6 +199,10 @@ export function PipelineObservabilitySection({
               <th>{t('pipelineMetricOut')}</th>
               <th>{t('pipelineMetricDrop')}</th>
               <th>{t('pipelineMetricErrors')}</th>
+              <th>{t('pipelineStateType')}</th>
+              <th>{t('pipelineStateEntries')}</th>
+              <th>{t('pipelineStateTtl')}</th>
+              <th>{t('pipelineStateMemory')}</th>
               <th>{t('pipelineMetricLatencyP50')}</th>
               <th>{t('pipelineMetricLatencyP95')}</th>
               <th>{t('pipelineMetricBacklog')}</th>
@@ -165,6 +220,10 @@ export function PipelineObservabilitySection({
                   <td>{block.outCount}</td>
                   <td>{block.dropCount}</td>
                   <td>{block.errorCount}</td>
+                  <td className="mono">{block.stateType}</td>
+                  <td>{block.stateEntryCount}</td>
+                  <td>{block.stateTtlSeconds ?? '-'}</td>
+                  <td>{block.stateMemoryBytes}</td>
                   <td>{block.latencyP50Ms.toFixed(3)} ms</td>
                   <td>{block.latencyP95Ms.toFixed(3)} ms</td>
                   <td>{block.backlogDepth}</td>
@@ -271,4 +330,3 @@ export function PipelineObservabilitySection({
     </section>
   );
 }
-

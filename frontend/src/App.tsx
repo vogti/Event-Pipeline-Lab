@@ -1317,6 +1317,24 @@ export default function App() {
     }
   };
 
+  const resetStudentPipelineState = async () => {
+    if (!token || !studentPipeline) {
+      return;
+    }
+    setBusyKey('student-pipeline-state');
+    setErrorMessage(null);
+    try {
+      const updated = await api.resetStudentPipelineState(token);
+      setStudentPipeline(updated);
+      setStudentPipelineDraft(updated.processing);
+      setInfoMessage(t('pipelineStateResetDone'));
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
   const changeStudentPipelineSlot = useCallback((slotIndex: number, blockType: string) => {
     setStudentPipelineDraft((previous) => {
       if (!previous) {
@@ -1353,6 +1371,30 @@ export default function App() {
       setAdminPipeline(updated);
       setAdminPipelineDraft(updated);
       setInfoMessage(t('pipelineUpdated'));
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const controlAdminPipelineState = async (
+    action: 'RESET_STATE' | 'RESTART_STATE_LOST' | 'RESTART_STATE_RETAINED'
+  ) => {
+    if (!token || !adminPipelineGroupKey) {
+      return;
+    }
+    setBusyKey('admin-pipeline-state');
+    setErrorMessage(null);
+    try {
+      const updated = await api.controlAdminPipelineState(token, adminPipelineGroupKey, action);
+      setAdminPipeline(updated);
+      setAdminPipelineDraft(updated);
+      if (action === 'RESET_STATE') {
+        setInfoMessage(t('pipelineStateResetDone'));
+      } else {
+        setInfoMessage(t('pipelineRestartDone'));
+      }
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
@@ -3024,6 +3066,8 @@ export default function App() {
               onChangeSlotBlock={changeStudentPipelineSlot}
               onSave={saveStudentPipeline}
               saveBusy={busyKey === 'student-pipeline'}
+              onResetState={resetStudentPipelineState}
+              stateControlBusy={busyKey === 'student-pipeline-state'}
               formatTs={formatTs}
             />
 
@@ -3205,6 +3249,16 @@ export default function App() {
                     onSinkGoalChange={changeAdminPipelineSinkGoal}
                     onSave={saveAdminPipeline}
                     saveBusy={busyKey === 'admin-pipeline' || busyKey === 'admin-pipeline-load'}
+                    onResetState={() => {
+                      void controlAdminPipelineState('RESET_STATE');
+                    }}
+                    onRestartStateLost={() => {
+                      void controlAdminPipelineState('RESTART_STATE_LOST');
+                    }}
+                    onRestartStateRetained={() => {
+                      void controlAdminPipelineState('RESTART_STATE_RETAINED');
+                    }}
+                    stateControlBusy={busyKey === 'admin-pipeline-state'}
                     formatTs={formatTs}
                   />
 
