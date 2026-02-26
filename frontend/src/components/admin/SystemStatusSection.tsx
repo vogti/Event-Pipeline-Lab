@@ -218,10 +218,10 @@ export function SystemStatusSection({
             <article className="system-status-card system-transfer-card">
               <h3>{t('systemDataImport')}</h3>
               <label className="system-transfer-file">
-                <span>{t('systemDataImportFile')}</span>
                 <input
                   className="input"
                   type="file"
+                  aria-label={t('systemDataImportFile')}
                   accept="application/zip,.zip,application/json,.json"
                   onChange={(event) => {
                     const file = event.target.files?.[0];
