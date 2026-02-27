@@ -42,7 +42,7 @@ public class StudentPipelineController {
             @Valid @RequestBody StudentPipelineUpdateRequest body
     ) {
         SessionPrincipal principal = requestAuth.requireRole(request, AppRole.STUDENT);
-        PipelineViewDto updated = pipelineStateService.updateStudentProcessing(principal, body.processing());
+        PipelineViewDto updated = pipelineStateService.updateStudentPipeline(principal, body.processing(), body.sink());
         realtimeSyncService.broadcastPipelineState(updated);
         return updated;
     }

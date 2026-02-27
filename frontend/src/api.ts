@@ -579,12 +579,16 @@ export const api = {
     return request<PipelineView>('/api/student/pipeline', undefined, token);
   },
 
-  updateStudentPipeline(token: string, processing: PipelineProcessingSection): Promise<PipelineView> {
+  updateStudentPipeline(
+    token: string,
+    processing: PipelineProcessingSection,
+    sink: PipelineSinkSection
+  ): Promise<PipelineView> {
     return request<PipelineView>(
       '/api/student/pipeline',
       {
         method: 'POST',
-        body: JSON.stringify({ processing })
+        body: JSON.stringify({ processing, sink })
       },
       token
     );

@@ -131,24 +131,6 @@ function parsePipelineListInput(value: string): string[] {
 
 function normalizePipelineSinkNodes(nodes: PipelineSinkNode[] | null | undefined): PipelineSinkNode[] {
   const normalized = Array.isArray(nodes) ? [...nodes] : [];
-  const byType = new Map<string, PipelineSinkNode>();
-  for (const node of normalized) {
-    if (!node || typeof node.type !== 'string') {
-      continue;
-    }
-    const type = node.type.trim().toUpperCase();
-    if (!type || byType.has(type)) {
-      continue;
-    }
-    byType.set(type, {
-      id:
-        node.id?.trim() ||
-        (type === 'SEND_EVENT' ? 'send-event' : type === 'VIRTUAL_SIGNAL' ? 'virtual-signal' : 'event-feed'),
-      type,
-      config: node.config ?? {}
-    });
-  }
-
   const result: PipelineSinkNode[] = [
     {
       id: 'event-feed',
@@ -156,15 +138,37 @@ function normalizePipelineSinkNodes(nodes: PipelineSinkNode[] | null | undefined
       config: {}
     }
   ];
-
-  const sendNode = byType.get('SEND_EVENT');
-  if (sendNode) {
-    result.push(sendNode);
+  const usedIds = new Set<string>(['event-feed', 'virtual-signal']);
+  let sendIndex = 1;
+  for (const node of normalized) {
+    if (!node || typeof node.type !== 'string') {
+      continue;
+    }
+    const type = node.type.trim().toUpperCase();
+    if (type !== 'SEND_EVENT' && type !== 'DEVICE_CONTROL') {
+      continue;
+    }
+    let sinkId = node.id?.trim() || '';
+    if (!sinkId || usedIds.has(sinkId) || sinkId === 'event-feed' || sinkId === 'virtual-signal') {
+      sinkId = sendIndex === 1 ? 'send-event' : `send-event-${sendIndex}`;
+      while (usedIds.has(sinkId)) {
+        sendIndex += 1;
+        sinkId = `send-event-${sendIndex}`;
+      }
+    }
+    usedIds.add(sinkId);
+    sendIndex += 1;
+    result.push({
+      id: sinkId,
+      type: 'SEND_EVENT',
+      config: node.config ?? {}
+    });
   }
-  const signalNode = byType.get('VIRTUAL_SIGNAL');
-  if (signalNode) {
-    result.push(signalNode);
-  }
+  result.push({
+    id: 'virtual-signal',
+    type: 'VIRTUAL_SIGNAL',
+    config: {}
+  });
   return result;
 }
 
@@ -185,22 +189,22 @@ function addPipelineSinkNode(
   sink: PipelineSinkSection,
   sinkType: 'SEND_EVENT' | 'VIRTUAL_SIGNAL'
 ): PipelineSinkSection {
-  const current = normalizePipelineSinkNodes(sink.nodes);
-  if (current.some((node) => node.type === sinkType)) {
+  if (sinkType === 'VIRTUAL_SIGNAL') {
     return withNormalizedPipelineSinkSection(sink);
   }
-  const nextNode: PipelineSinkNode =
-    sinkType === 'SEND_EVENT'
-      ? {
-          id: 'send-event',
-          type: 'SEND_EVENT',
-          config: { topic: '', payload: '', qos: 1, retained: false }
-        }
-      : {
-          id: 'virtual-signal',
-          type: 'VIRTUAL_SIGNAL',
-          config: {}
-        };
+  const current = normalizePipelineSinkNodes(sink.nodes);
+  let sendIndex = 1;
+  let nextId = 'send-event';
+  const existingIds = new Set(current.map((node) => node.id));
+  while (existingIds.has(nextId)) {
+    sendIndex += 1;
+    nextId = `send-event-${sendIndex}`;
+  }
+  const nextNode: PipelineSinkNode = {
+    id: nextId,
+    type: 'SEND_EVENT',
+    config: { topic: '', payload: '', qos: 1, retained: false }
+  };
   return withNormalizedPipelineSinkSection({
     ...sink,
     nodes: [...current, nextNode]
@@ -210,7 +214,7 @@ function addPipelineSinkNode(
 function removePipelineSinkNode(sink: PipelineSinkSection, sinkId: string): PipelineSinkSection {
   const current = normalizePipelineSinkNodes(sink.nodes);
   const nextNodes = current.filter(
-    (node) => node.id !== sinkId || node.type === 'EVENT_FEED'
+    (node) => node.id !== sinkId || node.type === 'EVENT_FEED' || node.type === 'VIRTUAL_SIGNAL'
   );
   return withNormalizedPipelineSinkSection({
     ...sink,
@@ -366,6 +370,7 @@ export default function App() {
   const [studentOnboardingDone, setStudentOnboardingDone] = useState(false);
   const [studentPipeline, setStudentPipeline] = useState<PipelineView | null>(null);
   const [studentPipelineDraft, setStudentPipelineDraft] = useState<PipelineProcessingSection | null>(null);
+  const [studentPipelineSinkDraft, setStudentPipelineSinkDraft] = useState<PipelineSinkSection | null>(null);
   const [studentCommandTargetDeviceId, setStudentCommandTargetDeviceId] = useState('');
 
   const [adminData, setAdminData] = useState<AdminViewData | null>(null);
@@ -640,6 +645,7 @@ export default function App() {
     setStudentOnboardingDone(false);
     setStudentPipeline(null);
     setStudentPipelineDraft(null);
+    setStudentPipelineSinkDraft(null);
 
     setAdminData(null);
     setAdminSystemStatus(null);
@@ -842,6 +848,7 @@ export default function App() {
       setTimeFormat24h(bootstrap.settings.timeFormat24h);
       setStudentPipeline(pipeline);
       setStudentPipelineDraft(pipeline.processing);
+      setStudentPipelineSinkDraft(pipeline.sink);
       setFeedScenarioConfig(scenarios);
       return;
     }
@@ -1002,6 +1009,16 @@ export default function App() {
 
   const studentActiveTaskId = studentData?.activeTask.id ?? '';
   const hasStudentData = studentData !== null;
+  const studentPipelineEditorView = useMemo<PipelineView | null>(() => {
+    if (!studentPipeline) {
+      return null;
+    }
+    return {
+      ...studentPipeline,
+      processing: studentPipelineDraft ?? studentPipeline.processing,
+      sink: studentPipelineSinkDraft ?? studentPipeline.sink
+    };
+  }, [studentPipeline, studentPipelineDraft, studentPipelineSinkDraft]);
 
   useEffect(() => {
     if (!token || session?.role !== 'STUDENT' || !hasStudentData) {
@@ -1017,6 +1034,7 @@ export default function App() {
         const normalized = normalizePipelineView(view);
         setStudentPipeline(normalized);
         setStudentPipelineDraft(normalized.processing);
+        setStudentPipelineSinkDraft(normalized.sink);
       })
       .catch((error) => reportBackgroundError('studentPipeline', error));
 
@@ -1374,6 +1392,7 @@ export default function App() {
       return normalizedView;
     });
     setStudentPipelineDraft(normalizedView.processing);
+    setStudentPipelineSinkDraft(normalizedView.sink);
   }, []);
 
   const applyStudentPipelineObservabilityFromWs = useCallback((update: PipelineObservabilityUpdate) => {
@@ -1695,7 +1714,7 @@ export default function App() {
   };
 
   const saveStudentPipeline = async () => {
-    if (!token || !studentPipelineDraft) {
+    if (!token || !studentPipelineDraft || !studentPipelineSinkDraft) {
       return;
     }
 
@@ -1703,9 +1722,14 @@ export default function App() {
     setErrorMessage(null);
 
     try {
-      const updated = normalizePipelineView(await api.updateStudentPipeline(token, studentPipelineDraft));
+      const updated = normalizePipelineView(await api.updateStudentPipeline(
+        token,
+        studentPipelineDraft,
+        studentPipelineSinkDraft
+      ));
       setStudentPipeline(updated);
       setStudentPipelineDraft(updated.processing);
+      setStudentPipelineSinkDraft(updated.sink);
       pushToast(t('pipelineUpdated'));
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
@@ -1724,6 +1748,7 @@ export default function App() {
       const updated = normalizePipelineView(await api.resetStudentPipelineState(token));
       setStudentPipeline(updated);
       setStudentPipelineDraft(updated.processing);
+      setStudentPipelineSinkDraft(updated.sink);
       pushToast(t('pipelineStateResetDone'));
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
@@ -1768,6 +1793,33 @@ export default function App() {
         return previous;
       }
       return setPipelineSlotConfigValue(previous, slotIndex, key, value);
+    });
+  }, []);
+
+  const addStudentPipelineSink = useCallback((sinkType: 'SEND_EVENT' | 'VIRTUAL_SIGNAL') => {
+    setStudentPipelineSinkDraft((previous) => {
+      if (!previous) {
+        return previous;
+      }
+      return addPipelineSinkNode(previous, sinkType);
+    });
+  }, []);
+
+  const removeStudentPipelineSink = useCallback((sinkId: string) => {
+    setStudentPipelineSinkDraft((previous) => {
+      if (!previous) {
+        return previous;
+      }
+      return removePipelineSinkNode(previous, sinkId);
+    });
+  }, []);
+
+  const configureStudentPipelineSendSink = useCallback((sinkId: string, config: Record<string, unknown>) => {
+    setStudentPipelineSinkDraft((previous) => {
+      if (!previous) {
+        return previous;
+      }
+      return updatePipelineSendEventSinkConfig(previous, sinkId, config);
     });
   }, []);
 
@@ -4020,10 +4072,13 @@ export default function App() {
             <PipelineBuilderSection
               t={t}
               title={t('pipelineBuilder')}
-              view={studentPipeline}
+              view={studentPipelineEditorView}
               draftProcessing={studentPipelineDraft}
               onChangeSlotBlock={changeStudentPipelineSlot}
               onChangeSlotConfig={changeStudentPipelineSlotConfig}
+              onAddSink={addStudentPipelineSink}
+              onRemoveSink={removeStudentPipelineSink}
+              onConfigureSendEventSink={configureStudentPipelineSendSink}
               lecturerDeviceAvailable={Boolean(studentData.settings.adminDeviceId?.trim())}
               onSave={saveStudentPipeline}
               saveBusy={busyKey === 'student-pipeline'}

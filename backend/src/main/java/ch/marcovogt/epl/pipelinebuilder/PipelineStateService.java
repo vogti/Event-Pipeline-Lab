@@ -16,6 +16,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.IntStream;
 import org.springframework.stereotype.Service;
@@ -97,7 +98,7 @@ public class PipelineStateService {
                         config.visibleToStudents(),
                         false,
                         config.visibleToStudents(),
-                        false,
+                        config.visibleToStudents(),
                         studentStateResetAllowed(task),
                         false,
                         config.lecturerMode(),
@@ -112,7 +113,11 @@ public class PipelineStateService {
     }
 
     @Transactional
-    public PipelineViewDto updateStudentProcessing(SessionPrincipal principal, PipelineProcessingSection processingSection) {
+    public PipelineViewDto updateStudentPipeline(
+            SessionPrincipal principal,
+            PipelineProcessingSection processingSection,
+            PipelineSinkSection sinkSection
+    ) {
         TaskDefinition task = taskStateService.getActiveTask();
         PipelineTaskConfig config = task.pipeline();
         if (!config.visibleToStudents()) {
@@ -130,14 +135,17 @@ public class PipelineStateService {
                 config.allowedProcessingBlocks(),
                 true
         );
+        PipelineSinkSection normalizedSink = normalizeSink(sinkSection, current.sink());
 
         PipelineStatePayload nextPayload = new PipelineStatePayload(
                 current.input(),
                 normalizedProcessing,
-                current.sink()
+                normalizedSink
         );
         persist(groupState, nextPayload, principal.displayName());
-        pipelineObservabilityService.reset(task.id(), groupKey);
+        if (!Objects.equals(current.processing(), normalizedProcessing)) {
+            pipelineObservabilityService.reset(task.id(), groupKey);
+        }
 
         return getStudentViewForGroup(groupKey);
     }
@@ -643,7 +651,8 @@ public class PipelineStateService {
         PipelineSinkSection base = source == null ? fallback : source;
         if (base == null) {
             List<PipelineSinkNode> defaults = List.of(
-                    new PipelineSinkNode(PipelineSinkLibrary.EVENT_FEED_ID, PipelineSinkLibrary.EVENT_FEED, Map.of())
+                    new PipelineSinkNode(PipelineSinkLibrary.EVENT_FEED_ID, PipelineSinkLibrary.EVENT_FEED, Map.of()),
+                    new PipelineSinkNode(PipelineSinkLibrary.VIRTUAL_SIGNAL_ID, PipelineSinkLibrary.VIRTUAL_SIGNAL, Map.of())
             );
             return new PipelineSinkSection(defaults, List.of(), "");
         }
@@ -678,38 +687,59 @@ public class PipelineStateService {
                 PipelineSinkLibrary.EVENT_FEED,
                 Map.of()
         ));
-
-        LinkedHashSet<String> addedTypes = new LinkedHashSet<>();
-        addedTypes.add(PipelineSinkLibrary.EVENT_FEED);
+        LinkedHashSet<String> usedIds = new LinkedHashSet<>();
+        usedIds.add(PipelineSinkLibrary.EVENT_FEED_ID);
+        usedIds.add(PipelineSinkLibrary.VIRTUAL_SIGNAL_ID);
+        int sendEventIndex = 1;
 
         for (PipelineSinkNode node : candidates) {
             if (node == null) {
                 continue;
             }
             String sinkType = PipelineSinkLibrary.normalizeType(node.type());
-            if (addedTypes.contains(sinkType)) {
-                continue;
-            }
             if (PipelineSinkLibrary.SEND_EVENT.equals(sinkType)) {
+                String sinkId = normalizeSendEventSinkId(node.id(), usedIds, sendEventIndex);
+                while (usedIds.contains(sinkId)) {
+                    sendEventIndex += 1;
+                    sinkId = PipelineSinkLibrary.SEND_EVENT_ID + "-" + sendEventIndex;
+                }
                 normalized.add(new PipelineSinkNode(
-                        PipelineSinkLibrary.defaultIdForType(sinkType),
+                        sinkId,
                         sinkType,
                         sanitizeSendEventSinkConfig(node.config())
                 ));
-                addedTypes.add(sinkType);
+                usedIds.add(sinkId);
+                sendEventIndex += 1;
                 continue;
-            }
-            if (PipelineSinkLibrary.VIRTUAL_SIGNAL.equals(sinkType)) {
-                normalized.add(new PipelineSinkNode(
-                        PipelineSinkLibrary.defaultIdForType(sinkType),
-                        sinkType,
-                        Map.of()
-                ));
-                addedTypes.add(sinkType);
             }
         }
 
+        normalized.add(new PipelineSinkNode(
+                PipelineSinkLibrary.VIRTUAL_SIGNAL_ID,
+                PipelineSinkLibrary.VIRTUAL_SIGNAL,
+                Map.of()
+        ));
+
         return List.copyOf(normalized);
+    }
+
+    private String normalizeSendEventSinkId(String rawId, LinkedHashSet<String> usedIds, int sendEventIndex) {
+        if (rawId != null && !rawId.isBlank()) {
+            String trimmed = rawId.trim();
+            if (!PipelineSinkLibrary.EVENT_FEED_ID.equals(trimmed)
+                    && !PipelineSinkLibrary.VIRTUAL_SIGNAL_ID.equals(trimmed)
+                    && !usedIds.contains(trimmed)) {
+                return trimmed;
+            }
+        }
+        String candidate = sendEventIndex <= 1
+                ? PipelineSinkLibrary.SEND_EVENT_ID
+                : PipelineSinkLibrary.SEND_EVENT_ID + "-" + sendEventIndex;
+        while (usedIds.contains(candidate)) {
+            sendEventIndex += 1;
+            candidate = PipelineSinkLibrary.SEND_EVENT_ID + "-" + sendEventIndex;
+        }
+        return candidate;
     }
 
     private Map<String, Object> sanitizeSendEventSinkConfig(Map<String, Object> rawConfig) {

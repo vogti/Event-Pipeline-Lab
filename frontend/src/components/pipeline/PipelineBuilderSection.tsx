@@ -173,24 +173,37 @@ function normalizeSinkNodes(nodes: PipelineSinkNode[] | null | undefined): Pipel
       config: {}
     }
   ];
-  const seen = new Set<string>(['EVENT_FEED']);
+  const usedIds = new Set<string>(['event-feed', 'virtual-signal']);
+  let sendIndex = 1;
   for (const node of nodes ?? []) {
     if (!node || typeof node.type !== 'string') {
       continue;
     }
     const type = normalizeSinkType(node.type);
-    if (seen.has(type)) {
+    if (type !== 'SEND_EVENT') {
       continue;
     }
+    let sinkId = node.id?.trim() || '';
+    if (!sinkId || usedIds.has(sinkId) || sinkId === 'event-feed' || sinkId === 'virtual-signal') {
+      sinkId = sendIndex === 1 ? 'send-event' : `send-event-${sendIndex}`;
+      while (usedIds.has(sinkId)) {
+        sendIndex += 1;
+        sinkId = `send-event-${sendIndex}`;
+      }
+    }
+    usedIds.add(sinkId);
+    sendIndex += 1;
     result.push({
-      id:
-        node.id?.trim() ||
-        (type === 'SEND_EVENT' ? 'send-event' : type === 'VIRTUAL_SIGNAL' ? 'virtual-signal' : 'event-feed'),
-      type,
+      id: sinkId,
+      type: 'SEND_EVENT',
       config: node.config ?? {}
     });
-    seen.add(type);
   }
+  result.push({
+    id: 'virtual-signal',
+    type: 'VIRTUAL_SIGNAL',
+    config: {}
+  });
   return result;
 }
 
@@ -737,9 +750,7 @@ export function PipelineBuilderSection({
   const sinkRuntimeById = new Map(
     (view.sinkRuntime?.nodes ?? []).map((node) => [node.sinkId, node])
   );
-  const availableSinkTypes: Array<'SEND_EVENT' | 'VIRTUAL_SIGNAL'> = (
-    ['SEND_EVENT', 'VIRTUAL_SIGNAL'] as const
-  ).filter((type) => !sinkNodes.some((node) => normalizeSinkType(String(node.type)) === type));
+  const availableSinkTypes: Array<'SEND_EVENT'> = ['SEND_EVENT'];
 
   const setSinkDraftField = <K extends keyof MqttEventDraft>(key: K, value: MqttEventDraft[K]) => {
     setSinkDraft((previous) => ({
@@ -1017,7 +1028,7 @@ export function PipelineBuilderSection({
                       onDrop={(event) => onSlotDrop(event, slot.index)}
                     >
                       <div className="pipeline-flow-node-header">
-                        <span className="pipeline-flow-node-title">{t('pipelineSlot')} {slot.index + 1}</span>
+                        <span className="pipeline-flow-node-title" />
                         {view.permissions.processingEditable && !isEmpty ? (
                           <button
                             type="button"
@@ -1280,7 +1291,7 @@ export function PipelineBuilderSection({
               <article className="pipeline-sink-node" key={sinkNode.id}>
                 <header className="pipeline-sink-node-header">
                   <strong>{sinkLabel}</strong>
-                  {view.permissions.sinkEditable && sinkType !== 'EVENT_FEED' ? (
+                  {view.permissions.sinkEditable && sinkType !== 'EVENT_FEED' && sinkType !== 'VIRTUAL_SIGNAL' ? (
                     <button
                       className="button tiny ghost"
                       type="button"
@@ -1299,10 +1310,6 @@ export function PipelineBuilderSection({
                   <div className="pipeline-sink-details">
                     <p className="muted mono">
                       {sendTopic.length > 0 ? sendTopic : t('pipelineSinkNoTopic')}
-                    </p>
-                    <p className="muted">
-                      {t('pipelineSinkCounterLabel')}: {receivedCount}
-                      {lastReceivedAt ? ` | ${formatTs(lastReceivedAt)}` : ''}
                     </p>
                     <div className="pipeline-sink-actions">
                       <button
