@@ -42,13 +42,15 @@ public class EventFeedController {
             @RequestParam(name = "topicContains", required = false) String topicContains,
             @RequestParam(name = "category", required = false) EventCategory category,
             @RequestParam(name = "includeInternal", required = false) Boolean includeInternal,
-            @RequestParam(name = "deviceId", required = false) String deviceId
+            @RequestParam(name = "deviceId", required = false) String deviceId,
+            @RequestParam(name = "stage", defaultValue = "BEFORE_PIPELINE") EventFeedStage stage
     ) {
         SessionPrincipal principal = requestAuth.requireAny(request);
         TaskCapabilities capabilities = taskStateService.capabilitiesFor(principal);
         return eventFeedService.getFeedForPrincipal(
                 principal,
                 capabilities,
+                stage,
                 limit,
                 topicContains,
                 category,

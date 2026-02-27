@@ -110,6 +110,29 @@ describe('ws dispatcher', () => {
     });
   });
 
+  it('dispatches event.pipeline.append to matching handler', () => {
+    const event = createEvent('event-pipeline-1');
+    const onPipelineEvent = vi.fn();
+    const handled = dispatchWsEnvelope(
+      {
+        type: 'event.pipeline.append',
+        payload: event,
+        ts: '2026-01-01T10:00:00Z'
+      },
+      {
+        'event.pipeline.append': onPipelineEvent
+      }
+    );
+
+    expect(handled).toBe(true);
+    expect(onPipelineEvent).toHaveBeenCalledTimes(1);
+    expect(onPipelineEvent).toHaveBeenCalledWith(event, {
+      type: 'event.pipeline.append',
+      payload: event,
+      ts: '2026-01-01T10:00:00Z'
+    });
+  });
+
   it('returns true for known types even when no handler is registered', () => {
     const handled = dispatchWsEnvelope(
       {

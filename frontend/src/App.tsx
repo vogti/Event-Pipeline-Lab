@@ -31,6 +31,7 @@ import {
   systemDataPartLabel,
   MetricIcon,
   SettingsIcon,
+  AdminIcon,
   mergeEventsBounded,
   clampFeed,
   applyFeedScenarioDisturbances,
@@ -74,6 +75,8 @@ import type {
   FeedViewMode,
   EventDetailsViewMode,
   AdminPage,
+  AdminFeedSource,
+  StudentFeedSource,
   CounterResetTarget,
   VirtualDevicePatch,
   DeviceTelemetrySnapshot,
@@ -81,7 +84,7 @@ import type {
   MqttComposerTargetType,
   MqttComposerTemplate,
   MqttEventDraft
-} from './app/shared';
+} from './app/shared-types';
 import { SystemStatusSection } from './components/admin/SystemStatusSection';
 import { AdminDevicesSection } from './components/admin/AdminDevicesSection';
 import { AdminFeedSection } from './components/admin/AdminFeedSection';
@@ -203,7 +206,9 @@ export default function App() {
   const [displayNameDraft, setDisplayNameDraft] = useState('');
   const [studentTopicFilter, setStudentTopicFilter] = useState('');
   const [studentShowInternal, setStudentShowInternal] = useState(false);
+  const [studentFeedSource, setStudentFeedSource] = useState<StudentFeedSource>('BEFORE_PIPELINE');
   const [studentFeedPaused, setStudentFeedPaused] = useState(false);
+  const [studentPipelineFeed, setStudentPipelineFeed] = useState<CanonicalEvent[]>([]);
   const [studentOnboardingDone, setStudentOnboardingDone] = useState(false);
   const [studentPipeline, setStudentPipeline] = useState<PipelineView | null>(null);
   const [studentPipelineDraft, setStudentPipelineDraft] = useState<PipelineProcessingSection | null>(null);
@@ -214,8 +219,9 @@ export default function App() {
   const [adminCategoryFilter, setAdminCategoryFilter] = useState<EventCategory | 'ALL'>('ALL');
   const [adminDeviceFilter, setAdminDeviceFilter] = useState('');
   const [adminIncludeInternal, setAdminIncludeInternal] = useState(false);
-  const [adminShowUndisturbedFeed, setAdminShowUndisturbedFeed] = useState(false);
+  const [adminFeedSource, setAdminFeedSource] = useState<AdminFeedSource>('AFTER_DISTURBANCES');
   const [adminFeedPaused, setAdminFeedPaused] = useState(false);
+  const [adminPipelineFeed, setAdminPipelineFeed] = useState<CanonicalEvent[]>([]);
   const [adminSettingsDraftMode, setAdminSettingsDraftMode] = useState<LanguageMode>('BROWSER_EN_FALLBACK');
   const [adminSettingsDraftTimeFormat24h, setAdminSettingsDraftTimeFormat24h] = useState(true);
   const [adminSettingsDraftVirtualVisible, setAdminSettingsDraftVirtualVisible] = useState(true);
@@ -473,7 +479,9 @@ export default function App() {
     setDisplayNameDraft('');
     setStudentTopicFilter('');
     setStudentShowInternal(false);
+    setStudentFeedSource('BEFORE_PIPELINE');
     setStudentFeedPaused(false);
+    setStudentPipelineFeed([]);
     setStudentOnboardingDone(false);
     setStudentPipeline(null);
     setStudentPipelineDraft(null);
@@ -484,8 +492,9 @@ export default function App() {
     setAdminCategoryFilter('ALL');
     setAdminDeviceFilter('');
     setAdminIncludeInternal(false);
-    setAdminShowUndisturbedFeed(false);
+    setAdminFeedSource('AFTER_DISTURBANCES');
     setAdminFeedPaused(false);
+    setAdminPipelineFeed([]);
     setAdminSettingsDraftMode('BROWSER_EN_FALLBACK');
     setAdminSettingsDraftTimeFormat24h(true);
     setAdminSettingsDraftVirtualVisible(true);
@@ -653,10 +662,11 @@ export default function App() {
 
   const loadDashboards = useCallback(async (auth: AuthMe, activeToken: string) => {
     if (auth.role === 'STUDENT') {
-      const [bootstrap, pipeline, scenarios] = await Promise.all([
+      const [bootstrap, pipeline, scenarios, pipelineEvents] = await Promise.all([
         api.studentBootstrap(activeToken),
         api.studentPipeline(activeToken),
-        api.scenarios(activeToken)
+        api.scenarios(activeToken),
+        api.eventsFeed(activeToken, { limit: MAX_FEED_EVENTS, includeInternal: true, stage: 'AFTER_PIPELINE' })
       ]);
       setStudentData({
         activeTask: bootstrap.activeTask,
@@ -667,6 +677,7 @@ export default function App() {
         virtualDevice: bootstrap.virtualDevice,
         settings: bootstrap.settings
       });
+      setStudentPipelineFeed(clampFeed(pipelineEvents));
       setStudentConfigDraft(safeConfigMap(bootstrap.groupConfig.config));
       setDisplayNameDraft(bootstrap.me.displayName);
       setStudentVirtualPatch(bootstrap.virtualDevice ? patchFromVirtualDevice(bootstrap.virtualDevice) : null);
@@ -680,13 +691,14 @@ export default function App() {
     }
 
     const logModeStatusPromise = api.adminPipelineLogModeStatus(activeToken).catch(() => null);
-    const [tasks, devices, virtualDevices, groups, settings, events, systemStatus, logModeStatus, scenarios] = await Promise.all([
+    const [tasks, devices, virtualDevices, groups, settings, events, pipelineEvents, systemStatus, logModeStatus, scenarios] = await Promise.all([
       api.adminTasks(activeToken),
       api.adminDevices(activeToken),
       api.adminVirtualDevices(activeToken),
       api.adminGroups(activeToken),
       api.adminSettings(activeToken),
       api.eventsFeed(activeToken, { limit: MAX_FEED_EVENTS, includeInternal: true }),
+      api.eventsFeed(activeToken, { limit: MAX_FEED_EVENTS, includeInternal: true, stage: 'AFTER_PIPELINE' }),
       api.adminSystemStatus(activeToken),
       logModeStatusPromise,
       api.adminScenarios(activeToken)
@@ -700,6 +712,7 @@ export default function App() {
       settings,
       events: clampFeed(events)
     });
+    setAdminPipelineFeed(clampFeed(pipelineEvents));
     deferredAdminFeedRef.current = [];
     setAdminSettingsDraftMode(settings.defaultLanguageMode);
     setAdminSettingsDraftTimeFormat24h(settings.timeFormat24h);
@@ -1279,9 +1292,11 @@ export default function App() {
     setWsConnection,
     setErrorMessage,
     setStudentData,
+    setStudentPipelineFeed,
     setStudentConfigDraft,
     setStudentVirtualPatch,
     setAdminData,
+    setAdminPipelineFeed,
     setAdminDeviceSnapshots,
     setAdminDeviceIpById,
     setAdminSettingsDraftMode,
@@ -1889,6 +1904,114 @@ export default function App() {
     }
   };
 
+  const saveAdminTaskDetails = async (
+    taskId: string,
+    details: { titleDe: string; titleEn: string; descriptionDe: string; descriptionEn: string }
+  ) => {
+    if (!token) {
+      return;
+    }
+
+    const payload = {
+      taskId: taskId.trim(),
+      titleDe: details.titleDe.trim(),
+      titleEn: details.titleEn.trim(),
+      descriptionDe: details.descriptionDe.trim(),
+      descriptionEn: details.descriptionEn.trim()
+    };
+    if (
+      !payload.taskId ||
+      !payload.titleDe ||
+      !payload.titleEn ||
+      !payload.descriptionDe ||
+      !payload.descriptionEn
+    ) {
+      setErrorMessage(t('invalidInput'));
+      return;
+    }
+
+    setBusyKey('admin-task-update');
+    setErrorMessage(null);
+    try {
+      const updated = await api.updateAdminTaskDetails(token, payload);
+      setAdminData((previous) => {
+        if (!previous) {
+          return previous;
+        }
+        const hasExisting = previous.tasks.some((task) => task.id === updated.id);
+        const nextTasks = hasExisting
+          ? previous.tasks.map((task) => (task.id === updated.id ? updated : task))
+          : [...previous.tasks, updated];
+        return {
+          ...previous,
+          tasks: nextTasks
+        };
+      });
+      pushToast(t('taskUpdated'));
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const createAdminTask = async (draft: {
+    taskId: string;
+    titleDe: string;
+    titleEn: string;
+    descriptionDe: string;
+    descriptionEn: string;
+    templateTaskId: string;
+  }) => {
+    if (!token) {
+      return;
+    }
+
+    const payload = {
+      taskId: draft.taskId.trim(),
+      titleDe: draft.titleDe.trim(),
+      titleEn: draft.titleEn.trim(),
+      descriptionDe: draft.descriptionDe.trim(),
+      descriptionEn: draft.descriptionEn.trim(),
+      templateTaskId: draft.templateTaskId.trim() || null
+    };
+    if (
+      !payload.taskId ||
+      !payload.titleDe ||
+      !payload.titleEn ||
+      !payload.descriptionDe ||
+      !payload.descriptionEn
+    ) {
+      setErrorMessage(t('invalidInput'));
+      return;
+    }
+
+    setBusyKey('admin-task-create');
+    setErrorMessage(null);
+    try {
+      const created = await api.createAdminTask(token, payload);
+      setAdminData((previous) => {
+        if (!previous) {
+          return previous;
+        }
+        if (previous.tasks.some((task) => task.id === created.id)) {
+          return previous;
+        }
+        return {
+          ...previous,
+          tasks: [...previous.tasks, created].sort((a, b) => a.id.localeCompare(b.id))
+        };
+      });
+      setAdminPipelineTaskId(created.id);
+      void loadAdminTaskPipelineConfig(created.id);
+      pushToast(t('taskCreated'));
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
   const sendStudentCommand = async (command: DeviceCommandType, on?: boolean) => {
     if (!token || !session || session.role !== 'STUDENT' || !session.groupKey) {
       return;
@@ -2376,12 +2499,13 @@ export default function App() {
 
     try {
       const logModeStatusPromise = api.adminPipelineLogModeStatus(token).catch(() => null);
-      const [tasks, devices, virtualDevices, groups, events, settings, systemStatus, logModeStatus, scenarios] = await Promise.all([
+      const [tasks, devices, virtualDevices, groups, events, pipelineEvents, settings, systemStatus, logModeStatus, scenarios] = await Promise.all([
         api.adminTasks(token),
         api.adminDevices(token),
         api.adminVirtualDevices(token),
         api.adminGroups(token),
         api.eventsFeed(token, { limit: MAX_FEED_EVENTS, includeInternal: true }),
+        api.eventsFeed(token, { limit: MAX_FEED_EVENTS, includeInternal: true, stage: 'AFTER_PIPELINE' }),
         api.adminSettings(token),
         api.adminSystemStatus(token),
         logModeStatusPromise,
@@ -2402,6 +2526,7 @@ export default function App() {
           settings
         };
       });
+      setAdminPipelineFeed(clampFeed(pipelineEvents));
       deferredAdminFeedRef.current = [];
       setAdminSettingsDraftMode(settings.defaultLanguageMode);
       setAdminSettingsDraftTimeFormat24h(settings.timeFormat24h);
@@ -2444,6 +2569,7 @@ export default function App() {
           events: []
         };
       });
+      setAdminPipelineFeed([]);
       deferredAdminFeedRef.current = [];
       clearRecentFeedHighlights();
       setResetEventsModalOpen(false);
@@ -2600,7 +2726,7 @@ export default function App() {
     [feedDisturbanceClockMs]
   );
 
-  const studentDisturbedFeedSource = useMemo(() => {
+  const studentBeforePipelineDisturbedFeedSource = useMemo(() => {
     if (!studentData) {
       return [];
     }
@@ -2611,60 +2737,113 @@ export default function App() {
     );
   }, [disturbanceNowEpochMs, feedScenarioConfig?.scenarioOverlays, studentData]);
 
-  const studentNextDisturbanceReleaseAt = useMemo(() => {
-    if (!studentData) {
-      return null;
-    }
-    return nextFeedScenarioReleaseAt(
-      studentData.feed,
+  const studentAfterPipelineDisturbedFeedSource = useMemo(() => {
+    return applyFeedScenarioDisturbances(
+      studentPipelineFeed,
       feedScenarioConfig?.scenarioOverlays,
       disturbanceNowEpochMs
     );
-  }, [disturbanceNowEpochMs, feedScenarioConfig?.scenarioOverlays, studentData]);
+  }, [disturbanceNowEpochMs, feedScenarioConfig?.scenarioOverlays, studentPipelineFeed]);
+
+  const studentFeedSourceEvents = useMemo(() => {
+    return studentFeedSource === 'AFTER_PIPELINE'
+      ? studentAfterPipelineDisturbedFeedSource
+      : studentBeforePipelineDisturbedFeedSource;
+  }, [
+    studentAfterPipelineDisturbedFeedSource,
+    studentBeforePipelineDisturbedFeedSource,
+    studentFeedSource
+  ]);
+
+  const studentNextDisturbanceReleaseAt = useMemo(() => {
+    if (!studentData && studentFeedSource !== 'AFTER_PIPELINE') {
+      return null;
+    }
+    const source = studentFeedSource === 'AFTER_PIPELINE' ? studentPipelineFeed : studentData?.feed ?? [];
+    return nextFeedScenarioReleaseAt(
+      source,
+      feedScenarioConfig?.scenarioOverlays,
+      disturbanceNowEpochMs
+    );
+  }, [
+    disturbanceNowEpochMs,
+    feedScenarioConfig?.scenarioOverlays,
+    studentData,
+    studentFeedSource,
+    studentPipelineFeed
+  ]);
 
   const studentVisibleFeed = useMemo(() => {
-    return studentDisturbedFeedSource.filter((event) => {
+    return studentFeedSourceEvents.filter((event) => {
       if (!studentShowInternal && (event.isInternal || isTelemetryEvent(event))) {
         return false;
       }
       return feedMatchesTopic(event, studentTopicFilter);
     });
-  }, [studentDisturbedFeedSource, studentShowInternal, studentTopicFilter]);
+  }, [studentFeedSourceEvents, studentShowInternal, studentTopicFilter]);
 
-  const adminDisturbedFeedSource = useMemo(() => {
-    if (!adminData || session?.role !== 'ADMIN' || adminPage !== 'feed') {
+  const adminBeforeDisturbancesFeedSource = useMemo(() => {
+    if (!adminData || session?.role !== 'ADMIN') {
       return [];
     }
-    if (adminShowUndisturbedFeed) {
-      return adminData.events;
+    return adminData.events;
+  }, [adminData, session?.role]);
+
+  const adminAfterDisturbancesFeedSource = useMemo(() => {
+    if (!adminData || session?.role !== 'ADMIN') {
+      return [];
     }
     return applyFeedScenarioDisturbances(
       adminData.events,
       feedScenarioConfig?.scenarioOverlays,
       disturbanceNowEpochMs
     );
+  }, [adminData, disturbanceNowEpochMs, feedScenarioConfig?.scenarioOverlays, session?.role]);
+
+  const adminAfterPipelineDisturbedFeedSource = useMemo(() => {
+    if (session?.role !== 'ADMIN') {
+      return [];
+    }
+    return applyFeedScenarioDisturbances(
+      adminPipelineFeed,
+      feedScenarioConfig?.scenarioOverlays,
+      disturbanceNowEpochMs
+    );
+  }, [adminPipelineFeed, disturbanceNowEpochMs, feedScenarioConfig?.scenarioOverlays, session?.role]);
+
+  const adminFeedSourceEvents = useMemo(() => {
+    if (adminFeedSource === 'BEFORE_DISTURBANCES') {
+      return adminBeforeDisturbancesFeedSource;
+    }
+    if (adminFeedSource === 'AFTER_PIPELINE') {
+      return adminAfterPipelineDisturbedFeedSource;
+    }
+    return adminAfterDisturbancesFeedSource;
   }, [
-    adminData,
-    adminPage,
-    adminShowUndisturbedFeed,
-    disturbanceNowEpochMs,
-    feedScenarioConfig?.scenarioOverlays,
-    session?.role
+    adminAfterDisturbancesFeedSource,
+    adminAfterPipelineDisturbedFeedSource,
+    adminBeforeDisturbancesFeedSource,
+    adminFeedSource
   ]);
 
   const adminNextDisturbanceReleaseAt = useMemo(() => {
-    if (!adminData || session?.role !== 'ADMIN' || adminPage !== 'feed' || adminShowUndisturbedFeed) {
+    if (!adminData || session?.role !== 'ADMIN' || adminPage !== 'feed') {
       return null;
     }
+    if (adminFeedSource === 'BEFORE_DISTURBANCES') {
+      return null;
+    }
+    const source = adminFeedSource === 'AFTER_PIPELINE' ? adminPipelineFeed : adminData.events;
     return nextFeedScenarioReleaseAt(
-      adminData.events,
+      source,
       feedScenarioConfig?.scenarioOverlays,
       disturbanceNowEpochMs
     );
   }, [
     adminData,
     adminPage,
-    adminShowUndisturbedFeed,
+    adminFeedSource,
+    adminPipelineFeed,
     disturbanceNowEpochMs,
     feedScenarioConfig?.scenarioOverlays,
     session?.role
@@ -2695,7 +2874,7 @@ export default function App() {
   }, [nextDisturbanceReleaseAt]);
 
   const adminVisibleFeed = useMemo(() => {
-    return adminDisturbedFeedSource.filter((event) => {
+    return adminFeedSourceEvents.filter((event) => {
       if (!adminIncludeInternal && (event.isInternal || isTelemetryEvent(event))) {
         return false;
       }
@@ -2713,7 +2892,7 @@ export default function App() {
   }, [
     adminCategoryFilter,
     adminDeviceFilter,
-    adminDisturbedFeedSource,
+    adminFeedSourceEvents,
     adminIncludeInternal,
     adminTopicFilter
   ]);
@@ -3056,7 +3235,14 @@ export default function App() {
               <span className={`chip ${device.online ? 'ok' : 'warn'}`}>
                 {statusLabel(device.online, language)}
               </span>
-              {isConfiguredAdminDevice ? <span className="chip">{t('adminDeviceSetting')}</span> : null}
+              {isConfiguredAdminDevice ? (
+                <span className="chip">
+                  <span className="inline-icon" aria-hidden="true">
+                    <AdminIcon />
+                  </span>
+                  {t('adminDeviceSetting')}
+                </span>
+              ) : null}
             </div>
           </header>
 
@@ -3531,6 +3717,10 @@ export default function App() {
                 setFeedViewMode((mode) => (mode === 'rendered' ? 'raw' : 'rendered'))
               }
               onClearFeed={() => {
+                if (studentFeedSource === 'AFTER_PIPELINE') {
+                  setStudentPipelineFeed([]);
+                  return;
+                }
                 setStudentData((previous) => {
                   if (!previous) {
                     return previous;
@@ -3544,6 +3734,8 @@ export default function App() {
               showInternalEventsToggle={studentData.capabilities.showInternalEventsToggle}
               studentShowInternal={studentShowInternal}
               onStudentShowInternalChange={setStudentShowInternal}
+              studentFeedSource={studentFeedSource}
+              onStudentFeedSourceChange={setStudentFeedSource}
               studentVisibleFeedCount={studentVisibleFeed.length}
               studentFeedRows={studentFeedRows}
             />
@@ -3633,6 +3825,7 @@ export default function App() {
                     busyKey === 'admin-task-pipeline-config' ||
                     busyKey === 'admin-task-pipeline-config-load'
                   }
+                  taskMutationBusy={busyKey === 'admin-task-update' || busyKey === 'admin-task-create'}
                   onActivateTask={activateTask}
                   isTaskActivationBusy={(taskId) => busyKey === `activate-${taskId}`}
                   onSelectTask={selectAdminPipelineTask}
@@ -3641,6 +3834,8 @@ export default function App() {
                   onToggleAllowedBlock={toggleTaskPipelineAllowedBlock}
                   onScenarioOverlaysChange={changeTaskPipelineScenarioOverlays}
                   onSaveTaskConfig={saveAdminTaskPipelineConfig}
+                  onSaveTaskDetails={saveAdminTaskDetails}
+                  onCreateTask={createAdminTask}
                 />
               ) : null}
 
@@ -3740,6 +3935,10 @@ export default function App() {
                     setFeedViewMode((mode) => (mode === 'rendered' ? 'raw' : 'rendered'))
                   }
                   onClearFeed={() => {
+                    if (adminFeedSource === 'AFTER_PIPELINE') {
+                      setAdminPipelineFeed([]);
+                      return;
+                    }
                     setAdminData((previous) => {
                       if (!previous) {
                         return previous;
@@ -3757,8 +3956,8 @@ export default function App() {
                   categoryOptions={CATEGORY_OPTIONS}
                   adminIncludeInternal={adminIncludeInternal}
                   onAdminIncludeInternalChange={setAdminIncludeInternal}
-                  adminShowUndisturbedFeed={adminShowUndisturbedFeed}
-                  onAdminShowUndisturbedFeedChange={setAdminShowUndisturbedFeed}
+                  adminFeedSource={adminFeedSource}
+                  onAdminFeedSourceChange={setAdminFeedSource}
                   adminVisibleFeedCount={adminVisibleFeed.length}
                   adminFeedRows={adminFeedRows}
                 />

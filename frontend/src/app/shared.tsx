@@ -32,7 +32,7 @@ import type {
   VirtualDevicePatch,
   WsConnectionState
 } from './shared-types';
-import { MetricIcon, SettingsIcon } from './shared-icons';
+import { AdminIcon, MetricIcon, SettingsIcon } from './shared-icons';
 import { parsePipelineScenarioOverlays } from './pipeline-scenarios';
 
 const TOKEN_STORAGE_KEY = 'epl.sessionToken';
@@ -1596,6 +1596,7 @@ export {
   systemDataPartLabel,
   MetricIcon,
   SettingsIcon,
+  AdminIcon,
   timestampToEpochMillis,
   compareByNewestIngestTs,
   mergeEventsBounded,

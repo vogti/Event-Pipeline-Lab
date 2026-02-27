@@ -61,9 +61,11 @@ interface UseRealtimeSyncParams {
   setWsConnection: Dispatch<SetStateAction<WsConnectionState>>;
   setErrorMessage: Dispatch<SetStateAction<string | null>>;
   setStudentData: Dispatch<SetStateAction<StudentViewData | null>>;
+  setStudentPipelineFeed: Dispatch<SetStateAction<CanonicalEvent[]>>;
   setStudentConfigDraft: Dispatch<SetStateAction<Record<string, unknown>>>;
   setStudentVirtualPatch: Dispatch<SetStateAction<VirtualDevicePatch | null>>;
   setAdminData: Dispatch<SetStateAction<AdminViewData | null>>;
+  setAdminPipelineFeed: Dispatch<SetStateAction<CanonicalEvent[]>>;
   setAdminDeviceSnapshots: Dispatch<SetStateAction<Record<string, DeviceTelemetrySnapshot>>>;
   setAdminDeviceIpById: Dispatch<SetStateAction<Record<string, string>>>;
   setAdminSettingsDraftMode: Dispatch<SetStateAction<LanguageMode>>;
@@ -97,9 +99,11 @@ export function useRealtimeSync({
   setWsConnection,
   setErrorMessage,
   setStudentData,
+  setStudentPipelineFeed,
   setStudentConfigDraft,
   setStudentVirtualPatch,
   setAdminData,
+  setAdminPipelineFeed,
   setAdminDeviceSnapshots,
   setAdminDeviceIpById,
   setAdminSettingsDraftMode,
@@ -125,10 +129,14 @@ export function useRealtimeSync({
     let reconnectTimer: number | null = null;
     let groupRefreshTimer: number | null = null;
     let studentFeedFlushTimer: number | null = null;
+    let studentPipelineFeedFlushTimer: number | null = null;
     let adminFeedFlushTimer: number | null = null;
+    let adminPipelineFeedFlushTimer: number | null = null;
     let adminDeviceStatusFlushTimer: number | null = null;
     let studentFeedQueue: CanonicalEvent[] = [];
+    let studentPipelineFeedQueue: CanonicalEvent[] = [];
     let adminFeedQueue: CanonicalEvent[] = [];
+    let adminPipelineFeedQueue: CanonicalEvent[] = [];
     const adminDeviceStatusQueue = new Map<string, DeviceStatus>();
     let closed = false;
 
@@ -186,6 +194,24 @@ export function useRealtimeSync({
       studentFeedFlushTimer = window.setTimeout(flushStudentFeedQueue, 180);
     };
 
+    const flushStudentPipelineFeedQueue = () => {
+      studentPipelineFeedFlushTimer = null;
+      if (studentPipelineFeedQueue.length === 0) {
+        return;
+      }
+      const queued = studentPipelineFeedQueue;
+      studentPipelineFeedQueue = [];
+      setStudentPipelineFeed((previous) => mergeEventsBounded(previous, queued, MAX_FEED_EVENTS));
+    };
+
+    const queueStudentPipelineFeedEvent = (eventPayload: CanonicalEvent) => {
+      studentPipelineFeedQueue.push(eventPayload);
+      if (studentPipelineFeedFlushTimer !== null) {
+        return;
+      }
+      studentPipelineFeedFlushTimer = window.setTimeout(flushStudentPipelineFeedQueue, 180);
+    };
+
     const flushAdminFeedQueue = () => {
       adminFeedFlushTimer = null;
       if (adminFeedQueue.length === 0) {
@@ -227,6 +253,24 @@ export function useRealtimeSync({
         return;
       }
       adminFeedFlushTimer = window.setTimeout(flushAdminFeedQueue, 180);
+    };
+
+    const flushAdminPipelineFeedQueue = () => {
+      adminPipelineFeedFlushTimer = null;
+      if (adminPipelineFeedQueue.length === 0) {
+        return;
+      }
+      const queued = adminPipelineFeedQueue;
+      adminPipelineFeedQueue = [];
+      setAdminPipelineFeed((previous) => mergeEventsBounded(previous, queued, MAX_FEED_EVENTS));
+    };
+
+    const queueAdminPipelineFeedEvent = (eventPayload: CanonicalEvent) => {
+      adminPipelineFeedQueue.push(eventPayload);
+      if (adminPipelineFeedFlushTimer !== null) {
+        return;
+      }
+      adminPipelineFeedFlushTimer = window.setTimeout(flushAdminPipelineFeedQueue, 180);
     };
 
     const flushAdminDeviceStatusQueue = () => {
@@ -277,6 +321,12 @@ export function useRealtimeSync({
           return;
         }
         queueStudentFeedEvent(eventPayload);
+      },
+      'event.pipeline.append': (eventPayload) => {
+        if (studentPauseRef.current) {
+          return;
+        }
+        queueStudentPipelineFeedEvent(eventPayload);
       },
       'group.presence.updated': (payload) => {
         const presence = Array.isArray(payload) ? (payload as PresenceUser[]) : [];
@@ -454,6 +504,12 @@ export function useRealtimeSync({
         }
         queueAdminFeedEvent(eventPayload);
       },
+      'event.pipeline.append': (eventPayload) => {
+        if (adminPauseRef.current) {
+          return;
+        }
+        queueAdminPipelineFeedEvent(eventPayload);
+      },
       'device.status.updated': (deviceStatus) => {
         queueAdminDeviceStatus(deviceStatus);
       },
@@ -605,14 +661,22 @@ export function useRealtimeSync({
       if (studentFeedFlushTimer !== null) {
         window.clearTimeout(studentFeedFlushTimer);
       }
+      if (studentPipelineFeedFlushTimer !== null) {
+        window.clearTimeout(studentPipelineFeedFlushTimer);
+      }
       if (adminFeedFlushTimer !== null) {
         window.clearTimeout(adminFeedFlushTimer);
+      }
+      if (adminPipelineFeedFlushTimer !== null) {
+        window.clearTimeout(adminPipelineFeedFlushTimer);
       }
       if (adminDeviceStatusFlushTimer !== null) {
         window.clearTimeout(adminDeviceStatusFlushTimer);
       }
       studentFeedQueue = [];
+      studentPipelineFeedQueue = [];
       adminFeedQueue = [];
+      adminPipelineFeedQueue = [];
       adminDeviceStatusQueue.clear();
 
       if (socket) {
@@ -639,6 +703,7 @@ export function useRealtimeSync({
     setAdminData,
     setAdminDeviceIpById,
     setAdminDeviceSnapshots,
+    setAdminPipelineFeed,
     setAdminSettingsDraftMode,
     setAdminSettingsDraftTimeFormat24h,
     setAdminSettingsDraftVirtualVisible,
@@ -648,6 +713,7 @@ export function useRealtimeSync({
     setErrorMessage,
     setStudentConfigDraft,
     setStudentData,
+    setStudentPipelineFeed,
     setStudentVirtualPatch,
     setTimeFormat24h,
     setWsConnection,

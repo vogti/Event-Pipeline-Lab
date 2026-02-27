@@ -33,6 +33,8 @@ export interface AdminViewData {
 export type WsConnectionState = 'connecting' | 'connected' | 'disconnected';
 export type FeedViewMode = 'rendered' | 'raw';
 export type EventDetailsViewMode = 'rendered' | 'raw';
+export type StudentFeedSource = 'BEFORE_PIPELINE' | 'AFTER_PIPELINE';
+export type AdminFeedSource = 'AFTER_DISTURBANCES' | 'BEFORE_DISTURBANCES' | 'AFTER_PIPELINE';
 export type AdminPage =
   | 'dashboard'
   | 'devices'

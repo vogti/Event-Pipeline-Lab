@@ -5,6 +5,7 @@ import type {
   CanonicalEvent,
   DeviceCommandType,
   DevicePinInfo,
+  EventFeedStage,
   ResetEventsResponse,
   FeedScenarioConfig,
   SystemDataImportApplyResponse,
@@ -260,6 +261,47 @@ export const api = {
       {
         method: 'POST',
         body: JSON.stringify({ taskId })
+      },
+      token
+    );
+  },
+
+  updateAdminTaskDetails(
+    token: string,
+    args: {
+      taskId: string;
+      titleDe: string;
+      titleEn: string;
+      descriptionDe: string;
+      descriptionEn: string;
+    }
+  ): Promise<TaskInfo> {
+    return request<TaskInfo>(
+      '/api/admin/task/update',
+      {
+        method: 'POST',
+        body: JSON.stringify(args)
+      },
+      token
+    );
+  },
+
+  createAdminTask(
+    token: string,
+    args: {
+      taskId: string;
+      titleDe: string;
+      titleEn: string;
+      descriptionDe: string;
+      descriptionEn: string;
+      templateTaskId?: string | null;
+    }
+  ): Promise<TaskInfo> {
+    return request<TaskInfo>(
+      '/api/admin/task/create',
+      {
+        method: 'POST',
+        body: JSON.stringify(args)
       },
       token
     );
@@ -582,6 +624,7 @@ export const api = {
       category?: string;
       includeInternal?: boolean;
       deviceId?: string;
+      stage?: EventFeedStage;
     } = {}
   ): Promise<CanonicalEvent[]> {
     return request<CanonicalEvent[]>(
@@ -590,7 +633,8 @@ export const api = {
         topicContains: args.topicContains,
         category: args.category,
         includeInternal: args.includeInternal,
-        deviceId: args.deviceId
+        deviceId: args.deviceId,
+        stage: args.stage
       }),
       undefined,
       token

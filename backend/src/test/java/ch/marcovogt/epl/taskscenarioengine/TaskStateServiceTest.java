@@ -9,6 +9,7 @@ import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,12 +30,23 @@ class TaskStateServiceTest {
     @Mock
     private TaskPipelineConfigService taskPipelineConfigService;
 
+    @Mock
+    private TaskDefinitionStateRepository taskDefinitionStateRepository;
+
     private TaskStateService service;
 
     @BeforeEach
     void setUp() {
         TaskCatalog taskCatalog = new TaskCatalog();
-        service = new TaskStateService(taskStateRepository, taskCatalog, taskPipelineConfigService);
+        when(taskDefinitionStateRepository.findAll(any(org.springframework.data.domain.Sort.class)))
+                .thenReturn(List.of());
+        service = new TaskStateService(
+                taskStateRepository,
+                taskDefinitionStateRepository,
+                taskCatalog,
+                taskPipelineConfigService,
+                new ObjectMapper()
+        );
     }
 
     @Test

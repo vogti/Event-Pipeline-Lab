@@ -128,4 +128,61 @@ public class AdminTaskController {
 
         return updated;
     }
+
+    @PostMapping("/task/update")
+    public TaskInfoDto updateTaskDetails(
+            HttpServletRequest request,
+            @Valid @RequestBody UpdateTaskDetailsRequest body
+    ) {
+        SessionPrincipal principal = requestAuth.requireRole(request, AppRole.ADMIN);
+        TaskInfoDto updated = taskStateService.updateTaskDetails(
+                body.taskId(),
+                body.titleDe(),
+                body.titleEn(),
+                body.descriptionDe(),
+                body.descriptionEn(),
+                principal.username()
+        );
+
+        adminAuditLogger.logAction(
+                "admin.task.details.update",
+                principal.username(),
+                Map.of(
+                        "taskId", updated.id(),
+                        "active", updated.active()
+                )
+        );
+
+        realtimeSyncService.broadcastTaskAndCapabilities(taskStateService.getActiveTask());
+        return updated;
+    }
+
+    @PostMapping("/task/create")
+    public TaskInfoDto createTask(
+            HttpServletRequest request,
+            @Valid @RequestBody CreateTaskRequest body
+    ) {
+        SessionPrincipal principal = requestAuth.requireRole(request, AppRole.ADMIN);
+        TaskInfoDto created = taskStateService.createTask(
+                body.taskId(),
+                body.titleDe(),
+                body.titleEn(),
+                body.descriptionDe(),
+                body.descriptionEn(),
+                body.templateTaskId(),
+                principal.username()
+        );
+
+        adminAuditLogger.logAction(
+                "admin.task.create",
+                principal.username(),
+                Map.of(
+                        "taskId", created.id(),
+                        "templateTaskId", body.templateTaskId() == null ? "" : body.templateTaskId().trim()
+                )
+        );
+
+        realtimeSyncService.broadcastTaskAndCapabilities(taskStateService.getActiveTask());
+        return created;
+    }
 }

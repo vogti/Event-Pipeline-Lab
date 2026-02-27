@@ -73,14 +73,14 @@ public class PipelineObservabilityService {
         this.stateByKey = new LinkedHashMap<>(32, 0.75f, true);
     }
 
-    public synchronized void recordEvent(
+    public synchronized CanonicalEventDto recordEvent(
             String taskId,
             String groupKey,
             PipelineProcessingSection processing,
             CanonicalEventDto event
     ) {
         if (taskId == null || taskId.isBlank() || groupKey == null || groupKey.isBlank()) {
-            return;
+            return null;
         }
 
         GroupState groupState = stateFor(taskId, groupKey);
@@ -89,6 +89,7 @@ public class PipelineObservabilityService {
 
         RuntimeEvent runtimeEvent = RuntimeEvent.from(event, objectMapper);
         boolean sampled = shouldSample(groupState.observedEvents);
+        boolean dropped = false;
 
         for (int index = 0; index < processing.slotCount(); index++) {
             String blockType = blockTypeAt(processing, index);
@@ -110,6 +111,7 @@ public class PipelineObservabilityService {
                 if (sampled) {
                     appendSample(blockState, sampleFor(inputCopy, null, true, "error", index, blockType));
                 }
+                dropped = true;
                 break;
             }
 
@@ -126,6 +128,7 @@ public class PipelineObservabilityService {
                             sampleFor(inputCopy, null, true, result.dropReason, index, blockType)
                     );
                 }
+                dropped = true;
                 break;
             }
 
@@ -134,10 +137,31 @@ public class PipelineObservabilityService {
             if (sampled) {
                 appendSample(
                         blockState,
-                        sampleFor(inputCopy, runtimeEvent.copy(objectMapper), false, null, index, blockType)
+                    sampleFor(inputCopy, runtimeEvent.copy(objectMapper), false, null, index, blockType)
                 );
             }
         }
+
+        if (dropped) {
+            return null;
+        }
+
+        return new CanonicalEventDto(
+                event.id(),
+                runtimeEvent.deviceId,
+                runtimeEvent.topic,
+                runtimeEvent.eventType,
+                runtimeEvent.category,
+                safeJson(runtimeEvent.payload),
+                runtimeEvent.deviceTs,
+                runtimeEvent.ingestTs,
+                runtimeEvent.valid,
+                event.validationErrors(),
+                runtimeEvent.isInternal,
+                event.scenarioFlags(),
+                event.groupKey(),
+                event.sequenceNo()
+        );
     }
 
     public synchronized PipelineObservabilityDto snapshot(

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import type { StudentFeedSource } from '../../app/shared-types';
 import type { I18nKey } from '../../i18n';
 
 interface StudentFeedSectionProps {
@@ -14,6 +15,8 @@ interface StudentFeedSectionProps {
   showInternalEventsToggle: boolean;
   studentShowInternal: boolean;
   onStudentShowInternalChange: (value: boolean) => void;
+  studentFeedSource: StudentFeedSource;
+  onStudentFeedSourceChange: (value: StudentFeedSource) => void;
   studentVisibleFeedCount: number;
   studentFeedRows: ReactNode;
 }
@@ -31,6 +34,8 @@ export function StudentFeedSection({
   showInternalEventsToggle,
   studentShowInternal,
   onStudentShowInternalChange,
+  studentFeedSource,
+  onStudentFeedSourceChange,
   studentVisibleFeedCount,
   studentFeedRows
 }: StudentFeedSectionProps) {
@@ -55,6 +60,15 @@ export function StudentFeedSection({
           onChange={(event) => onStudentTopicFilterChange(event.target.value)}
           disabled={!canFilterByTopic}
         />
+
+        <select
+          className="input"
+          value={studentFeedSource}
+          onChange={(event) => onStudentFeedSourceChange(event.target.value as StudentFeedSource)}
+        >
+          <option value="BEFORE_PIPELINE">{t('feedSourceBeforePipeline')}</option>
+          <option value="AFTER_PIPELINE">{t('feedSourceAfterPipeline')}</option>
+        </select>
 
         {showInternalEventsToggle ? (
           <label className="checkbox-inline">

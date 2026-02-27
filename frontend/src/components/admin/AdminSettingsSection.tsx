@@ -1,4 +1,5 @@
 import type { I18nKey } from '../../i18n';
+import { AdminIcon } from '../../app/shared-icons';
 import type { LanguageMode } from '../../types';
 
 interface AdminSettingsSectionProps {
@@ -70,7 +71,12 @@ export function AdminSettingsSection({
         <span>{t('virtualVisibleToStudents')}</span>
       </label>
       <label>
-        <span>{t('adminDeviceSetting')}</span>
+        <span className="icon-inline-label">
+          <span className="inline-icon" aria-hidden="true">
+            <AdminIcon />
+          </span>
+          {t('adminDeviceSetting')}
+        </span>
         <select
           className="input"
           value={adminDeviceId ?? ''}

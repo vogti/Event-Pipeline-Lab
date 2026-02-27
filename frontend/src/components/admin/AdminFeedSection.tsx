@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import type { I18nKey } from '../../i18n';
+import type { AdminFeedSource } from '../../app/shared-types';
 import type { EventCategory } from '../../types';
 
 interface AdminFeedSectionProps {
@@ -19,8 +20,8 @@ interface AdminFeedSectionProps {
   categoryOptions: Array<EventCategory | 'ALL'>;
   adminIncludeInternal: boolean;
   onAdminIncludeInternalChange: (value: boolean) => void;
-  adminShowUndisturbedFeed: boolean;
-  onAdminShowUndisturbedFeedChange: (value: boolean) => void;
+  adminFeedSource: AdminFeedSource;
+  onAdminFeedSourceChange: (value: AdminFeedSource) => void;
   adminVisibleFeedCount: number;
   adminFeedRows: ReactNode;
 }
@@ -42,8 +43,8 @@ export function AdminFeedSection({
   categoryOptions,
   adminIncludeInternal,
   onAdminIncludeInternalChange,
-  adminShowUndisturbedFeed,
-  onAdminShowUndisturbedFeedChange,
+  adminFeedSource,
+  onAdminFeedSourceChange,
   adminVisibleFeedCount,
   adminFeedRows
 }: AdminFeedSectionProps) {
@@ -99,14 +100,15 @@ export function AdminFeedSection({
           <span>{t('includeInternal')}</span>
         </label>
 
-        <label className="checkbox-inline">
-          <input
-            type="checkbox"
-            checked={adminShowUndisturbedFeed}
-            onChange={(event) => onAdminShowUndisturbedFeedChange(event.target.checked)}
-          />
-          <span>{t('showUndisturbedFeed')}</span>
-        </label>
+        <select
+          className="input"
+          value={adminFeedSource}
+          onChange={(event) => onAdminFeedSourceChange(event.target.value as AdminFeedSource)}
+        >
+          <option value="AFTER_DISTURBANCES">{t('feedSourceAfterDisturbances')}</option>
+          <option value="BEFORE_DISTURBANCES">{t('feedSourceBeforeDisturbances')}</option>
+          <option value="AFTER_PIPELINE">{t('feedSourceAfterPipeline')}</option>
+        </select>
       </div>
 
       <div className="feed-table-wrap">

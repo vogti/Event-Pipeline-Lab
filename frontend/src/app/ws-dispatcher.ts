@@ -17,6 +17,7 @@ import type {
 
 export type WsEventType =
   | 'event.feed.append'
+  | 'event.pipeline.append'
   | 'group.presence.updated'
   | 'group.config.updated'
   | 'capabilities.updated'
@@ -32,6 +33,7 @@ export type WsEventType =
 
 export interface WsPayloadByType {
   'event.feed.append': CanonicalEvent;
+  'event.pipeline.append': CanonicalEvent;
   'group.presence.updated': PresenceUser[] | unknown;
   'group.config.updated': GroupConfig;
   'capabilities.updated': TaskCapabilities;
@@ -93,6 +95,12 @@ export function dispatchWsEnvelope(
       handlers['event.feed.append']?.(
         envelope.payload as WsPayloadByType['event.feed.append'],
         toKnownEnvelope(envelope, 'event.feed.append')
+      );
+      return true;
+    case 'event.pipeline.append':
+      handlers['event.pipeline.append']?.(
+        envelope.payload as WsPayloadByType['event.pipeline.append'],
+        toKnownEnvelope(envelope, 'event.pipeline.append')
       );
       return true;
     case 'group.presence.updated':

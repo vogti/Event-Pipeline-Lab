@@ -4,6 +4,7 @@ import ch.marcovogt.epl.deviceregistryhealth.DeviceStatus;
 import ch.marcovogt.epl.deviceregistryhealth.DeviceStatusDto;
 import ch.marcovogt.epl.deviceregistryhealth.DeviceStatusService;
 import ch.marcovogt.epl.eventfeedquery.EventFeedService;
+import ch.marcovogt.epl.pipelinebuilder.PipelineEventProcessingResult;
 import ch.marcovogt.epl.pipelinebuilder.PipelineLogModeService;
 import ch.marcovogt.epl.pipelinebuilder.PipelineObservabilityUpdateDto;
 import ch.marcovogt.epl.pipelinebuilder.PipelineStateService;
@@ -66,9 +67,19 @@ public class EventIngestionService {
         pipelineLogModeService.publish(eventDto);
 
         try {
-            PipelineObservabilityUpdateDto observabilityUpdate = pipelineStateService.recordObservabilityEvent(eventDto);
-            if (observabilityUpdate != null) {
-                realtimeSyncService.broadcastPipelineObservability(observabilityUpdate);
+            PipelineEventProcessingResult processingResult =
+                    pipelineStateService.recordObservabilityAndProjectEvent(eventDto);
+            if (processingResult != null) {
+                PipelineObservabilityUpdateDto observabilityUpdate = processingResult.observabilityUpdate();
+                if (observabilityUpdate != null) {
+                    realtimeSyncService.broadcastPipelineObservability(observabilityUpdate);
+                }
+                CanonicalEventDto projectedEvent = processingResult.projectedEvent();
+                if (projectedEvent != null) {
+                    eventFeedService.appendToPipelineLiveBuffer(projectedEvent);
+                    adminWebSocketBroadcaster.broadcast("event.pipeline.append", projectedEvent);
+                    realtimeSyncService.broadcastPipelineEventToStudents(projectedEvent);
+                }
             }
         } catch (Exception ex) {
             log.warn("Failed to update pipeline observability for event {}: {}", eventDto.id(), ex.getMessage());

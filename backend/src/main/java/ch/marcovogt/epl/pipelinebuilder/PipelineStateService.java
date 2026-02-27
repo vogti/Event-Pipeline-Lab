@@ -230,7 +230,7 @@ public class PipelineStateService {
     }
 
     @Transactional
-    public PipelineObservabilityUpdateDto recordObservabilityEvent(CanonicalEventDto eventDto) {
+    public PipelineEventProcessingResult recordObservabilityAndProjectEvent(CanonicalEventDto eventDto) {
         String resolvedGroupKey = eventDto.groupKey();
         if (resolvedGroupKey == null || resolvedGroupKey.isBlank()) {
             resolvedGroupKey = DeviceIdMapping.groupKeyForDevice(eventDto.deviceId()).orElse(null);
@@ -252,13 +252,27 @@ public class PipelineStateService {
                 : null;
         PipelineStatePayload effective = effectivePayload(config, groupPayload, globalState, defaults);
 
-        pipelineObservabilityService.recordEvent(task.id(), groupKey, effective.processing(), eventDto);
+        CanonicalEventDto projected = pipelineObservabilityService.recordEvent(
+                task.id(),
+                groupKey,
+                effective.processing(),
+                eventDto
+        );
         PipelineObservabilityDto observability = pipelineObservabilityService.snapshot(
                 task.id(),
                 groupKey,
                 effective.processing()
         );
-        return new PipelineObservabilityUpdateDto(task.id(), groupKey, observability);
+        return new PipelineEventProcessingResult(
+                new PipelineObservabilityUpdateDto(task.id(), groupKey, observability),
+                projected
+        );
+    }
+
+    @Transactional
+    public PipelineObservabilityUpdateDto recordObservabilityEvent(CanonicalEventDto eventDto) {
+        PipelineEventProcessingResult result = recordObservabilityAndProjectEvent(eventDto);
+        return result == null ? null : result.observabilityUpdate();
     }
 
     @Transactional

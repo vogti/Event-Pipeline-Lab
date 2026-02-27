@@ -11,6 +11,8 @@ export type EventCategory =
   | 'COMMAND'
   | 'ACK';
 
+export type EventFeedStage = 'BEFORE_PIPELINE' | 'AFTER_PIPELINE';
+
 export type DeviceCommandType = 'LED_GREEN' | 'LED_ORANGE' | 'COUNTER_RESET';
 export type TimestampValue = string | number | null;
 

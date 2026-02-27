@@ -8,6 +8,7 @@ import ch.marcovogt.epl.common.EventCategory;
 import ch.marcovogt.epl.eventingestionnormalization.CanonicalEventDto;
 import ch.marcovogt.epl.eventingestionnormalization.CanonicalEventRepository;
 import ch.marcovogt.epl.taskscenarioengine.TaskCapabilities;
+import java.util.Comparator;
 import java.util.List;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -18,15 +19,18 @@ public class EventFeedService {
 
     private final CanonicalEventRepository canonicalEventRepository;
     private final LiveEventBuffer liveEventBuffer;
+    private final PipelineLiveEventBuffer pipelineLiveEventBuffer;
     private final AppSettingsService appSettingsService;
 
     public EventFeedService(
             CanonicalEventRepository canonicalEventRepository,
             LiveEventBuffer liveEventBuffer,
+            PipelineLiveEventBuffer pipelineLiveEventBuffer,
             AppSettingsService appSettingsService
     ) {
         this.canonicalEventRepository = canonicalEventRepository;
         this.liveEventBuffer = liveEventBuffer;
+        this.pipelineLiveEventBuffer = pipelineLiveEventBuffer;
         this.appSettingsService = appSettingsService;
     }
 
@@ -52,14 +56,20 @@ public class EventFeedService {
         liveEventBuffer.append(eventDto);
     }
 
+    public void appendToPipelineLiveBuffer(CanonicalEventDto eventDto) {
+        pipelineLiveEventBuffer.append(eventDto);
+    }
+
     public void clearLiveBuffer() {
         liveEventBuffer.clear();
+        pipelineLiveEventBuffer.clear();
     }
 
     @Transactional(readOnly = true)
     public List<CanonicalEventDto> getFeedForPrincipal(
             SessionPrincipal principal,
             TaskCapabilities capabilities,
+            EventFeedStage stage,
             int limit,
             String topicContains,
             EventCategory category,
@@ -94,9 +104,15 @@ public class EventFeedService {
         final boolean studentVirtualVisible = principal.role() == AppRole.ADMIN
                 || appSettingsService.isStudentVirtualDeviceVisible();
 
-        return canonicalEventRepository.findRecent(null, category, PageRequest.of(0, prefetch))
-                .stream()
-                .map(CanonicalEventDto::from)
+        List<CanonicalEventDto> source = stage == EventFeedStage.AFTER_PIPELINE
+                ? pipelineLiveEventBuffer.snapshot(prefetch)
+                : canonicalEventRepository.findRecent(null, category, PageRequest.of(0, prefetch))
+                        .stream()
+                        .map(CanonicalEventDto::from)
+                        .toList();
+
+        return source.stream()
+                .filter(event -> category == null || event.category() == category)
                 .filter(event -> finalIncludeInternal || !event.isInternal())
                 .filter(event -> studentVirtualVisible || !DeviceIdMapping.isVirtualDeviceId(event.deviceId()))
                 .filter(event -> {
@@ -107,6 +123,11 @@ public class EventFeedService {
                             || event.eventType().toLowerCase().contains(finalTopicFilter);
                 })
                 .filter(event -> visibleForPrincipal(event, principal, capabilities, finalRequestedDeviceId))
+                .sorted(
+                        Comparator.comparing(CanonicalEventDto::ingestTs, Comparator.nullsLast(Comparator.naturalOrder()))
+                                .reversed()
+                                .thenComparing(event -> event.id().toString(), Comparator.reverseOrder())
+                )
                 .limit(boundedLimit)
                 .toList();
     }

@@ -59,6 +59,24 @@ public class RealtimeSyncService {
         }
     }
 
+    public void broadcastPipelineEventToStudents(CanonicalEventDto eventDto) {
+        if (!appSettingsService.isStudentVirtualDeviceVisible()
+                && DeviceIdMapping.isVirtualDeviceId(eventDto.deviceId())) {
+            return;
+        }
+
+        TaskCapabilities capabilities = taskStateService.currentStudentCapabilities();
+        if (capabilities.canViewRoomEvents()) {
+            studentBroadcaster.broadcastToAll("event.pipeline.append", eventDto);
+            return;
+        }
+
+        String groupKey = eventDto.groupKey();
+        if (groupKey != null && !groupKey.isBlank()) {
+            studentBroadcaster.broadcastToGroup(groupKey, "event.pipeline.append", eventDto);
+        }
+    }
+
     public void broadcastDeviceStatusToStudents(DeviceStatusDto statusDto) {
         boolean isVirtualDevice = DeviceIdMapping.isVirtualDeviceId(statusDto.deviceId());
         if (isVirtualDevice && !appSettingsService.isStudentVirtualDeviceVisible()) {

@@ -9,6 +9,7 @@ import ch.marcovogt.epl.authsession.AuthMeResponse;
 import ch.marcovogt.epl.authsession.AuthService;
 import ch.marcovogt.epl.authsession.RequestAuth;
 import ch.marcovogt.epl.authsession.SessionPrincipal;
+import ch.marcovogt.epl.eventfeedquery.EventFeedStage;
 import ch.marcovogt.epl.eventfeedquery.EventFeedService;
 import ch.marcovogt.epl.mqttgateway.MqttCommandPublisher;
 import ch.marcovogt.epl.realtimewebsocket.RealtimeSyncService;
@@ -77,6 +78,7 @@ public class StudentController {
         var feed = eventFeedService.getFeedForPrincipal(
                 principal,
                 capabilities,
+                EventFeedStage.BEFORE_PIPELINE,
                 50,
                 null,
                 null,
