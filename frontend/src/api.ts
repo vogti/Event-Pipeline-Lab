@@ -338,6 +338,28 @@ export const api = {
     );
   },
 
+  reorderAdminTasks(token: string, taskIds: string[]): Promise<TaskInfo[]> {
+    return request<TaskInfo[]>(
+      '/api/admin/task/reorder',
+      {
+        method: 'POST',
+        body: JSON.stringify({ taskIds })
+      },
+      token
+    );
+  },
+
+  deleteAdminTask(token: string, taskId: string): Promise<TaskInfo[]> {
+    return request<TaskInfo[]>(
+      '/api/admin/task/delete',
+      {
+        method: 'POST',
+        body: JSON.stringify({ taskId })
+      },
+      token
+    );
+  },
+
   adminDevices(token: string): Promise<DeviceStatus[]> {
     return request<DeviceStatus[]>('/api/admin/devices', undefined, token);
   },

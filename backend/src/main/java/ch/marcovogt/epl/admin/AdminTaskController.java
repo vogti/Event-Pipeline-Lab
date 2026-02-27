@@ -17,6 +17,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -184,5 +185,55 @@ public class AdminTaskController {
 
         realtimeSyncService.broadcastTaskAndCapabilities(taskStateService.getActiveTask());
         return created;
+    }
+
+    @PostMapping("/task/reorder")
+    public List<TaskInfoDto> reorderTasks(
+            HttpServletRequest request,
+            @Valid @RequestBody ReorderTasksRequest body
+    ) {
+        SessionPrincipal principal = requestAuth.requireRole(request, AppRole.ADMIN);
+        List<TaskInfoDto> reordered = taskStateService.reorderTasks(body.taskIds(), principal.username());
+
+        adminAuditLogger.logAction(
+                "admin.task.reorder",
+                principal.username(),
+                Map.of("taskIds", body.taskIds())
+        );
+
+        realtimeSyncService.broadcastTaskAndCapabilities(taskStateService.getActiveTask());
+        return reordered;
+    }
+
+    @PostMapping("/task/delete")
+    public List<TaskInfoDto> deleteTask(
+            HttpServletRequest request,
+            @Valid @RequestBody DeleteTaskRequest body
+    ) {
+        SessionPrincipal principal = requestAuth.requireRole(request, AppRole.ADMIN);
+        String activeBefore = taskStateService.getActiveTaskInfo().id();
+        List<TaskInfoDto> remaining = taskStateService.deleteTask(body.taskId(), principal.username());
+        TaskDefinition activeAfter = taskStateService.getActiveTask();
+
+        if (!Objects.equals(activeBefore, activeAfter.id())) {
+            FeedScenarioConfigDto scenarioConfig = feedScenarioService.applyPreset(
+                    activeAfter.pipeline().scenarioOverlays(),
+                    principal.username()
+            );
+            realtimeSyncService.broadcastFeedScenarios(scenarioConfig);
+        }
+
+        adminAuditLogger.logAction(
+                "admin.task.delete",
+                principal.username(),
+                Map.of(
+                        "taskId", body.taskId().trim(),
+                        "remainingTasks", remaining.stream().map(TaskInfoDto::id).toList(),
+                        "activeTaskId", activeAfter.id()
+                )
+        );
+
+        realtimeSyncService.broadcastTaskAndCapabilities(activeAfter);
+        return remaining;
     }
 }

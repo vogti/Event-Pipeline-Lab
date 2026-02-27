@@ -1999,12 +1999,61 @@ export default function App() {
         }
         return {
           ...previous,
-          tasks: [...previous.tasks, created].sort((a, b) => a.id.localeCompare(b.id))
+          tasks: [...previous.tasks, created]
         };
       });
       setAdminPipelineTaskId(created.id);
       void loadAdminTaskPipelineConfig(created.id);
       pushToast(t('taskCreated'));
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const reorderAdminTasks = async (taskIds: string[]) => {
+    if (!token || taskIds.length === 0) {
+      return;
+    }
+
+    setBusyKey('admin-task-reorder');
+    setErrorMessage(null);
+    try {
+      const reordered = await api.reorderAdminTasks(token, taskIds);
+      setAdminData((previous) => (previous ? { ...previous, tasks: reordered } : previous));
+      pushToast(t('tasksReordered'));
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const deleteAdminTask = async (taskId: string) => {
+    if (!token) {
+      return;
+    }
+
+    setBusyKey(`admin-task-delete-${taskId}`);
+    setErrorMessage(null);
+    try {
+      const remaining = await api.deleteAdminTask(token, taskId);
+      setAdminData((previous) => (previous ? { ...previous, tasks: remaining } : previous));
+
+      const nextSelectedTaskId = remaining.some((task) => task.id === adminPipelineTaskId)
+        ? adminPipelineTaskId
+        : (remaining.find((task) => task.active)?.id ?? remaining[0]?.id ?? '');
+
+      setAdminPipelineTaskId(nextSelectedTaskId);
+      if (nextSelectedTaskId) {
+        void loadAdminTaskPipelineConfig(nextSelectedTaskId);
+      } else {
+        setAdminTaskPipelineConfig(null);
+        setAdminTaskPipelineConfigDraft(null);
+      }
+
+      pushToast(t('taskDeleted'));
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
@@ -3826,8 +3875,10 @@ export default function App() {
                     busyKey === 'admin-task-pipeline-config-load'
                   }
                   taskMutationBusy={busyKey === 'admin-task-update' || busyKey === 'admin-task-create'}
+                  taskReorderBusy={busyKey === 'admin-task-reorder'}
                   onActivateTask={activateTask}
                   isTaskActivationBusy={(taskId) => busyKey === `activate-${taskId}`}
+                  isTaskDeleteBusy={(taskId) => busyKey === `admin-task-delete-${taskId}`}
                   onSelectTask={selectAdminPipelineTask}
                   onToggleVisibleToStudents={changeTaskPipelineVisibleToStudents}
                   onSlotCountChange={changeTaskPipelineSlotCount}
@@ -3836,6 +3887,8 @@ export default function App() {
                   onSaveTaskConfig={saveAdminTaskPipelineConfig}
                   onSaveTaskDetails={saveAdminTaskDetails}
                   onCreateTask={createAdminTask}
+                  onReorderTasks={reorderAdminTasks}
+                  onDeleteTask={deleteAdminTask}
                 />
               ) : null}
 

@@ -35,6 +35,9 @@ public class TaskDefinitionState {
     @Column(name = "pipeline_json", columnDefinition = "text")
     private String pipelineJson;
 
+    @Column(name = "deleted", nullable = false)
+    private boolean deleted;
+
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
@@ -103,6 +106,14 @@ public class TaskDefinitionState {
 
     public void setPipelineJson(String pipelineJson) {
         this.pipelineJson = pipelineJson;
+    }
+
+    public boolean isDeleted() {
+        return deleted;
+    }
+
+    public void setDeleted(boolean deleted) {
+        this.deleted = deleted;
     }
 
     public Instant getUpdatedAt() {

@@ -63,8 +63,47 @@
   gap: 0.55rem;
 }
 
+.task-settings-tabs {
+  display: flex;
+  gap: 0.45rem;
+  margin-top: 0.45rem;
+}
+
+.task-settings-tab {
+  border: 1px solid rgba(42, 74, 102, 0.32);
+  border-radius: 10px;
+  background: rgba(239, 245, 250, 0.88);
+  color: #274054;
+  cursor: pointer;
+  font-size: 0.83rem;
+  padding: 0.42rem 0.62rem;
+}
+
+.task-settings-tab.active {
+  border-color: rgba(22, 111, 75, 0.54);
+  background: rgba(217, 243, 231, 0.92);
+  color: #1f5b43;
+}
+
+.task-modal-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
 .task-settings-modal {
   width: min(760px, 100%);
+}
+
+.task-header-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.task-reorder-controls {
+  display: inline-flex;
+  gap: 0.35rem;
 }
 
 .task-config-meta-row {

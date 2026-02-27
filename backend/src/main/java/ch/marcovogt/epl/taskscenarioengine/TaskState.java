@@ -16,6 +16,9 @@ public class TaskState {
     @Column(name = "active_task_id", nullable = false, length = 64)
     private String activeTaskId;
 
+    @Column(name = "task_order_json", columnDefinition = "text")
+    private String taskOrderJson;
+
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
@@ -36,6 +39,14 @@ public class TaskState {
 
     public void setActiveTaskId(String activeTaskId) {
         this.activeTaskId = activeTaskId;
+    }
+
+    public String getTaskOrderJson() {
+        return taskOrderJson;
+    }
+
+    public void setTaskOrderJson(String taskOrderJson) {
+        this.taskOrderJson = taskOrderJson;
     }
 
     public Instant getUpdatedAt() {

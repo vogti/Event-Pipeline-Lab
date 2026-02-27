@@ -32,6 +32,8 @@ export interface TaskInfo {
   descriptionDe: string;
   descriptionEn: string;
   active: boolean;
+  lecturerMode: boolean;
+  deletable: boolean;
 }
 
 export interface TaskPipelineConfig {

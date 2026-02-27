@@ -6,6 +6,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -33,16 +35,20 @@ class TaskStateServiceTest {
     @Mock
     private TaskDefinitionStateRepository taskDefinitionStateRepository;
 
+    @Mock
+    private TaskPipelineConfigStateRepository taskPipelineConfigStateRepository;
+
     private TaskStateService service;
 
     @BeforeEach
     void setUp() {
         TaskCatalog taskCatalog = new TaskCatalog();
-        when(taskDefinitionStateRepository.findAll(any(org.springframework.data.domain.Sort.class)))
+        lenient().when(taskDefinitionStateRepository.findAll(any(org.springframework.data.domain.Sort.class)))
                 .thenReturn(List.of());
         service = new TaskStateService(
                 taskStateRepository,
                 taskDefinitionStateRepository,
+                taskPipelineConfigStateRepository,
                 taskCatalog,
                 taskPipelineConfigService,
                 new ObjectMapper()
@@ -127,5 +133,78 @@ class TaskStateServiceTest {
                     assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
                     assertThat(ex.getReason()).contains("Unknown task id");
                 });
+    }
+
+    @Test
+    void reorderTasksShouldPersistOrderAndReturnReorderedList() {
+        TaskState state = new TaskState();
+        state.setId((short) 1);
+        state.setActiveTaskId("task_intro");
+        when(taskStateRepository.findById((short) 1)).thenReturn(Optional.of(state));
+        when(taskPipelineConfigService.applyOverrides(any(TaskDefinition.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        List<TaskInfoDto> reordered = service.reorderTasks(
+                List.of("task_commands", "task_intro", "task_room_view", "task_lecturer_mode"),
+                "admin"
+        );
+
+        assertThat(reordered).extracting(TaskInfoDto::id).containsExactly(
+                "task_commands",
+                "task_intro",
+                "task_room_view",
+                "task_lecturer_mode"
+        );
+        assertThat(state.getTaskOrderJson()).contains("\"task_commands\"");
+        verify(taskStateRepository, atLeastOnce()).save(any(TaskState.class));
+    }
+
+    @Test
+    void deleteTaskShouldRejectLecturerModeTask() {
+        TaskState state = new TaskState();
+        state.setId((short) 1);
+        state.setActiveTaskId("task_intro");
+        when(taskStateRepository.findById((short) 1)).thenReturn(Optional.of(state));
+
+        assertThatThrownBy(() -> service.deleteTask("task_lecturer_mode", "admin"))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(error -> {
+                    ResponseStatusException ex = (ResponseStatusException) error;
+                    assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(ex.getReason()).contains("cannot be deleted");
+                });
+
+        verify(taskDefinitionStateRepository, never()).deleteById(any());
+        verify(taskPipelineConfigStateRepository, never()).deleteById(any());
+    }
+
+    @Test
+    void deleteTaskShouldSoftDeleteCatalogTaskAndSwitchActiveTask() {
+        TaskState state = new TaskState();
+        state.setId((short) 1);
+        state.setActiveTaskId("task_commands");
+        state.setTaskOrderJson("[\"task_commands\",\"task_intro\",\"task_room_view\",\"task_lecturer_mode\"]");
+        when(taskStateRepository.findById((short) 1)).thenReturn(Optional.of(state));
+        when(taskPipelineConfigService.applyOverrides(any(TaskDefinition.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(taskDefinitionStateRepository.findById("task_commands")).thenReturn(Optional.empty());
+        TaskDefinitionState deletedState = new TaskDefinitionState();
+        deletedState.setTaskId("task_commands");
+        deletedState.setDeleted(true);
+        when(taskDefinitionStateRepository.findAll(any(org.springframework.data.domain.Sort.class)))
+                .thenReturn(List.of(), List.of(deletedState), List.of(deletedState));
+
+        List<TaskInfoDto> remaining = service.deleteTask("task_commands", "admin");
+
+        ArgumentCaptor<TaskDefinitionState> stateCaptor = ArgumentCaptor.forClass(TaskDefinitionState.class);
+        verify(taskDefinitionStateRepository).save(stateCaptor.capture());
+        assertThat(stateCaptor.getValue().getTaskId()).isEqualTo("task_commands");
+        assertThat(stateCaptor.getValue().isDeleted()).isTrue();
+        verify(taskPipelineConfigStateRepository).deleteById("task_commands");
+        assertThat(remaining).extracting(TaskInfoDto::id).doesNotContain("task_commands");
+        assertThat(remaining.stream().filter(TaskInfoDto::active))
+                .singleElement()
+                .extracting(TaskInfoDto::id)
+                .isEqualTo("task_intro");
     }
 }

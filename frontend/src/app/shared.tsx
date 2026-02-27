@@ -537,7 +537,9 @@ function sameTaskInfo(a: TaskInfo, b: TaskInfo): boolean {
     a.titleEn === b.titleEn &&
     a.descriptionDe === b.descriptionDe &&
     a.descriptionEn === b.descriptionEn &&
-    a.active === b.active
+    a.active === b.active &&
+    a.lecturerMode === b.lecturerMode &&
+    a.deletable === b.deletable
   );
 }
 
@@ -799,7 +801,12 @@ function extractTaskInfo(payload: unknown): TaskInfo | null {
     titleEn: data.titleEn,
     descriptionDe: data.descriptionDe,
     descriptionEn: data.descriptionEn,
-    active: typeof data.active === 'boolean' ? data.active : true
+    active: typeof data.active === 'boolean' ? data.active : true,
+    lecturerMode: typeof data.lecturerMode === 'boolean' ? data.lecturerMode : false,
+    deletable:
+      typeof data.deletable === 'boolean'
+        ? data.deletable
+        : !(typeof data.lecturerMode === 'boolean' ? data.lecturerMode : false)
   };
 }
 
