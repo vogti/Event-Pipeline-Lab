@@ -16,7 +16,7 @@ interface CreateTaskDraft extends TaskDetailsDraft {
   templateTaskId: string;
 }
 
-type TaskSettingsTab = 'details' | 'pipeline';
+type TaskSettingsTab = 'details' | 'pipeline' | 'disturbances';
 
 interface AdminTasksSectionProps {
   t: (key: I18nKey) => string;
@@ -33,7 +33,6 @@ interface AdminTasksSectionProps {
   isTaskDeleteBusy: (taskId: string) => boolean;
   onSelectTask: (taskId: string) => void;
   onToggleVisibleToStudents: (visible: boolean) => void;
-  onSlotCountChange: (slotCount: number) => void;
   onToggleAllowedBlock: (blockType: string, enabled: boolean) => void;
   onScenarioOverlaysChange: (scenarioOverlays: string[]) => void;
   onSaveTaskConfig: () => void;
@@ -77,7 +76,6 @@ export function AdminTasksSection({
   isTaskDeleteBusy,
   onSelectTask,
   onToggleVisibleToStudents,
-  onSlotCountChange,
   onToggleAllowedBlock,
   onScenarioOverlaysChange,
   onSaveTaskConfig,
@@ -228,6 +226,15 @@ export function AdminTasksSection({
           >
             {t('taskSettingsTabPipeline')}
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={settingsTab === 'disturbances'}
+            className={`task-settings-tab ${settingsTab === 'disturbances' ? 'active' : ''}`}
+            onClick={() => setSettingsTab('disturbances')}
+          >
+            {t('taskSettingsTabDisturbances')}
+          </button>
         </div>
 
         <div className="pipeline-task-inline-editor">
@@ -316,23 +323,6 @@ export function AdminTasksSection({
                   <span>{t('pipelineVisibleToStudents')}</span>
                 </label>
 
-                <label className="stack pipeline-field">
-                  <span>{t('pipelineSlotCount')}</span>
-                  <input
-                    className="input"
-                    type="number"
-                    min={editingTaskConfig.minSlotCount}
-                    max={editingTaskConfig.maxSlotCount}
-                    value={editingTaskConfig.slotCount}
-                    onChange={(event) => {
-                      const next = Number.isFinite(event.target.valueAsNumber)
-                        ? event.target.valueAsNumber
-                        : editingTaskConfig.slotCount;
-                      onSlotCountChange(next);
-                    }}
-                  />
-                </label>
-
                 <div className="stack pipeline-field">
                   <span>{t('pipelineAllowedBlocks')}</span>
                   <div className="pipeline-block-checks">
@@ -349,6 +339,23 @@ export function AdminTasksSection({
                   </div>
                 </div>
 
+                <button
+                  className="button small"
+                  type="button"
+                  onClick={onSaveTaskConfig}
+                  disabled={taskConfigBusy}
+                >
+                  {taskConfigBusy ? t('loading') : t('save')}
+                </button>
+              </>
+            ) : (
+              <p className="muted">{t('loading')}</p>
+            )
+          ) : null}
+
+          {settingsTab === 'disturbances' ? (
+            editingTaskConfig ? (
+              <>
                 <div className="stack pipeline-field">
                   <span>{t('scenarioTaskTitle')}</span>
                   <p className="muted">{t('scenarioPresetHint')}</p>

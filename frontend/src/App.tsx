@@ -1807,19 +1807,6 @@ export default function App() {
     });
   }, []);
 
-  const changeTaskPipelineSlotCount = useCallback((slotCount: number) => {
-    setAdminTaskPipelineConfigDraft((previous) => {
-      if (!previous) {
-        return previous;
-      }
-      const clamped = Math.max(previous.minSlotCount, Math.min(previous.maxSlotCount, Math.round(slotCount)));
-      return {
-        ...previous,
-        slotCount: clamped
-      };
-    });
-  }, []);
-
   const toggleTaskPipelineAllowedBlock = useCallback((blockType: string, enabled: boolean) => {
     setAdminTaskPipelineConfigDraft((previous) => {
       if (!previous) {
@@ -3878,7 +3865,6 @@ export default function App() {
                   isTaskDeleteBusy={(taskId) => busyKey === `admin-task-delete-${taskId}`}
                   onSelectTask={selectAdminPipelineTask}
                   onToggleVisibleToStudents={changeTaskPipelineVisibleToStudents}
-                  onSlotCountChange={changeTaskPipelineSlotCount}
                   onToggleAllowedBlock={toggleTaskPipelineAllowedBlock}
                   onScenarioOverlaysChange={changeTaskPipelineScenarioOverlays}
                   onSaveTaskConfig={saveAdminTaskPipelineConfig}
