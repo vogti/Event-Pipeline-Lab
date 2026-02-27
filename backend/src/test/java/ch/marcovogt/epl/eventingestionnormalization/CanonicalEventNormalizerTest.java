@@ -25,6 +25,7 @@ class CanonicalEventNormalizerTest {
         NormalizedEvent normalized = normalizer.normalize(topic, payload, Instant.parse("2026-02-25T10:00:00Z"));
 
         assertThat(normalized.event().getDeviceId()).isEqualTo("epld01");
+        assertThat(normalized.event().getTopic()).isEqualTo("epld01/event/button");
         assertThat(normalized.event().getEventType()).isEqualTo("button.black.press");
         assertThat(normalized.event().isValid()).isTrue();
     }
@@ -45,6 +46,7 @@ class CanonicalEventNormalizerTest {
         NormalizedEvent normalized = normalizer.normalize(topic, payload, Instant.parse("2026-02-25T10:00:01Z"));
 
         assertThat(normalized.event().getDeviceId()).isEqualTo("epld01");
+        assertThat(normalized.event().getTopic()).isEqualTo("epld01/event/button");
         assertThat(normalized.event().getEventType()).isEqualTo("button.red.press");
         assertThat(normalized.event().getDeviceTs()).isNotNull();
     }
@@ -58,5 +60,23 @@ class CanonicalEventNormalizerTest {
 
         assertThat(normalized.event().isValid()).isFalse();
         assertThat(normalized.event().getValidationErrors()).contains("payload-not-json");
+    }
+
+    @Test
+    void shouldRewriteRpcStatusTopicToCanonicalStatusTopic() {
+        String topic = "epld01/events/rpc";
+        byte[] payload = """
+                {
+                  "method":"NotifyStatus",
+                  "params":{
+                    "mqtt":{"connected":true}
+                  }
+                }
+                """.getBytes(StandardCharsets.UTF_8);
+
+        NormalizedEvent normalized = normalizer.normalize(topic, payload, Instant.parse("2026-02-25T10:00:03Z"));
+
+        assertThat(normalized.event().getEventType()).isEqualTo("status.mqtt");
+        assertThat(normalized.event().getTopic()).isEqualTo("epld01/status/mqtt");
     }
 }

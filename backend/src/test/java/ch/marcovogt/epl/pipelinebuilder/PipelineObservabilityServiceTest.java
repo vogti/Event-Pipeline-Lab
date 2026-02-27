@@ -135,6 +135,64 @@ class PipelineObservabilityServiceTest {
     }
 
     @Test
+    void filterTopicBlockShouldDropEventsOutsideConfiguredTopicFilter() {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(0, "FILTER_TOPIC", java.util.Map.of("topicFilter", "+/event/button")))
+        );
+
+        CanonicalEventDto matching = event(
+                "topic-match",
+                "epld01/event/button",
+                "button.black.press",
+                EventCategory.BUTTON,
+                "{\"state\":true}"
+        );
+        CanonicalEventDto nonMatching = event(
+                "topic-miss",
+                "epld01/event/sensor/ldr",
+                "sensor.ldr.voltage",
+                EventCategory.SENSOR,
+                "{\"voltage\":2.1}"
+        );
+
+        CanonicalEventDto kept = service.recordEvent("task_intro", "epld01", processing, matching);
+        CanonicalEventDto dropped = service.recordEvent("task_intro", "epld01", processing, nonMatching);
+
+        PipelineObservabilityDto snapshot = service.snapshot("task_intro", "epld01", processing);
+        PipelineBlockObservabilityDto block = snapshot.blocks().get(0);
+
+        assertThat(kept).isNotNull();
+        assertThat(dropped).isNull();
+        assertThat(block.inCount()).isEqualTo(2);
+        assertThat(block.outCount()).isEqualTo(1);
+        assertThat(block.dropCount()).isEqualTo(1);
+        assertThat(block.dropReasons()).containsEntry("topic_filtered", 1L);
+    }
+
+    @Test
+    void filterTopicBlockShouldAlsoMatchPrefixedTopicsForCompatibility() {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(0, "FILTER_TOPIC", java.util.Map.of("topicFilter", "+/event/button")))
+        );
+
+        CanonicalEventDto prefixedTopic = event(
+                "topic-prefixed-match",
+                "epld/epld01/event/button",
+                "button.black.press",
+                EventCategory.BUTTON,
+                "{\"state\":true}"
+        );
+
+        CanonicalEventDto output = service.recordEvent("task_intro", "epld01", processing, prefixedTopic);
+
+        assertThat(output).isNotNull();
+    }
+
+    @Test
     void transformPayloadBlockShouldMapExtractedValues() {
         PipelineProcessingSection processing = new PipelineProcessingSection(
                 "CONSTRAINED",

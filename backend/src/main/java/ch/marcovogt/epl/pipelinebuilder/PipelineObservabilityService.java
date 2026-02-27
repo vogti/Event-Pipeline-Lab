@@ -698,6 +698,28 @@ public class PipelineObservabilityService {
             return false;
         }
         String filter = topicFilter.trim();
+        String candidateTopic = topic.trim();
+        if (mqttTopicMatchesStrict(filter, candidateTopic)) {
+            return true;
+        }
+
+        // Backward-compatibility between "epld/<deviceId>/..." and "<deviceId>/..." topic shapes.
+        if (candidateTopic.startsWith("epld/")) {
+            String strippedTopic = candidateTopic.substring("epld/".length());
+            if (!strippedTopic.isBlank() && mqttTopicMatchesStrict(filter, strippedTopic)) {
+                return true;
+            }
+        }
+        if (filter.startsWith("epld/")) {
+            String strippedFilter = filter.substring("epld/".length());
+            if (!strippedFilter.isBlank() && mqttTopicMatchesStrict(strippedFilter, candidateTopic)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean mqttTopicMatchesStrict(String filter, String topic) {
         if ("#".equals(filter)) {
             return true;
         }
