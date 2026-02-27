@@ -13,6 +13,7 @@ public class TaskCatalog {
             "FILTER_DEVICE",
             "FILTER_TOPIC",
             "EXTRACT_VALUE",
+            "TRANSFORM_PAYLOAD",
             "PARSE_VALIDATE",
             "ROUTE"
     );
@@ -21,6 +22,7 @@ public class TaskCatalog {
             "FILTER_DEVICE",
             "FILTER_TOPIC",
             "EXTRACT_VALUE",
+            "TRANSFORM_PAYLOAD",
             "FILTER_RATE_LIMIT",
             "PARSE_VALIDATE",
             "DEDUP",
@@ -32,6 +34,7 @@ public class TaskCatalog {
             "FILTER_DEVICE",
             "FILTER_TOPIC",
             "EXTRACT_VALUE",
+            "TRANSFORM_PAYLOAD",
             "FILTER_RATE_LIMIT",
             "PARSE_VALIDATE",
             "DEDUP",

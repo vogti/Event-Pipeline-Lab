@@ -134,6 +134,41 @@ class PipelineObservabilityServiceTest {
         assertThat(output.payloadJson()).isEqualTo("\"on\"");
     }
 
+    @Test
+    void transformPayloadBlockShouldMapExtractedValues() {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                2,
+                List.of(
+                        new PipelineSlot(0, "EXTRACT_VALUE", java.util.Map.of()),
+                        new PipelineSlot(
+                                1,
+                                "TRANSFORM_PAYLOAD",
+                                java.util.Map.of(
+                                        "transformMappings",
+                                        List.of(
+                                                java.util.Map.of("from", "pressed", "to", "on"),
+                                                java.util.Map.of("from", "released", "to", "off")
+                                        )
+                                )
+                        )
+                )
+        );
+
+        CanonicalEventDto input = event(
+                "transform",
+                "epld/epld01/event/button",
+                "button.black.press",
+                EventCategory.BUTTON,
+                "{\"state\":true}"
+        );
+
+        CanonicalEventDto output = service.recordEvent("task_intro", "epld01", processing, input);
+
+        assertThat(output).isNotNull();
+        assertThat(output.payloadJson()).isEqualTo("\"on\"");
+    }
+
     private CanonicalEventDto event(String suffix, String payloadJson) {
         return event(
                 suffix,

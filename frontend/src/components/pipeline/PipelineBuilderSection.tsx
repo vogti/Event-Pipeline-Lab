@@ -386,6 +386,49 @@ function templateFromTopicFilter(filter: string): FilterTopicTemplate | null {
   return (matched?.[0] as FilterTopicTemplate | undefined) ?? null;
 }
 
+type TransformPayloadMapping = {
+  from: string;
+  to: string;
+};
+
+function parseTransformPayloadMappings(config: Record<string, unknown>): TransformPayloadMapping[] {
+  const raw = config.transformMappings ?? config.mappings;
+  if (Array.isArray(raw)) {
+    return raw
+      .map((entry) => {
+        if (!entry || typeof entry !== 'object') {
+          return null;
+        }
+        const from = typeof (entry as Record<string, unknown>).from === 'string'
+          ? (entry as Record<string, unknown>).from
+          : '';
+        const to = typeof (entry as Record<string, unknown>).to === 'string'
+          ? (entry as Record<string, unknown>).to
+          : '';
+        return { from, to };
+      })
+      .filter((entry): entry is TransformPayloadMapping => entry !== null);
+  }
+  if (raw && typeof raw === 'object') {
+    return Object.entries(raw as Record<string, unknown>).map(([from, to]) => ({
+      from,
+      to: to == null ? '' : String(to)
+    }));
+  }
+  return [];
+}
+
+function normalizeTransformPayloadMappings(
+  mappings: TransformPayloadMapping[]
+): TransformPayloadMapping[] {
+  return mappings
+    .map((mapping) => ({
+      from: mapping.from.trim(),
+      to: mapping.to
+    }))
+    .filter((mapping) => mapping.from.length > 0);
+}
+
 export function PipelineBuilderSection({
   t,
   title,
@@ -433,6 +476,10 @@ export function PipelineBuilderSection({
   const [topicFilterModalMode, setTopicFilterModalMode] = useState<FilterTopicWizardMode>('guided');
   const [topicFilterModalTemplate, setTopicFilterModalTemplate] = useState<FilterTopicTemplate>('EVENT_ALL');
   const [topicFilterModalRawValue, setTopicFilterModalRawValue] = useState('');
+  const [transformPayloadModalSlotIndex, setTransformPayloadModalSlotIndex] = useState<number | null>(null);
+  const [transformPayloadMappingsDraft, setTransformPayloadMappingsDraft] = useState<TransformPayloadMapping[]>([
+    { from: '', to: '' }
+  ]);
   const [sinkEditorSinkId, setSinkEditorSinkId] = useState<string | null>(null);
   const [sinkComposerMode, setSinkComposerMode] = useState<MqttComposerMode>('guided');
   const [sinkDraft, setSinkDraft] = useState<MqttEventDraft>(() => createMqttEventDraft());
@@ -625,6 +672,57 @@ export function PipelineBuilderSection({
   const topicFilterModalPreview = topicFilterModalMode === 'guided'
     ? FILTER_TOPIC_TEMPLATE_TO_FILTER[topicFilterModalTemplate]
     : topicFilterModalRawValue.trim();
+
+  const openTransformPayloadModal = (slotIndex: number, slotConfig: Record<string, unknown>) => {
+    const existingMappings = parseTransformPayloadMappings(slotConfig);
+    setTransformPayloadMappingsDraft(
+      existingMappings.length > 0
+        ? existingMappings
+        : [{ from: '', to: '' }]
+    );
+    setTransformPayloadModalSlotIndex(slotIndex);
+  };
+
+  const closeTransformPayloadModal = () => {
+    setTransformPayloadModalSlotIndex(null);
+  };
+
+  const updateTransformPayloadDraft = (
+    rowIndex: number,
+    field: keyof TransformPayloadMapping,
+    value: string
+  ) => {
+    setTransformPayloadMappingsDraft((previous) =>
+      previous.map((mapping, index) =>
+        index === rowIndex
+          ? { ...mapping, [field]: value }
+          : mapping
+      )
+    );
+  };
+
+  const addTransformPayloadRow = () => {
+    setTransformPayloadMappingsDraft((previous) => [...previous, { from: '', to: '' }]);
+  };
+
+  const removeTransformPayloadRow = (rowIndex: number) => {
+    setTransformPayloadMappingsDraft((previous) => {
+      if (previous.length <= 1) {
+        return [{ from: '', to: '' }];
+      }
+      return previous.filter((_, index) => index !== rowIndex);
+    });
+  };
+
+  const saveTransformPayloadModal = () => {
+    if (transformPayloadModalSlotIndex === null || !onChangeSlotConfig) {
+      closeTransformPayloadModal();
+      return;
+    }
+    const normalizedMappings = normalizeTransformPayloadMappings(transformPayloadMappingsDraft);
+    onChangeSlotConfig(transformPayloadModalSlotIndex, 'transformMappings', normalizedMappings);
+    closeTransformPayloadModal();
+  };
 
   const sinkNodes = normalizeSinkNodes(view.sink.nodes);
   const sinkRuntimeById = new Map(
@@ -872,9 +970,13 @@ export function PipelineBuilderSection({
                 const isDropTarget = dragOverSlotIndex === slot.index;
                 const showSlotDeviceScope = !isEmpty && blockSupportsDeviceScope(slot.blockType);
                 const isFilterTopic = !isEmpty && slot.blockType.trim().toUpperCase() === 'FILTER_TOPIC';
+                const isTransformPayload = !isEmpty && slot.blockType.trim().toUpperCase() === 'TRANSFORM_PAYLOAD';
                 const configuredTopicFilter = isFilterTopic
                   ? extractTopicFilterFromSlotConfig(slot.config ?? {})
                   : '';
+                const configuredTransformPayloadMappings = isTransformPayload
+                  ? parseTransformPayloadMappings(slot.config ?? {})
+                  : [];
                 const slotDeviceScope = normalizeSlotDeviceScope(slot.config.deviceScope);
                 const slotObservability = !isEmpty ? (observabilityBySlot.get(slot.index) ?? null) : null;
                 const inspectorExpanded = expandedObservabilitySlot === slot.index;
@@ -955,6 +1057,24 @@ export function PipelineBuilderSection({
                             disabled={!view.permissions.processingEditable || !onChangeSlotConfig}
                           >
                             {t('pipelineFilterTopicConfigure')}
+                          </button>
+                        </div>
+                      ) : null}
+                      {isTransformPayload ? (
+                        <div className="pipeline-slot-config">
+                          <span>{t('pipelineTransformPayloadLabel')}</span>
+                          <p className="muted mono">
+                            {configuredTransformPayloadMappings.length > 0
+                              ? `${t('pipelineTransformPayloadMappings')}: ${configuredTransformPayloadMappings.length}`
+                              : t('pipelineTransformPayloadNoMappings')}
+                          </p>
+                          <button
+                            type="button"
+                            className="button tiny secondary"
+                            onClick={() => openTransformPayloadModal(slot.index, slot.config ?? {})}
+                            disabled={!view.permissions.processingEditable || !onChangeSlotConfig}
+                          >
+                            {t('pipelineTransformPayloadConfigure')}
                           </button>
                         </div>
                       ) : null}
@@ -1305,6 +1425,74 @@ export function PipelineBuilderSection({
 
             <div className="event-modal-actions">
               <button className="button" type="button" onClick={saveTopicFilterModal}>
+                {t('save')}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {transformPayloadModalSlotIndex !== null ? (
+        <div className="event-modal-backdrop" onClick={closeTransformPayloadModal}>
+          <div className="event-modal mqtt-compose-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="panel-header">
+              <h2>{t('pipelineTransformPayloadModalTitle')}</h2>
+              <button
+                className="modal-close-button"
+                type="button"
+                onClick={closeTransformPayloadModal}
+                aria-label={t('close')}
+                title={t('close')}
+              >
+                <CloseIcon />
+              </button>
+            </div>
+
+            <div className="pipeline-transform-mappings">
+              {transformPayloadMappingsDraft.map((mapping, index) => (
+                <div className="pipeline-transform-row" key={`transform-mapping-${index}`}>
+                  <label className="stack pipeline-field">
+                    <span>{t('pipelineTransformPayloadFrom')}</span>
+                    <input
+                      className="input mono"
+                      value={mapping.from}
+                      onChange={(event) => updateTransformPayloadDraft(index, 'from', event.target.value)}
+                      placeholder="pressed"
+                    />
+                  </label>
+                  <span className="pipeline-transform-arrow" aria-hidden="true">
+                    →
+                  </span>
+                  <label className="stack pipeline-field">
+                    <span>{t('pipelineTransformPayloadTo')}</span>
+                    <input
+                      className="input mono"
+                      value={mapping.to}
+                      onChange={(event) => updateTransformPayloadDraft(index, 'to', event.target.value)}
+                      placeholder="on"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="button tiny ghost"
+                    onClick={() => removeTransformPayloadRow(index)}
+                    aria-label={t('pipelineTransformPayloadRemoveRow')}
+                    title={t('pipelineTransformPayloadRemoveRow')}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="pipeline-transform-actions">
+              <button className="button tiny secondary" type="button" onClick={addTransformPayloadRow}>
+                {t('pipelineTransformPayloadAddRow')}
+              </button>
+            </div>
+
+            <div className="event-modal-actions">
+              <button className="button" type="button" onClick={saveTransformPayloadModal}>
                 {t('save')}
               </button>
             </div>

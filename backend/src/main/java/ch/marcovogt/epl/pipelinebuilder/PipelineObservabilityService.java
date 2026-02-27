@@ -381,6 +381,21 @@ public class PipelineObservabilityService {
                 next.payload = objectMapper.getNodeFactory().textNode(extractedValue);
                 yield BlockResult.pass(next, state.backlogDepth);
             }
+            case "TRANSFORM_PAYLOAD" -> {
+                Map<String, String> mappings = parsePayloadTransformMappings(blockConfig);
+                if (mappings.isEmpty()) {
+                    yield BlockResult.pass(next, state.backlogDepth);
+                }
+                String payloadText = payloadAsString(next.payload);
+                String mapped = mappings.containsKey(payloadText)
+                        ? mappings.get(payloadText)
+                        : mappings.get(payloadText.trim());
+                if (mapped == null) {
+                    yield BlockResult.pass(next, state.backlogDepth);
+                }
+                next.payload = objectMapper.getNodeFactory().textNode(mapped);
+                yield BlockResult.pass(next, state.backlogDepth);
+            }
             case "FILTER_RATE_LIMIT" -> {
                 state.rateLimiterCursor = (state.rateLimiterCursor + 1) % 5;
                 if (state.rateLimiterCursor != 0) {
@@ -576,6 +591,93 @@ public class PipelineObservabilityService {
         return "";
     }
 
+    private String payloadAsString(JsonNode payload) {
+        if (payload == null || payload.isNull()) {
+            return "";
+        }
+        if (payload.isTextual() || payload.isNumber() || payload.isBoolean()) {
+            return payload.asText();
+        }
+        return safeJson(payload);
+    }
+
+    private Map<String, String> parsePayloadTransformMappings(Map<String, Object> config) {
+        if (config == null || config.isEmpty()) {
+            return Map.of();
+        }
+        Object rawMappings = config.get("transformMappings");
+        if (rawMappings == null) {
+            rawMappings = config.get("mappings");
+        }
+        if (rawMappings == null) {
+            return Map.of();
+        }
+        LinkedHashMap<String, String> mappings = new LinkedHashMap<>();
+        appendMappings(mappings, rawMappings);
+        if (mappings.isEmpty()) {
+            return Map.of();
+        }
+        return Map.copyOf(mappings);
+    }
+
+    private void appendMappings(Map<String, String> target, Object rawMappings) {
+        if (target == null || rawMappings == null) {
+            return;
+        }
+        if (rawMappings instanceof Map<?, ?> mappingMap) {
+            for (Map.Entry<?, ?> entry : mappingMap.entrySet()) {
+                String from = entry.getKey() == null ? "" : String.valueOf(entry.getKey()).trim();
+                if (from.isBlank()) {
+                    continue;
+                }
+                String to = entry.getValue() == null ? "" : String.valueOf(entry.getValue());
+                target.put(from, to);
+            }
+            return;
+        }
+        if (rawMappings instanceof Iterable<?> iterable) {
+            for (Object entry : iterable) {
+                if (!(entry instanceof Map<?, ?> mapEntry)) {
+                    continue;
+                }
+                String from = firstNonBlank(
+                        mappingValue(mapEntry, "from"),
+                        mappingValue(mapEntry, "source"),
+                        mappingValue(mapEntry, "in"),
+                        mappingValue(mapEntry, "match")
+                );
+                if (from.isBlank()) {
+                    continue;
+                }
+                String to = firstNonBlank(
+                        mappingValue(mapEntry, "to"),
+                        mappingValue(mapEntry, "target"),
+                        mappingValue(mapEntry, "out"),
+                        mappingValue(mapEntry, "replace"),
+                        mappingValue(mapEntry, "value")
+                );
+                target.put(from, to);
+            }
+            return;
+        }
+        if (rawMappings instanceof String mappingsJson && !mappingsJson.isBlank()) {
+            try {
+                Object parsed = objectMapper.readValue(mappingsJson, Object.class);
+                appendMappings(target, parsed);
+            } catch (Exception ignored) {
+                // keep empty
+            }
+        }
+    }
+
+    private String mappingValue(Map<?, ?> source, String key) {
+        if (source == null || key == null || key.isBlank()) {
+            return "";
+        }
+        Object raw = source.get(key);
+        return raw == null ? "" : String.valueOf(raw);
+    }
+
     private ObjectNode mutablePayloadObject(RuntimeEvent event) {
         if (event.payload instanceof ObjectNode payloadObject) {
             return payloadObject;
@@ -684,7 +786,7 @@ public class PipelineObservabilityService {
     private double latencyMs(long startedNs, String blockType) {
         long elapsedNs = System.nanoTime() - startedNs;
         double baseline = switch (blockType == null ? "" : blockType.toUpperCase(Locale.ROOT)) {
-            case "FILTER_DEVICE", "FILTER_DEVICE_TOPIC", "FILTER_TOPIC", "EXTRACT_VALUE",
+            case "FILTER_DEVICE", "FILTER_DEVICE_TOPIC", "FILTER_TOPIC", "EXTRACT_VALUE", "TRANSFORM_PAYLOAD",
                     "FILTER_RATE_LIMIT", "PARSE_VALIDATE" -> 0.20;
             case "DEDUP" -> 0.35;
             case "WINDOW_AGGREGATE", "MICRO_BATCH" -> 0.45;
