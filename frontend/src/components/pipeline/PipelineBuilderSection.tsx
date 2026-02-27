@@ -538,251 +538,256 @@ export function PipelineBuilderSection({
 
       <article className="panel panel-animate full-width pipeline-panel pipeline-processing-panel">
         <h4>{t('pipelineProcessing')}</h4>
-        <p className="muted">
-          {t('pipelineObservedEvents')}: {view.observability?.observedEvents ?? 0} | {t('pipelineSampling')} 1/
-          {view.observability?.sampleEvery ?? 1} | {t('pipelineStateMode')}: {view.observability?.statePersistenceMode ?? '-'}
-          {' | '}
-          {t('pipelineRestartCount')}: {view.observability?.restartCount ?? 0}
-          {view.observability?.lastRestartAt ? ` | ${formatTs(view.observability.lastRestartAt)}` : ''}
-          {view.observability?.lastRestartMode ? ` (${view.observability.lastRestartMode})` : ''}
-        </p>
-        {view.permissions.stateResetAllowed || view.permissions.stateRestartAllowed ? (
-          <div className="pipeline-state-controls">
-            {view.permissions.stateResetAllowed ? (
-              <button
-                type="button"
-                className="button tiny secondary"
-                onClick={onResetState}
-                disabled={Boolean(stateControlBusy)}
-              >
-                {t('pipelineStateReset')}
-              </button>
-            ) : null}
-            {view.permissions.stateRestartAllowed ? (
-              <>
-                <button
-                  type="button"
-                  className="button tiny secondary"
-                  onClick={onRestartStateLost}
-                  disabled={Boolean(stateControlBusy)}
-                >
-                  {t('pipelineRestartLost')}
-                </button>
-                <button
-                  type="button"
-                  className="button tiny secondary"
-                  onClick={onRestartStateRetained}
-                  disabled={Boolean(stateControlBusy)}
-                >
-                  {t('pipelineRestartRetained')}
-                </button>
-              </>
-            ) : null}
-          </div>
-        ) : null}
         <div className="pipeline-builder-workbench">
-          <section className="pipeline-block-library">
-            <header className="pipeline-block-library-header">
-              <strong>{t('pipelineAllowedBlocks')}</strong>
-            </header>
-            <div className="pipeline-block-library-list">
-              {libraryBlockOptions.map((blockType) => (
-                <button
-                  key={blockType}
-                  type="button"
-                  className="pipeline-library-chip"
-                  disabled={!view.permissions.processingEditable}
-                  draggable={view.permissions.processingEditable}
-                  onDragStart={(event) => setDragPayload(event, blockType, null)}
-                  onDragEnd={() => setDragOverSlotIndex(null)}
-                  onClick={() => placeInFirstAvailableSlot(blockType)}
-                >
-                  <span className="mono">{blockType}</span>
-                </button>
-              ))}
-            </div>
-          </section>
-
-          <section className="pipeline-flow-board" onDragLeave={() => setDragOverSlotIndex(null)}>
-            <div className="pipeline-flow-edge-label mono">{`${t('pipelineInput')} ->`}</div>
-            {processingSlots.map((slot) => {
-              const isEmpty = slot.blockType === 'NONE';
-              const isDropTarget = dragOverSlotIndex === slot.index;
-              const showSlotDeviceScope = !isEmpty && blockSupportsDeviceScope(slot.blockType);
-              const slotDeviceScope = normalizeSlotDeviceScope(slot.config.deviceScope);
-              const slotObservability = observabilityBySlot.get(slot.index) ?? null;
-              const inspectorExpanded = expandedObservabilitySlot === slot.index;
-              const selectedSample = slotObservability
-                ? selectBlockSample(selectedTraceBySlot, slotObservability)
-                : null;
-              const parsedInput = selectedSample ? parseJson(selectedSample.inputPayloadJson) : null;
-              const parsedOutput = selectedSample ? parseJson(selectedSample.outputPayloadJson) : null;
-              const diff = selectedSample ? diffTopLevelKeys(parsedInput, parsedOutput) : null;
-              return (
-                <Fragment key={slot.index}>
-                  {slot.index > 0 ? (
-                    <div className="pipeline-flow-connector" aria-hidden="true">
-                      <span className="pipeline-flow-arrow">→</span>
-                    </div>
-                  ) : null}
-                  <div
-                    className={`pipeline-flow-node slot ${isEmpty ? 'empty' : 'filled'} ${
-                      isDropTarget ? 'drag-over' : ''
-                    }`}
-                    draggable={view.permissions.processingEditable && !isEmpty}
-                    onDragStart={(event) => {
-                      if (isEmpty) {
-                        event.preventDefault();
-                        return;
-                      }
-                      setDragPayload(event, slot.blockType, slot.index);
-                    }}
-                    onDragEnd={() => setDragOverSlotIndex(null)}
-                    onDragOver={(event) => onSlotDragOver(event, slot.index)}
-                    onDrop={(event) => onSlotDrop(event, slot.index)}
-                  >
-                    <div className="pipeline-flow-node-header">
-                      <span className="pipeline-flow-node-title">{t('pipelineSlot')} {slot.index + 1}</span>
-                      {view.permissions.processingEditable && !isEmpty ? (
-                        <button
-                          type="button"
-                          className="button tiny ghost"
-                          onClick={() => setSlotBlockType(slot.index, 'NONE')}
-                        >
-                          ×
-                        </button>
-                      ) : null}
-                    </div>
-                    <strong className="mono">
-                      {isEmpty ? t('pipelineDropBlockHint') : slot.blockType}
-                    </strong>
-                    {showSlotDeviceScope ? (
-                      <label className="stack pipeline-slot-config">
-                        <span>{t('pipelineDeviceScope')}</span>
-                        <select
-                          className="input pipeline-slot-select"
-                          value={slotDeviceScope}
-                          onChange={(event) =>
-                            onChangeSlotConfig?.(slot.index, 'deviceScope', event.target.value)}
-                          disabled={!view.permissions.processingEditable}
-                        >
-                          <option value="LECTURER_DEVICE" disabled={!lecturerDeviceAvailable}>
-                            {t('pipelineDeviceScopeLecturer')}
-                          </option>
-                          <option value="OWN_DEVICE">{t('pipelineDeviceScopeOwn')}</option>
-                          <option value="ALL_DEVICES">{t('pipelineDeviceScopeAll')}</option>
+          <section className="pipeline-flow-column">
+            <section className="pipeline-flow-board" onDragLeave={() => setDragOverSlotIndex(null)}>
+              <div className="pipeline-flow-edge-label mono">{`${t('pipelineInput')} ->`}</div>
+              {processingSlots.map((slot) => {
+                const isEmpty = slot.blockType === 'NONE';
+                const isDropTarget = dragOverSlotIndex === slot.index;
+                const showSlotDeviceScope = !isEmpty && blockSupportsDeviceScope(slot.blockType);
+                const slotDeviceScope = normalizeSlotDeviceScope(slot.config.deviceScope);
+                const slotObservability = !isEmpty ? (observabilityBySlot.get(slot.index) ?? null) : null;
+                const inspectorExpanded = expandedObservabilitySlot === slot.index;
+                const selectedSample = slotObservability
+                  ? selectBlockSample(selectedTraceBySlot, slotObservability)
+                  : null;
+                const parsedInput = selectedSample ? parseJson(selectedSample.inputPayloadJson) : null;
+                const parsedOutput = selectedSample ? parseJson(selectedSample.outputPayloadJson) : null;
+                const diff = selectedSample ? diffTopLevelKeys(parsedInput, parsedOutput) : null;
+                return (
+                  <Fragment key={slot.index}>
+                    {slot.index > 0 ? (
+                      <div className="pipeline-flow-connector" aria-hidden="true">
+                        <span className="pipeline-flow-arrow">↓</span>
+                      </div>
+                    ) : null}
+                    <div
+                      className={`pipeline-flow-node slot ${isEmpty ? 'empty' : 'filled'} ${
+                        isDropTarget ? 'drag-over' : ''
+                      }`}
+                      draggable={view.permissions.processingEditable && !isEmpty}
+                      onDragStart={(event) => {
+                        if (isEmpty) {
+                          event.preventDefault();
+                          return;
+                        }
+                        setDragPayload(event, slot.blockType, slot.index);
+                      }}
+                      onDragEnd={() => setDragOverSlotIndex(null)}
+                      onDragOver={(event) => onSlotDragOver(event, slot.index)}
+                      onDrop={(event) => onSlotDrop(event, slot.index)}
+                    >
+                      <div className="pipeline-flow-node-header">
+                        <span className="pipeline-flow-node-title">{t('pipelineSlot')} {slot.index + 1}</span>
+                        {view.permissions.processingEditable && !isEmpty ? (
+                          <button
+                            type="button"
+                            className="button tiny ghost"
+                            onClick={() => setSlotBlockType(slot.index, 'NONE')}
+                          >
+                            ×
+                          </button>
+                        ) : null}
+                      </div>
+                      <strong className="mono">
+                        {isEmpty ? t('pipelineDropBlockHint') : slot.blockType}
+                      </strong>
+                      {showSlotDeviceScope ? (
+                        <label className="stack pipeline-slot-config">
+                          <span>{t('pipelineDeviceScope')}</span>
+                          <select
+                            className="input pipeline-slot-select"
+                            value={slotDeviceScope}
+                            onChange={(event) =>
+                              onChangeSlotConfig?.(slot.index, 'deviceScope', event.target.value)}
+                            disabled={!view.permissions.processingEditable}
+                          >
+                            <option value="LECTURER_DEVICE" disabled={!lecturerDeviceAvailable}>
+                              {t('pipelineDeviceScopeLecturer')}
+                            </option>
+                            <option value="OWN_DEVICE">{t('pipelineDeviceScopeOwn')}</option>
+                            <option value="ALL_DEVICES">{t('pipelineDeviceScopeAll')}</option>
                           </select>
                         </label>
                       ) : null}
-                    {slotObservability ? (
-                      <>
-                        <div className="pipeline-slot-observability-summary">
-                          <span className="chip">{t('pipelineMetricIn')}: {slotObservability.inCount}</span>
-                          <span className="chip">{t('pipelineMetricOut')}: {slotObservability.outCount}</span>
-                          <span className="chip warn">{t('pipelineMetricDrop')}: {slotObservability.dropCount}</span>
-                          <span className="chip">{t('pipelineMetricErrors')}: {slotObservability.errorCount}</span>
-                          <span className="chip">{t('pipelineMetricLatencyP95')}: {slotObservability.latencyP95Ms.toFixed(2)} ms</span>
-                          <span className="chip">{t('pipelineMetricBacklog')}: {slotObservability.backlogDepth}</span>
-                          <span className="chip">{t('pipelineStateType')}: {slotObservability.stateType}</span>
-                        </div>
-                        <button
-                          type="button"
-                          className="button tiny secondary"
-                          onClick={() =>
-                            setExpandedObservabilitySlot(inspectorExpanded ? null : slot.index)}
-                        >
-                          {inspectorExpanded ? t('hide') : `${t('pipelineInspect')} (${slotObservability.samples.length})`}
-                        </button>
-                        {inspectorExpanded ? (
-                          <div className="pipeline-slot-sample-panel">
-                            <div className="pipeline-sample-header">
-                              <h5>{t('pipelineInspect')}</h5>
-                              <div className="pipeline-sample-actions">
-                                <select
-                                  className="input"
-                                  value={selectedSample?.traceId ?? ''}
-                                  onChange={(event) =>
-                                    setSelectedTraceBySlot((previous) => ({
-                                      ...previous,
-                                      [slot.index]: event.target.value
-                                    }))
-                                  }
-                                >
-                                  {slotObservability.samples.length === 0 ? (
-                                    <option value="">{t('pipelineNoSamples')}</option>
-                                  ) : null}
-                                  {slotObservability.samples.map((sample) => (
-                                    <option key={sample.traceId} value={sample.traceId}>
-                                      {sample.traceId.slice(0, 8)} - {formatTs(sample.ingestTs)}
-                                    </option>
-                                  ))}
-                                </select>
-                                <button
-                                  type="button"
-                                  className="button tiny secondary"
-                                  onClick={() =>
-                                    setSampleViewMode((previous) => (previous === 'rendered' ? 'raw' : 'rendered'))}
-                                >
-                                  {sampleViewMode === 'rendered' ? t('switchToRawEvent') : t('switchToRenderedEvent')}
-                                </button>
+                      {slotObservability ? (
+                        <>
+                          <div className="pipeline-slot-observability-summary">
+                            <span className="chip">{t('pipelineMetricIn')}: {slotObservability.inCount}</span>
+                            <span className="chip">{t('pipelineMetricOut')}: {slotObservability.outCount}</span>
+                            <span className="chip warn">{t('pipelineMetricDrop')}: {slotObservability.dropCount}</span>
+                            <span className="chip">{t('pipelineMetricErrors')}: {slotObservability.errorCount}</span>
+                            <span className="chip">{t('pipelineMetricLatencyP95')}: {slotObservability.latencyP95Ms.toFixed(2)} ms</span>
+                            <span className="chip">{t('pipelineMetricBacklog')}: {slotObservability.backlogDepth}</span>
+                            <span className="chip">{t('pipelineStateType')}: {slotObservability.stateType}</span>
+                          </div>
+                          <button
+                            type="button"
+                            className="button tiny secondary"
+                            onClick={() =>
+                              setExpandedObservabilitySlot(inspectorExpanded ? null : slot.index)}
+                          >
+                            {inspectorExpanded ? t('hide') : `${t('pipelineInspect')} (${slotObservability.samples.length})`}
+                          </button>
+                          {inspectorExpanded ? (
+                            <div className="pipeline-slot-sample-panel">
+                              <div className="pipeline-sample-header">
+                                <h5>{t('pipelineInspect')}</h5>
+                                <div className="pipeline-sample-actions">
+                                  <select
+                                    className="input"
+                                    value={selectedSample?.traceId ?? ''}
+                                    onChange={(event) =>
+                                      setSelectedTraceBySlot((previous) => ({
+                                        ...previous,
+                                        [slot.index]: event.target.value
+                                      }))
+                                    }
+                                  >
+                                    {slotObservability.samples.length === 0 ? (
+                                      <option value="">{t('pipelineNoSamples')}</option>
+                                    ) : null}
+                                    {slotObservability.samples.map((sample) => (
+                                      <option key={sample.traceId} value={sample.traceId}>
+                                        {sample.traceId.slice(0, 8)} - {formatTs(sample.ingestTs)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <button
+                                    type="button"
+                                    className="button tiny secondary"
+                                    onClick={() =>
+                                      setSampleViewMode((previous) => (previous === 'rendered' ? 'raw' : 'rendered'))}
+                                  >
+                                    {sampleViewMode === 'rendered' ? t('switchToRawEvent') : t('switchToRenderedEvent')}
+                                  </button>
+                                </div>
                               </div>
-                            </div>
-                            {selectedSample ? (
-                              <>
-                                <p className="muted">
-                                  Trace: <span className="mono">{selectedSample.traceId}</span> | {t('eventFieldIngestTs')}:{' '}
-                                  {formatTs(selectedSample.ingestTs)} | {t('device')}: {selectedSample.deviceId} |{' '}
-                                  {t('feedHeaderTopic')}: <span className="mono">{selectedSample.topic}</span>
-                                  {selectedSample.dropped
-                                    ? ` | ${t('pipelineDropped')}: ${selectedSample.dropReason ?? '-'}`
-                                    : ''}
-                                </p>
-                                {sampleViewMode === 'raw' ? (
-                                  <div className="pipeline-sample-grid">
-                                    <div>
-                                      <h6>{t('pipelineInput')}</h6>
-                                      <pre className="json-box">{selectedSample.inputPayloadJson}</pre>
-                                    </div>
-                                    <div>
-                                      <h6>{t('pipelineOutput')}</h6>
-                                      <pre className="json-box">{selectedSample.outputPayloadJson ?? ''}</pre>
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <>
+                              {selectedSample ? (
+                                <>
+                                  <p className="muted">
+                                    Trace: <span className="mono">{selectedSample.traceId}</span> | {t('eventFieldIngestTs')}:{' '}
+                                    {formatTs(selectedSample.ingestTs)} | {t('device')}: {selectedSample.deviceId} |{' '}
+                                    {t('feedHeaderTopic')}: <span className="mono">{selectedSample.topic}</span>
+                                    {selectedSample.dropped
+                                      ? ` | ${t('pipelineDropped')}: ${selectedSample.dropReason ?? '-'}`
+                                      : ''}
+                                  </p>
+                                  {sampleViewMode === 'raw' ? (
                                     <div className="pipeline-sample-grid">
                                       <div>
                                         <h6>{t('pipelineInput')}</h6>
-                                        <pre className="json-box">{prettyJson(parsedInput)}</pre>
+                                        <pre className="json-box">{selectedSample.inputPayloadJson}</pre>
                                       </div>
                                       <div>
                                         <h6>{t('pipelineOutput')}</h6>
-                                        <pre className="json-box">{prettyJson(parsedOutput)}</pre>
+                                        <pre className="json-box">{selectedSample.outputPayloadJson ?? ''}</pre>
                                       </div>
                                     </div>
-                                    {diff ? (
-                                      <div className="pipeline-diff-grid">
-                                        <span className="chip ok">{t('pipelineDiffAdded')}: {diff.added.join(', ') || '-'}</span>
-                                        <span className="chip warn">{t('pipelineDiffChanged')}: {diff.changed.join(', ') || '-'}</span>
-                                        <span className="chip">{t('pipelineDiffRemoved')}: {diff.removed.join(', ') || '-'}</span>
+                                  ) : (
+                                    <>
+                                      <div className="pipeline-sample-grid">
+                                        <div>
+                                          <h6>{t('pipelineInput')}</h6>
+                                          <pre className="json-box">{prettyJson(parsedInput)}</pre>
+                                        </div>
+                                        <div>
+                                          <h6>{t('pipelineOutput')}</h6>
+                                          <pre className="json-box">{prettyJson(parsedOutput)}</pre>
+                                        </div>
                                       </div>
-                                    ) : null}
-                                  </>
-                                )}
-                              </>
-                            ) : (
-                              <p className="muted">{t('pipelineNoSamples')}</p>
-                            )}
-                          </div>
-                        ) : null}
-                      </>
-                    ) : null}
-                  </div>
-                </Fragment>
-              );
-            })}
-            <div className="pipeline-flow-edge-label mono">{`-> ${t('pipelineOutput')}`}</div>
+                                      {diff ? (
+                                        <div className="pipeline-diff-grid">
+                                          <span className="chip ok">{t('pipelineDiffAdded')}: {diff.added.join(', ') || '-'}</span>
+                                          <span className="chip warn">{t('pipelineDiffChanged')}: {diff.changed.join(', ') || '-'}</span>
+                                          <span className="chip">{t('pipelineDiffRemoved')}: {diff.removed.join(', ') || '-'}</span>
+                                        </div>
+                                      ) : null}
+                                    </>
+                                  )}
+                                </>
+                              ) : (
+                                <p className="muted">{t('pipelineNoSamples')}</p>
+                              )}
+                            </div>
+                          ) : null}
+                        </>
+                      ) : null}
+                    </div>
+                  </Fragment>
+                );
+              })}
+              <div className="pipeline-flow-edge-label mono">{`-> ${t('pipelineOutput')}`}</div>
+            </section>
           </section>
+
+          <aside className="pipeline-processing-sidebar">
+            <p className="muted">
+              {t('pipelineObservedEvents')}: {view.observability?.observedEvents ?? 0} | {t('pipelineSampling')} 1/
+              {view.observability?.sampleEvery ?? 1} | {t('pipelineStateMode')}: {view.observability?.statePersistenceMode ?? '-'}
+              {' | '}
+              {t('pipelineRestartCount')}: {view.observability?.restartCount ?? 0}
+              {view.observability?.lastRestartAt ? ` | ${formatTs(view.observability.lastRestartAt)}` : ''}
+              {view.observability?.lastRestartMode ? ` (${view.observability.lastRestartMode})` : ''}
+            </p>
+            {view.permissions.stateResetAllowed || view.permissions.stateRestartAllowed ? (
+              <div className="pipeline-state-controls">
+                {view.permissions.stateResetAllowed ? (
+                  <button
+                    type="button"
+                    className="button tiny secondary"
+                    onClick={onResetState}
+                    disabled={Boolean(stateControlBusy)}
+                  >
+                    {t('pipelineStateReset')}
+                  </button>
+                ) : null}
+                {view.permissions.stateRestartAllowed ? (
+                  <>
+                    <button
+                      type="button"
+                      className="button tiny secondary"
+                      onClick={onRestartStateLost}
+                      disabled={Boolean(stateControlBusy)}
+                    >
+                      {t('pipelineRestartLost')}
+                    </button>
+                    <button
+                      type="button"
+                      className="button tiny secondary"
+                      onClick={onRestartStateRetained}
+                      disabled={Boolean(stateControlBusy)}
+                    >
+                      {t('pipelineRestartRetained')}
+                    </button>
+                  </>
+                ) : null}
+              </div>
+            ) : null}
+
+            <section className="pipeline-block-library">
+              <header className="pipeline-block-library-header">
+                <strong>{t('pipelineAllowedBlocks')}</strong>
+              </header>
+              <div className="pipeline-block-library-list">
+                {libraryBlockOptions.map((blockType) => (
+                  <button
+                    key={blockType}
+                    type="button"
+                    className="pipeline-library-chip"
+                    disabled={!view.permissions.processingEditable}
+                    draggable={view.permissions.processingEditable}
+                    onDragStart={(event) => setDragPayload(event, blockType, null)}
+                    onDragEnd={() => setDragOverSlotIndex(null)}
+                    onClick={() => placeInFirstAvailableSlot(blockType)}
+                  >
+                    <span className="mono">{blockType}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          </aside>
         </div>
         {!view.permissions.processingEditable ? <p className="muted">{t('pipelineReadOnlyTask')}</p> : null}
       </article>
