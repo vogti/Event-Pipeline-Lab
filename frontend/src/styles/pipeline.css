@@ -28,12 +28,6 @@
   padding: 0.5rem 0.62rem;
 }
 
-.pipeline-sections {
-  display: grid;
-  gap: 0.8rem;
-  grid-template-columns: minmax(0, 1fr);
-}
-
 .pipeline-panel {
   background: rgba(255, 255, 255, 0.52);
   border: 1px solid rgba(38, 75, 105, 0.2);
@@ -126,6 +120,15 @@
   padding: 0.6rem;
 }
 
+.pipeline-flow-edge-label {
+  align-items: center;
+  color: rgba(38, 77, 105, 0.82);
+  display: inline-flex;
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .pipeline-flow-node {
   background: rgba(255, 255, 255, 0.9);
   border: 1px solid rgba(44, 78, 104, 0.25);
@@ -181,6 +184,18 @@
 .pipeline-slot-config > span {
   color: #345f79;
   font-size: 0.72rem;
+}
+
+.pipeline-slot-observability-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.28rem;
+}
+
+.pipeline-slot-sample-panel {
+  border-top: 1px solid var(--line);
+  margin-top: 0.1rem;
+  padding-top: 0.45rem;
 }
 
 .pipeline-flow-connector {
@@ -368,12 +383,5 @@
 
   .pipeline-sample-grid {
     grid-template-columns: 1fr;
-  }
-}
-
-@media (min-width: 1200px) {
-  .pipeline-sections {
-    align-items: start;
-    grid-template-columns: minmax(240px, 0.95fr) minmax(0, 1.8fr) minmax(240px, 0.95fr);
   }
 }
