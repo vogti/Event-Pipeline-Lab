@@ -93,7 +93,7 @@ public class PipelineStateService {
                         false,
                         config.lecturerMode(),
                         config.allowedProcessingBlocks(),
-                        config.slotCount()
+                        effective.processing().slotCount()
                 ),
                 observability,
                 effectiveRevision(groupState, globalState),
@@ -168,7 +168,7 @@ public class PipelineStateService {
                         true,
                         config.lecturerMode(),
                         PipelineBlockLibrary.allBlocks(),
-                        config.slotCount()
+                        effective.processing().slotCount()
                 ),
                 observability,
                 effectiveRevision(groupState, globalState),
@@ -567,28 +567,33 @@ public class PipelineStateService {
 
     private PipelineProcessingSection normalizeProcessing(
             PipelineProcessingSection source,
-            int expectedSlotCount,
+            int minimumSlotCount,
             List<String> allowedBlocks,
             boolean enforceAllowList
     ) {
-        if (expectedSlotCount < 1 || expectedSlotCount > 8) {
-            throw new ResponseStatusException(BAD_REQUEST, "Pipeline slot count out of range");
-        }
+        int minSlots = Math.max(1, minimumSlotCount);
+        int requestedSlots = source != null ? Math.max(1, source.slotCount()) : minSlots;
 
         Map<Integer, PipelineSlot> byIndex = new java.util.HashMap<>();
         List<PipelineSlot> incoming = source == null || source.slots() == null ? List.of() : source.slots();
+        int highestIndex = -1;
         for (PipelineSlot slot : incoming) {
             if (slot == null) {
                 continue;
             }
-            if (slot.index() < 0 || slot.index() >= expectedSlotCount) {
+            if (slot.index() < 0) {
                 throw new ResponseStatusException(BAD_REQUEST, "Invalid slot index: " + slot.index());
             }
             if (byIndex.containsKey(slot.index())) {
                 throw new ResponseStatusException(BAD_REQUEST, "Duplicate slot index: " + slot.index());
             }
             byIndex.put(slot.index(), slot);
+            if (slot.index() > highestIndex) {
+                highestIndex = slot.index();
+            }
         }
+
+        int effectiveSlotCount = Math.max(Math.max(minSlots, requestedSlots), highestIndex + 1);
 
         Set<String> allowListSet = new LinkedHashSet<>();
         if (allowedBlocks != null) {
@@ -598,7 +603,7 @@ public class PipelineStateService {
         }
 
         List<PipelineSlot> normalizedSlots = new ArrayList<>();
-        for (int index = 0; index < expectedSlotCount; index++) {
+        for (int index = 0; index < effectiveSlotCount; index++) {
             PipelineSlot sourceSlot = byIndex.get(index);
             String blockType = sourceSlot == null ? PipelineBlockLibrary.NONE : canonicalBlock(sourceSlot.blockType());
             if (!PipelineBlockLibrary.isKnown(blockType)) {
@@ -615,7 +620,7 @@ public class PipelineStateService {
             normalizedSlots.add(new PipelineSlot(index, blockType, normalizedConfig));
         }
 
-        return new PipelineProcessingSection("CONSTRAINED", expectedSlotCount, normalizedSlots);
+        return new PipelineProcessingSection("CONSTRAINED", effectiveSlotCount, normalizedSlots);
     }
 
     private String canonicalBlock(String raw) {

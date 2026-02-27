@@ -104,23 +104,24 @@ function normalizeSlotDeviceScope(raw: unknown): string {
 }
 
 function buildDisplaySlots(processing: PipelineProcessingSection): PipelineProcessingSection['slots'] {
-  const maxSlotCount = Math.max(1, processing.slotCount);
   const byIndex = new Map<number, PipelineProcessingSection['slots'][number]>();
   for (const slot of processing.slots) {
-    if (slot.index < 0 || slot.index >= maxSlotCount) {
+    if (slot.index < 0) {
       continue;
     }
     byIndex.set(slot.index, slot);
   }
 
-  let lastConfiguredIndex = -1;
+  let highestConfiguredIndex = -1;
   for (const slot of byIndex.values()) {
-    if ((slot.blockType ?? 'NONE') !== 'NONE' && slot.index > lastConfiguredIndex) {
-      lastConfiguredIndex = slot.index;
+    const blockType = (slot.blockType ?? 'NONE').trim().toUpperCase();
+    const hasConfig = slot.config != null && Object.keys(slot.config).length > 0;
+    if ((blockType !== 'NONE' || hasConfig) && slot.index > highestConfiguredIndex) {
+      highestConfiguredIndex = slot.index;
     }
   }
 
-  const visibleSlotCount = Math.min(maxSlotCount, Math.max(1, lastConfiguredIndex + 2));
+  const visibleSlotCount = Math.max(1, highestConfiguredIndex + 2);
   return Array.from({ length: visibleSlotCount }, (_, slotIndex) => {
     const slot = byIndex.get(slotIndex);
     return {
@@ -723,6 +724,28 @@ export function PipelineBuilderSection({
           </section>
 
           <aside className="pipeline-processing-sidebar">
+            <section className="pipeline-block-library">
+              <header className="pipeline-block-library-header">
+                <strong>{t('pipelineAllowedBlocks')}</strong>
+              </header>
+              <div className="pipeline-block-library-list">
+                {libraryBlockOptions.map((blockType) => (
+                  <button
+                    key={blockType}
+                    type="button"
+                    className="pipeline-library-chip"
+                    disabled={!view.permissions.processingEditable}
+                    draggable={view.permissions.processingEditable}
+                    onDragStart={(event) => setDragPayload(event, blockType, null)}
+                    onDragEnd={() => setDragOverSlotIndex(null)}
+                    onClick={() => placeInFirstAvailableSlot(blockType)}
+                  >
+                    <span className="mono">{blockType}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+
             <p className="muted">
               {t('pipelineObservedEvents')}: {view.observability?.observedEvents ?? 0} | {t('pipelineSampling')} 1/
               {view.observability?.sampleEvery ?? 1} | {t('pipelineStateMode')}: {view.observability?.statePersistenceMode ?? '-'}
@@ -765,28 +788,6 @@ export function PipelineBuilderSection({
                 ) : null}
               </div>
             ) : null}
-
-            <section className="pipeline-block-library">
-              <header className="pipeline-block-library-header">
-                <strong>{t('pipelineAllowedBlocks')}</strong>
-              </header>
-              <div className="pipeline-block-library-list">
-                {libraryBlockOptions.map((blockType) => (
-                  <button
-                    key={blockType}
-                    type="button"
-                    className="pipeline-library-chip"
-                    disabled={!view.permissions.processingEditable}
-                    draggable={view.permissions.processingEditable}
-                    onDragStart={(event) => setDragPayload(event, blockType, null)}
-                    onDragEnd={() => setDragOverSlotIndex(null)}
-                    onClick={() => placeInFirstAvailableSlot(blockType)}
-                  >
-                    <span className="mono">{blockType}</span>
-                  </button>
-                ))}
-              </div>
-            </section>
           </aside>
         </div>
         {!view.permissions.processingEditable ? <p className="muted">{t('pipelineReadOnlyTask')}</p> : null}
