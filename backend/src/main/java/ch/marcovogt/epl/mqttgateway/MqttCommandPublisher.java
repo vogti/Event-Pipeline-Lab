@@ -1,5 +1,6 @@
 package ch.marcovogt.epl.mqttgateway;
 
+import java.util.Locale;
 import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.stereotype.Service;
 
@@ -58,7 +59,102 @@ public class MqttCommandPublisher {
             throw new IllegalArgumentException("topic must not contain MQTT wildcards");
         }
 
+        if (publishNormalizedCommandTopicIfMatched(normalizedTopic, payload)) {
+            return;
+        }
+
         mqttGatewayClient.publish(normalizedTopic, payload, qos, retained);
+    }
+
+    private boolean publishNormalizedCommandTopicIfMatched(String topic, String payload) {
+        CommandTopic commandTopic = parseCommandTopic(topic);
+        if (commandTopic == null) {
+            return false;
+        }
+
+        if ("led_green".equals(commandTopic.commandType())) {
+            publishLedGreen(commandTopic.deviceId(), parseLedTargetState(payload));
+            return true;
+        }
+        if ("led_orange".equals(commandTopic.commandType())) {
+            publishLedOrange(commandTopic.deviceId(), parseLedTargetState(payload));
+            return true;
+        }
+        if ("counter_reset".equals(commandTopic.commandType())) {
+            publishCounterReset(commandTopic.deviceId());
+            return true;
+        }
+        return false;
+    }
+
+    private CommandTopic parseCommandTopic(String topic) {
+        String[] segments = topic.split("/", -1);
+        if (segments.length == 4
+                && equalsIgnoreCase(segments[1], "command")
+                && equalsIgnoreCase(segments[2], "led")
+                && !segments[0].isBlank()) {
+            String color = segments[3].trim().toLowerCase(Locale.ROOT);
+            if ("green".equals(color)) {
+                return new CommandTopic(segments[0].trim(), "led_green");
+            }
+            if ("orange".equals(color)) {
+                return new CommandTopic(segments[0].trim(), "led_orange");
+            }
+        }
+        if (segments.length == 4
+                && equalsIgnoreCase(segments[1], "command")
+                && equalsIgnoreCase(segments[2], "counter")
+                && equalsIgnoreCase(segments[3], "reset")
+                && !segments[0].isBlank()) {
+            return new CommandTopic(segments[0].trim(), "counter_reset");
+        }
+
+        if (segments.length == 5
+                && equalsIgnoreCase(segments[0], "epld")
+                && !segments[1].isBlank()
+                && equalsIgnoreCase(segments[2], "command")
+                && equalsIgnoreCase(segments[3], "led")) {
+            String color = segments[4].trim().toLowerCase(Locale.ROOT);
+            if ("green".equals(color)) {
+                return new CommandTopic(segments[1].trim(), "led_green");
+            }
+            if ("orange".equals(color)) {
+                return new CommandTopic(segments[1].trim(), "led_orange");
+            }
+        }
+        if (segments.length == 5
+                && equalsIgnoreCase(segments[0], "epld")
+                && !segments[1].isBlank()
+                && equalsIgnoreCase(segments[2], "command")
+                && equalsIgnoreCase(segments[3], "counter")
+                && equalsIgnoreCase(segments[4], "reset")) {
+            return new CommandTopic(segments[1].trim(), "counter_reset");
+        }
+
+        return null;
+    }
+
+    private boolean parseLedTargetState(String rawPayload) {
+        String normalized = normalizePayloadToken(rawPayload);
+        return switch (normalized) {
+            case "on", "true", "1", "pressed", "press" -> true;
+            case "off", "false", "0", "released", "release" -> false;
+            default -> throw new IllegalArgumentException(
+                    "Unsupported LED command payload. Use on/off, true/false, 1/0, pressed/released"
+            );
+        };
+    }
+
+    private String normalizePayloadToken(String rawPayload) {
+        String value = rawPayload == null ? "" : rawPayload.trim();
+        if (value.startsWith("\"") && value.endsWith("\"") && value.length() >= 2) {
+            value = value.substring(1, value.length() - 1);
+        }
+        return value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private boolean equalsIgnoreCase(String left, String right) {
+        return left != null && right != null && left.equalsIgnoreCase(right);
     }
 
     private void publishRpc(String deviceId, String method, String paramsJson) {
@@ -69,5 +165,8 @@ public class MqttCommandPublisher {
                 + ",\"params\":" + paramsJson
                 + "}";
         mqttGatewayClient.publish(deviceId + "/rpc", payload, 1, false);
+    }
+
+    private record CommandTopic(String deviceId, String commandType) {
     }
 }

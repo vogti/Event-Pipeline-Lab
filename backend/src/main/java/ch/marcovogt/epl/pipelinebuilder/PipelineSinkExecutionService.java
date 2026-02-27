@@ -107,15 +107,16 @@ public class PipelineSinkExecutionService {
 
     private void publishSendEventSink(PipelineSinkNode sink, CanonicalEventDto inputEvent) {
         SendEventConfig config = parseSendEventConfig(sink.config());
-        if (config.topic().isBlank()) {
+        String targetTopic = resolveSendEventTopic(config.topic(), inputEvent);
+        if (targetTopic.isBlank()) {
             return;
         }
         String outgoingPayload = inputEvent != null ? inputEvent.payloadJson() : config.payload();
         if (outgoingPayload == null || outgoingPayload.isBlank()) {
             return;
         }
-        if (inputEvent != null && config.topic().equals(inputEvent.topic())) {
-            log.debug("Skipped SEND_EVENT sink publish to prevent topic echo loop on {}", config.topic());
+        if (inputEvent != null && targetTopic.equals(inputEvent.topic())) {
+            log.debug("Skipped SEND_EVENT sink publish to prevent topic echo loop on {}", targetTopic);
             return;
         }
         MqttCommandPublisher mqttCommandPublisher = mqttCommandPublisherProvider.getIfAvailable();
@@ -124,15 +125,45 @@ public class PipelineSinkExecutionService {
             return;
         }
         try {
-            mqttCommandPublisher.publishCustom(config.topic(), outgoingPayload, config.qos(), config.retained());
+            mqttCommandPublisher.publishCustom(targetTopic, outgoingPayload, config.qos(), config.retained());
         } catch (RuntimeException ex) {
             log.warn(
                     "SEND_EVENT sink publish failed sinkId={} topic={} reason={}",
                     normalizeSinkId(sink),
-                    config.topic(),
+                    targetTopic,
                     ex.getMessage()
             );
         }
+    }
+
+    private String resolveSendEventTopic(String configuredTopic, CanonicalEventDto inputEvent) {
+        if (configuredTopic == null || configuredTopic.isBlank()) {
+            return "";
+        }
+        String resolved = configuredTopic.trim();
+        if (inputEvent == null || inputEvent.deviceId() == null || inputEvent.deviceId().isBlank()) {
+            return resolved;
+        }
+
+        String deviceId = inputEvent.deviceId().trim();
+        resolved = resolved
+                .replace("${deviceId}", deviceId)
+                .replace("{deviceId}", deviceId);
+
+        if ("DEVICE".equalsIgnoreCase(resolved) || "OWN_DEVICE".equalsIgnoreCase(resolved)) {
+            return deviceId;
+        }
+        if (startsWithIgnoreCase(resolved, "DEVICE/")) {
+            return deviceId + resolved.substring("DEVICE".length());
+        }
+        if (startsWithIgnoreCase(resolved, "OWN_DEVICE/")) {
+            return deviceId + resolved.substring("OWN_DEVICE".length());
+        }
+        return resolved;
+    }
+
+    private boolean startsWithIgnoreCase(String value, String prefix) {
+        return value.regionMatches(true, 0, prefix, 0, prefix.length());
     }
 
     private SendEventConfig parseSendEventConfig(Map<String, Object> config) {

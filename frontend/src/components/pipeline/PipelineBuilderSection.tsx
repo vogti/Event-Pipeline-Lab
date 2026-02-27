@@ -774,7 +774,6 @@ export function PipelineBuilderSection({
   const openSendEventSinkEditor = (node: PipelineSinkNode) => {
     const config = node.config ?? {};
     const topic = readSinkString(config, 'topic');
-    const payload = readSinkString(config, 'payload');
     const qos = readSinkQos(config);
     const retained = readSinkRetained(config);
     const base = createMqttEventDraft();
@@ -786,9 +785,9 @@ export function PipelineBuilderSection({
       template: 'custom',
       deviceId: initialDeviceId,
       customTopic: topic,
-      customPayload: payload,
+      customPayload: '',
       rawTopic: topic,
-      rawPayload: payload,
+      rawPayload: '',
       qos,
       retained
     });
@@ -800,10 +799,9 @@ export function PipelineBuilderSection({
       return;
     }
     const topic = (sinkComposerMode === 'raw' ? sinkDraft.rawTopic : guidedSinkMqttMessage.topic).trim();
-    const payload = (sinkComposerMode === 'raw' ? sinkDraft.rawPayload : guidedSinkMqttMessage.payload).trim();
     onConfigureSendEventSink(sinkEditorSinkId, {
       topic,
-      payload,
+      payload: '',
       qos: sinkDraft.qos,
       retained: sinkDraft.retained
     });
@@ -1519,6 +1517,7 @@ export function PipelineBuilderSection({
         onDraftChange={setSinkDraftField}
         titleKey="pipelineSinkSendEventConfigTitle"
         submitLabelKey="save"
+        hidePayloadFields
       />
     </section>
   );
