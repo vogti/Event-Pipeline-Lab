@@ -280,7 +280,7 @@ docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST \
   http://backend:8080/api/student/pipeline \
   -H "X-EPL-Session: ${STUDENT_TOKEN}" \
   -H 'Content-Type: application/json' \
-  -d '{"processing":{"mode":"CONSTRAINED","slotCount":5,"slots":[{"index":0,"blockType":"FILTER_DEVICE_TOPIC","config":{}},{"index":1,"blockType":"PARSE_VALIDATE","config":{}},{"index":2,"blockType":"NONE","config":{}},{"index":3,"blockType":"NONE","config":{}},{"index":4,"blockType":"ROUTE","config":{}}]}}'
+  -d '{"processing":{"mode":"CONSTRAINED","slotCount":5,"slots":[{"index":0,"blockType":"FILTER_DEVICE","config":{}},{"index":1,"blockType":"PARSE_VALIDATE","config":{}},{"index":2,"blockType":"NONE","config":{}},{"index":3,"blockType":"NONE","config":{}},{"index":4,"blockType":"ROUTE","config":{}}]}}'
 
 # Admin: load pipeline view for a group (active task context)
 docker run --rm --network epl_default curlimages/curl:8.12.1 -sS \
@@ -292,7 +292,7 @@ docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST \
   http://backend:8080/api/admin/pipeline \
   -H "X-EPL-Session: ${ADMIN_TOKEN}" \
   -H 'Content-Type: application/json' \
-  -d '{"groupKey":"epld01","input":{"mode":"LIVE_MQTT","deviceScope":"GROUP_DEVICES","ingestFilters":[],"scenarioOverlays":["delay:300ms"]},"processing":{"mode":"CONSTRAINED","slotCount":5,"slots":[{"index":0,"blockType":"FILTER_DEVICE_TOPIC","config":{}},{"index":1,"blockType":"DEDUP","config":{}},{"index":2,"blockType":"WINDOW_AGGREGATE","config":{}},{"index":3,"blockType":"ROUTE","config":{}},{"index":4,"blockType":"NONE","config":{}}]},"sink":{"targets":["DEVICE_CONTROL"],"goal":"Trigger green LED when threshold reached"}}'
+  -d '{"groupKey":"epld01","input":{"mode":"LIVE_MQTT","deviceScope":"GROUP_DEVICES","ingestFilters":[],"scenarioOverlays":["delay:300ms"]},"processing":{"mode":"CONSTRAINED","slotCount":5,"slots":[{"index":0,"blockType":"FILTER_DEVICE","config":{}},{"index":1,"blockType":"DEDUP","config":{}},{"index":2,"blockType":"WINDOW_AGGREGATE","config":{}},{"index":3,"blockType":"ROUTE","config":{}},{"index":4,"blockType":"NONE","config":{}}]},"sink":{"targets":["DEVICE_CONTROL"],"goal":"Trigger green LED when threshold reached"}}'
 
 # Admin: compare current active-task pipelines across groups
 docker run --rm --network epl_default curlimages/curl:8.12.1 -sS \
@@ -309,7 +309,7 @@ docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST \
   http://backend:8080/api/admin/task-pipeline-config \
   -H "X-EPL-Session: ${ADMIN_TOKEN}" \
   -H 'Content-Type: application/json' \
-  -d '{"taskId":"task_intro","visibleToStudents":true,"slotCount":5,"allowedProcessingBlocks":["FILTER_DEVICE_TOPIC","PARSE_VALIDATE","ROUTE"],"scenarioOverlays":["duplicates:10%","delay:300ms","drops:5%","out_of_order:10%"]}'
+  -d '{"taskId":"task_intro","visibleToStudents":true,"slotCount":5,"allowedProcessingBlocks":["FILTER_DEVICE","PARSE_VALIDATE","ROUTE"],"scenarioOverlays":["duplicates:10%","delay:300ms","drops:5%","out_of_order:10%"]}'
 ```
 
 Realtime events:

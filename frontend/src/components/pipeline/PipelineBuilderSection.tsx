@@ -12,6 +12,7 @@ import type {
   MqttComposerTemplate,
   MqttEventDraft
 } from '../../app/shared-types';
+import { CloseIcon } from '../../app/shared-icons';
 import { AdminMqttEventModal } from '../admin/AdminMqttEventModal';
 import type {
   PipelineBlockObservability,
@@ -323,6 +324,68 @@ function selectBlockSample(
   return block.samples[block.samples.length - 1] ?? null;
 }
 
+type FilterTopicWizardMode = 'guided' | 'raw';
+type FilterTopicTemplate =
+  | 'ANY'
+  | 'EVENT_ALL'
+  | 'EVENT_BUTTON'
+  | 'EVENT_COUNTER'
+  | 'EVENT_SENSOR'
+  | 'EVENT_SENSOR_LDR'
+  | 'EVENT_SENSOR_DHT22'
+  | 'STATUS_ALL'
+  | 'STATUS_HEARTBEAT'
+  | 'STATUS_WIFI'
+  | 'ACK_ALL'
+  | 'VIRTUAL_RPC';
+
+const FILTER_TOPIC_TEMPLATE_TO_FILTER: Record<FilterTopicTemplate, string> = {
+  ANY: '#',
+  EVENT_ALL: '+/event/#',
+  EVENT_BUTTON: '+/event/button',
+  EVENT_COUNTER: '+/event/counter',
+  EVENT_SENSOR: '+/event/sensor/#',
+  EVENT_SENSOR_LDR: '+/event/sensor/ldr',
+  EVENT_SENSOR_DHT22: '+/event/sensor/dht22',
+  STATUS_ALL: '+/status/#',
+  STATUS_HEARTBEAT: '+/status/heartbeat',
+  STATUS_WIFI: '+/status/wifi',
+  ACK_ALL: '+/ack/#',
+  VIRTUAL_RPC: '+/events/rpc'
+};
+
+const FILTER_TOPIC_TEMPLATE_OPTIONS: Array<{ id: FilterTopicTemplate; labelKey: I18nKey }> = [
+  { id: 'ANY', labelKey: 'pipelineFilterTopicTemplateAny' },
+  { id: 'EVENT_ALL', labelKey: 'pipelineFilterTopicTemplateEventAll' },
+  { id: 'EVENT_BUTTON', labelKey: 'pipelineFilterTopicTemplateEventButton' },
+  { id: 'EVENT_COUNTER', labelKey: 'pipelineFilterTopicTemplateEventCounter' },
+  { id: 'EVENT_SENSOR', labelKey: 'pipelineFilterTopicTemplateEventSensor' },
+  { id: 'EVENT_SENSOR_LDR', labelKey: 'pipelineFilterTopicTemplateEventSensorLdr' },
+  { id: 'EVENT_SENSOR_DHT22', labelKey: 'pipelineFilterTopicTemplateEventSensorDht22' },
+  { id: 'STATUS_ALL', labelKey: 'pipelineFilterTopicTemplateStatusAll' },
+  { id: 'STATUS_HEARTBEAT', labelKey: 'pipelineFilterTopicTemplateStatusHeartbeat' },
+  { id: 'STATUS_WIFI', labelKey: 'pipelineFilterTopicTemplateStatusWifi' },
+  { id: 'ACK_ALL', labelKey: 'pipelineFilterTopicTemplateAckAll' },
+  { id: 'VIRTUAL_RPC', labelKey: 'pipelineFilterTopicTemplateVirtualRpc' }
+];
+
+function extractTopicFilterFromSlotConfig(config: Record<string, unknown>): string {
+  const candidates = ['topicFilter', 'topic', 'topicPattern', 'rawTopic'];
+  for (const key of candidates) {
+    const value = config[key];
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return '';
+}
+
+function templateFromTopicFilter(filter: string): FilterTopicTemplate | null {
+  const normalized = filter.trim();
+  const matched = Object.entries(FILTER_TOPIC_TEMPLATE_TO_FILTER).find(([, value]) => value === normalized);
+  return (matched?.[0] as FilterTopicTemplate | undefined) ?? null;
+}
+
 export function PipelineBuilderSection({
   t,
   title,
@@ -366,6 +429,10 @@ export function PipelineBuilderSection({
   const [expandedObservabilitySlot, setExpandedObservabilitySlot] = useState<number | null>(null);
   const [sampleViewMode, setSampleViewMode] = useState<SampleViewMode>('rendered');
   const [selectedTraceBySlot, setSelectedTraceBySlot] = useState<Record<number, string>>({});
+  const [topicFilterModalSlotIndex, setTopicFilterModalSlotIndex] = useState<number | null>(null);
+  const [topicFilterModalMode, setTopicFilterModalMode] = useState<FilterTopicWizardMode>('guided');
+  const [topicFilterModalTemplate, setTopicFilterModalTemplate] = useState<FilterTopicTemplate>('EVENT_ALL');
+  const [topicFilterModalRawValue, setTopicFilterModalRawValue] = useState('');
   const [sinkEditorSinkId, setSinkEditorSinkId] = useState<string | null>(null);
   const [sinkComposerMode, setSinkComposerMode] = useState<MqttComposerMode>('guided');
   const [sinkDraft, setSinkDraft] = useState<MqttEventDraft>(() => createMqttEventDraft());
@@ -516,6 +583,48 @@ export function PipelineBuilderSection({
     setSlotBlockType(slotIndex, sourceBlockType);
     setSlotBlockType(sourceSlotIndex, targetBlockType);
   };
+
+  const openTopicFilterModal = (slotIndex: number, slotConfig: Record<string, unknown>) => {
+    const configuredFilter = extractTopicFilterFromSlotConfig(slotConfig);
+    const configuredMode = slotConfig.topicMode === 'raw' ? 'raw' : 'guided';
+    const matchedTemplate = templateFromTopicFilter(configuredFilter);
+
+    if (configuredMode === 'raw' || (configuredFilter.length > 0 && !matchedTemplate)) {
+      setTopicFilterModalMode('raw');
+      setTopicFilterModalRawValue(configuredFilter);
+      setTopicFilterModalTemplate(matchedTemplate ?? 'EVENT_ALL');
+    } else {
+      setTopicFilterModalMode('guided');
+      setTopicFilterModalTemplate(matchedTemplate ?? 'EVENT_ALL');
+      setTopicFilterModalRawValue(configuredFilter);
+    }
+    setTopicFilterModalSlotIndex(slotIndex);
+  };
+
+  const closeTopicFilterModal = () => {
+    setTopicFilterModalSlotIndex(null);
+  };
+
+  const saveTopicFilterModal = () => {
+    if (topicFilterModalSlotIndex === null || !onChangeSlotConfig) {
+      closeTopicFilterModal();
+      return;
+    }
+    const resolvedFilter = topicFilterModalMode === 'guided'
+      ? FILTER_TOPIC_TEMPLATE_TO_FILTER[topicFilterModalTemplate]
+      : topicFilterModalRawValue.trim();
+    onChangeSlotConfig(topicFilterModalSlotIndex, 'topicMode', topicFilterModalMode);
+    onChangeSlotConfig(topicFilterModalSlotIndex, 'topicFilter', resolvedFilter);
+    if (topicFilterModalMode === 'guided') {
+      onChangeSlotConfig(topicFilterModalSlotIndex, 'topicTemplate', topicFilterModalTemplate);
+    } else {
+      onChangeSlotConfig(topicFilterModalSlotIndex, 'topicTemplate', '');
+    }
+    closeTopicFilterModal();
+  };
+  const topicFilterModalPreview = topicFilterModalMode === 'guided'
+    ? FILTER_TOPIC_TEMPLATE_TO_FILTER[topicFilterModalTemplate]
+    : topicFilterModalRawValue.trim();
 
   const sinkNodes = normalizeSinkNodes(view.sink.nodes);
   const sinkRuntimeById = new Map(
@@ -762,6 +871,10 @@ export function PipelineBuilderSection({
                 const isEmpty = slot.blockType === 'NONE';
                 const isDropTarget = dragOverSlotIndex === slot.index;
                 const showSlotDeviceScope = !isEmpty && blockSupportsDeviceScope(slot.blockType);
+                const isFilterTopic = !isEmpty && slot.blockType.trim().toUpperCase() === 'FILTER_TOPIC';
+                const configuredTopicFilter = isFilterTopic
+                  ? extractTopicFilterFromSlotConfig(slot.config ?? {})
+                  : '';
                 const slotDeviceScope = normalizeSlotDeviceScope(slot.config.deviceScope);
                 const slotObservability = !isEmpty ? (observabilityBySlot.get(slot.index) ?? null) : null;
                 const inspectorExpanded = expandedObservabilitySlot === slot.index;
@@ -826,6 +939,24 @@ export function PipelineBuilderSection({
                             <option value="ALL_DEVICES">{t('pipelineDeviceScopeAll')}</option>
                           </select>
                         </label>
+                      ) : null}
+                      {isFilterTopic ? (
+                        <div className="pipeline-slot-config">
+                          <span>{t('pipelineFilterTopicLabel')}</span>
+                          <p className="muted mono">
+                            {configuredTopicFilter.length > 0
+                              ? configuredTopicFilter
+                              : t('pipelineFilterTopicNotConfigured')}
+                          </p>
+                          <button
+                            type="button"
+                            className="button tiny secondary"
+                            onClick={() => openTopicFilterModal(slot.index, slot.config ?? {})}
+                            disabled={!view.permissions.processingEditable || !onChangeSlotConfig}
+                          >
+                            {t('pipelineFilterTopicConfigure')}
+                          </button>
+                        </div>
                       ) : null}
                       {slotObservability ? (
                         <>
@@ -1106,6 +1237,80 @@ export function PipelineBuilderSection({
         ) : null}
         {!view.permissions.sinkEditable ? <p className="muted">{t('pipelineReadOnlyTask')}</p> : null}
       </article>
+
+      {topicFilterModalSlotIndex !== null ? (
+        <div className="event-modal-backdrop" onClick={closeTopicFilterModal}>
+          <div className="event-modal mqtt-compose-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="panel-header">
+              <h2>{t('pipelineFilterTopicModalTitle')}</h2>
+              <button
+                className="modal-close-button"
+                type="button"
+                onClick={closeTopicFilterModal}
+                aria-label={t('close')}
+                title={t('close')}
+              >
+                <CloseIcon />
+              </button>
+            </div>
+
+            <div className="mqtt-compose-mode-row">
+              <button
+                className={`button tiny ${topicFilterModalMode === 'guided' ? 'active' : 'secondary'}`}
+                type="button"
+                onClick={() => setTopicFilterModalMode('guided')}
+              >
+                {t('pipelineFilterTopicModeGuided')}
+              </button>
+              <button
+                className={`button tiny ${topicFilterModalMode === 'raw' ? 'active' : 'secondary'}`}
+                type="button"
+                onClick={() => setTopicFilterModalMode('raw')}
+              >
+                {t('pipelineFilterTopicModeRaw')}
+              </button>
+            </div>
+
+            {topicFilterModalMode === 'guided' ? (
+              <label className="stack pipeline-field">
+                <span>{t('pipelineFilterTopicTemplate')}</span>
+                <select
+                  className="input"
+                  value={topicFilterModalTemplate}
+                  onChange={(event) => setTopicFilterModalTemplate(event.target.value as FilterTopicTemplate)}
+                >
+                  {FILTER_TOPIC_TEMPLATE_OPTIONS.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {t(option.labelKey)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <label className="stack pipeline-field">
+                <span>{t('pipelineFilterTopicRawLabel')}</span>
+                <input
+                  className="input mono"
+                  value={topicFilterModalRawValue}
+                  onChange={(event) => setTopicFilterModalRawValue(event.target.value)}
+                  placeholder="+/event/#"
+                />
+              </label>
+            )}
+
+            <label className="stack pipeline-field">
+              <span>{t('pipelineFilterTopicPreview')}</span>
+              <input className="input mono mqtt-preview-input" value={topicFilterModalPreview} readOnly />
+            </label>
+
+            <div className="event-modal-actions">
+              <button className="button" type="button" onClick={saveTopicFilterModal}>
+                {t('save')}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <AdminMqttEventModal
         t={t}

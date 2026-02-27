@@ -1,6 +1,7 @@
 package ch.marcovogt.epl.pipelinebuilder;
 
 import ch.marcovogt.epl.common.EventCategory;
+import ch.marcovogt.epl.common.DeviceIdMapping;
 import ch.marcovogt.epl.eventingestionnormalization.CanonicalEventDto;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -93,6 +94,7 @@ public class PipelineObservabilityService {
 
         for (int index = 0; index < processing.slotCount(); index++) {
             String blockType = blockTypeAt(processing, index);
+            Map<String, Object> blockConfig = slotConfigAt(processing, index);
             BlockState blockState = blockState(groupState, index, blockType);
 
             blockState.inCount += 1L;
@@ -101,7 +103,7 @@ public class PipelineObservabilityService {
             RuntimeEvent inputCopy = runtimeEvent.copy(objectMapper);
             BlockResult result;
             try {
-                result = applyBlock(taskId, groupKey, blockState, runtimeEvent, blockType);
+                result = applyBlock(taskId, groupKey, blockState, runtimeEvent, blockType, blockConfig);
             } catch (Exception ex) {
                 blockState.errorCount += 1L;
                 blockState.dropCount += 1L;
@@ -310,18 +312,63 @@ public class PipelineObservabilityService {
             String groupKey,
             BlockState state,
             RuntimeEvent event,
-            String blockType
+            String blockType,
+            Map<String, Object> blockConfig
     ) {
         String normalized = blockType == null ? PipelineBlockLibrary.NONE : blockType.trim().toUpperCase(Locale.ROOT);
         RuntimeEvent next = event.copy(objectMapper);
 
         return switch (normalized) {
             case PipelineBlockLibrary.NONE -> BlockResult.pass(transformPassThrough(next), state.backlogDepth);
-            case "FILTER_DEVICE_TOPIC" -> {
+            case "FILTER_DEVICE_TOPIC", "FILTER_DEVICE" -> {
                 if (event.isInternal) {
                     yield BlockResult.drop("internal_filtered", state.backlogDepth);
                 }
+                String deviceScope = configString(blockConfig, "deviceScope");
+                if (deviceScope.isBlank()) {
+                    yield BlockResult.pass(next, state.backlogDepth);
+                }
+                String normalizedScope = deviceScope.trim().toUpperCase(Locale.ROOT);
+                if ("ALL_DEVICES".equals(normalizedScope)) {
+                    yield BlockResult.pass(next, state.backlogDepth);
+                }
+                String eventGroup = DeviceIdMapping.groupKeyForDevice(event.deviceId).orElse(event.deviceId);
+                if ("OWN_DEVICE".equals(normalizedScope)
+                        || "GROUP_DEVICES".equals(normalizedScope)) {
+                    if (groupKey.equalsIgnoreCase(eventGroup)) {
+                        yield BlockResult.pass(next, state.backlogDepth);
+                    }
+                    yield BlockResult.drop("device_filtered", state.backlogDepth);
+                }
+                if ("LECTURER_DEVICE".equals(normalizedScope) || "SINGLE_DEVICE".equals(normalizedScope)) {
+                    String requiredDeviceId = firstNonBlank(
+                            configString(blockConfig, "lecturerDeviceId"),
+                            configString(blockConfig, "deviceId")
+                    );
+                    if (requiredDeviceId.isBlank()) {
+                        yield BlockResult.pass(next, state.backlogDepth);
+                    }
+                    if (requiredDeviceId.equalsIgnoreCase(event.deviceId)) {
+                        yield BlockResult.pass(next, state.backlogDepth);
+                    }
+                    yield BlockResult.drop("device_filtered", state.backlogDepth);
+                }
                 yield BlockResult.pass(next, state.backlogDepth);
+            }
+            case "FILTER_TOPIC" -> {
+                String configuredTopicFilter = firstNonBlank(
+                        configString(blockConfig, "topicFilter"),
+                        configString(blockConfig, "topic"),
+                        configString(blockConfig, "topicPattern"),
+                        configString(blockConfig, "rawTopic")
+                );
+                if (configuredTopicFilter.isBlank()) {
+                    yield BlockResult.pass(next, state.backlogDepth);
+                }
+                if (mqttTopicMatches(configuredTopicFilter, event.topic)) {
+                    yield BlockResult.pass(next, state.backlogDepth);
+                }
+                yield BlockResult.drop("topic_filtered", state.backlogDepth);
             }
             case "FILTER_RATE_LIMIT" -> {
                 state.rateLimiterCursor = (state.rateLimiterCursor + 1) % 5;
@@ -485,6 +532,78 @@ public class PipelineObservabilityService {
                 .orElse(PipelineBlockLibrary.NONE);
     }
 
+    private Map<String, Object> slotConfigAt(PipelineProcessingSection processing, int slotIndex) {
+        if (processing == null || processing.slots() == null) {
+            return Map.of();
+        }
+        return processing.slots().stream()
+                .filter(slot -> slot.index() == slotIndex)
+                .map(PipelineSlot::config)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElse(Map.of());
+    }
+
+    private String configString(Map<String, Object> config, String key) {
+        if (config == null || config.isEmpty() || key == null || key.isBlank()) {
+            return "";
+        }
+        Object raw = config.get(key);
+        return raw == null ? "" : String.valueOf(raw).trim();
+    }
+
+    private String firstNonBlank(String... candidates) {
+        if (candidates == null || candidates.length == 0) {
+            return "";
+        }
+        for (String candidate : candidates) {
+            if (candidate != null && !candidate.isBlank()) {
+                return candidate.trim();
+            }
+        }
+        return "";
+    }
+
+    private boolean mqttTopicMatches(String topicFilter, String topic) {
+        if (topicFilter == null || topicFilter.isBlank()) {
+            return true;
+        }
+        if (topic == null || topic.isBlank()) {
+            return false;
+        }
+        String filter = topicFilter.trim();
+        if ("#".equals(filter)) {
+            return true;
+        }
+
+        String[] filterLevels = filter.split("/", -1);
+        String[] topicLevels = topic.split("/", -1);
+
+        int fi = 0;
+        int ti = 0;
+        while (fi < filterLevels.length && ti < topicLevels.length) {
+            String filterLevel = filterLevels[fi];
+            if ("#".equals(filterLevel)) {
+                return fi == filterLevels.length - 1;
+            }
+            if ("+".equals(filterLevel)) {
+                fi++;
+                ti++;
+                continue;
+            }
+            if (!filterLevel.equals(topicLevels[ti])) {
+                return false;
+            }
+            fi++;
+            ti++;
+        }
+
+        if (fi == filterLevels.length && ti == topicLevels.length) {
+            return true;
+        }
+        return fi == filterLevels.length - 1 && "#".equals(filterLevels[fi]);
+    }
+
     private String routeForCategory(EventCategory category) {
         if (category == null) {
             return "sink.default";
@@ -541,7 +660,7 @@ public class PipelineObservabilityService {
     private double latencyMs(long startedNs, String blockType) {
         long elapsedNs = System.nanoTime() - startedNs;
         double baseline = switch (blockType == null ? "" : blockType.toUpperCase(Locale.ROOT)) {
-            case "FILTER_RATE_LIMIT", "PARSE_VALIDATE" -> 0.20;
+            case "FILTER_DEVICE", "FILTER_DEVICE_TOPIC", "FILTER_TOPIC", "FILTER_RATE_LIMIT", "PARSE_VALIDATE" -> 0.20;
             case "DEDUP" -> 0.35;
             case "WINDOW_AGGREGATE", "MICRO_BATCH" -> 0.45;
             case "RETRY_DLQ" -> 0.30;

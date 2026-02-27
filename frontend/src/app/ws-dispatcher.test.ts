@@ -36,7 +36,7 @@ function createPipelineView(): PipelineView {
       slotCount: 2,
       slots: [
         { index: 0, blockType: 'NONE', config: {} },
-        { index: 1, blockType: 'FILTER_DEVICE_TOPIC', config: {} }
+        { index: 1, blockType: 'FILTER_DEVICE', config: {} }
       ]
     },
     sink: {
@@ -61,7 +61,7 @@ function createPipelineView(): PipelineView {
       stateResetAllowed: true,
       stateRestartAllowed: false,
       lecturerMode: false,
-      allowedProcessingBlocks: ['FILTER_DEVICE_TOPIC'],
+      allowedProcessingBlocks: ['FILTER_DEVICE'],
       slotCount: 2
     },
     observability: {

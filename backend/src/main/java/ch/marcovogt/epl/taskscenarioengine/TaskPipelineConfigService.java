@@ -216,10 +216,7 @@ public class TaskPipelineConfigService {
         }
         LinkedHashSet<String> normalized = new LinkedHashSet<>();
         for (String block : raw) {
-            if (block == null) {
-                continue;
-            }
-            String candidate = block.trim().toUpperCase(Locale.ROOT);
+            String candidate = canonicalBlock(block);
             if (candidate.isEmpty() || PipelineBlockLibrary.NONE.equals(candidate)) {
                 continue;
             }
@@ -244,10 +241,7 @@ public class TaskPipelineConfigService {
 
         Set<String> requested = new LinkedHashSet<>();
         for (String entry : raw) {
-            if (entry == null) {
-                continue;
-            }
-            String candidate = entry.trim().toUpperCase(Locale.ROOT);
+            String candidate = canonicalBlock(entry);
             if (!candidate.isEmpty()) {
                 requested.add(candidate);
             }
@@ -281,5 +275,16 @@ public class TaskPipelineConfigService {
 
     private StudentDeviceScope normalizeScope(StudentDeviceScope scope) {
         return scope == null ? StudentDeviceScope.OWN_DEVICE : scope;
+    }
+
+    private String canonicalBlock(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String normalized = raw.trim().toUpperCase(Locale.ROOT);
+        if ("FILTER_DEVICE_TOPIC".equals(normalized)) {
+            return "FILTER_DEVICE";
+        }
+        return normalized;
     }
 }

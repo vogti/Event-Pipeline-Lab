@@ -10,13 +10,15 @@ import org.springframework.stereotype.Component;
 public class TaskCatalog {
 
     private static final List<String> PBV_BLOCKS_BASIC = List.of(
-            "FILTER_DEVICE_TOPIC",
+            "FILTER_DEVICE",
+            "FILTER_TOPIC",
             "PARSE_VALIDATE",
             "ROUTE"
     );
 
     private static final List<String> PBV_BLOCKS_INTERMEDIATE = List.of(
-            "FILTER_DEVICE_TOPIC",
+            "FILTER_DEVICE",
+            "FILTER_TOPIC",
             "FILTER_RATE_LIMIT",
             "PARSE_VALIDATE",
             "DEDUP",
@@ -25,7 +27,8 @@ public class TaskCatalog {
     );
 
     private static final List<String> PBV_BLOCKS_ADVANCED = List.of(
-            "FILTER_DEVICE_TOPIC",
+            "FILTER_DEVICE",
+            "FILTER_TOPIC",
             "FILTER_RATE_LIMIT",
             "PARSE_VALIDATE",
             "DEDUP",

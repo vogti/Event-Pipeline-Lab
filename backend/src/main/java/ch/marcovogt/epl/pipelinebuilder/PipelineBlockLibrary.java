@@ -9,7 +9,8 @@ public final class PipelineBlockLibrary {
 
     private static final List<String> ALL_BLOCKS = List.of(
             NONE,
-            "FILTER_DEVICE_TOPIC",
+            "FILTER_DEVICE",
+            "FILTER_TOPIC",
             "FILTER_RATE_LIMIT",
             "PARSE_VALIDATE",
             "DEDUP",

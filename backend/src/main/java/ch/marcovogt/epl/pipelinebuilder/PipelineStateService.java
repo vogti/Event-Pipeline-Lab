@@ -835,7 +835,11 @@ public class PipelineStateService {
         if (raw == null || raw.isBlank()) {
             return PipelineBlockLibrary.NONE;
         }
-        return raw.trim().toUpperCase(Locale.ROOT);
+        String normalized = raw.trim().toUpperCase(Locale.ROOT);
+        if ("FILTER_DEVICE_TOPIC".equals(normalized)) {
+            return "FILTER_DEVICE";
+        }
+        return normalized;
     }
 
     private String normalizeEnum(String value, Set<String> allowed, String fallback) {

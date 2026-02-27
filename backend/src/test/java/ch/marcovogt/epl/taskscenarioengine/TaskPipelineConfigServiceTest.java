@@ -64,7 +64,7 @@ class TaskPipelineConfigServiceTest {
         TaskDefinition overridden = service.applyOverrides(baselineTaskDefinition());
 
         assertThat(overridden.pipeline().allowedProcessingBlocks())
-                .containsExactly("FILTER_DEVICE_TOPIC", "PARSE_VALIDATE", "ROUTE");
+                .containsExactly("FILTER_DEVICE", "PARSE_VALIDATE", "ROUTE");
         assertThat(overridden.pipeline().scenarioOverlays()).isEmpty();
     }
 
@@ -114,6 +114,31 @@ class TaskPipelineConfigServiceTest {
         assertThat(updated.availableProcessingBlocks()).doesNotContain(PipelineBlockLibrary.NONE);
         assertThat(updated.updatedBy()).isEqualTo("admin");
         assertThat(updated.updatedAt()).isNotNull();
+    }
+
+    @Test
+    void updateShouldNormalizeLegacyFilterDeviceTopicAlias() {
+        AtomicReference<TaskPipelineConfigState> stored = new AtomicReference<>();
+        when(repository.findById("task_test")).thenAnswer(invocation -> Optional.ofNullable(stored.get()));
+        when(repository.save(any(TaskPipelineConfigState.class))).thenAnswer(invocation -> {
+            TaskPipelineConfigState state = invocation.getArgument(0);
+            stored.set(state);
+            return state;
+        });
+
+        TaskPipelineConfigDto updated = service.update(
+                baselineTaskDefinition(),
+                true,
+                5,
+                List.of("FILTER_DEVICE_TOPIC", "FILTER_TOPIC", "PARSE_VALIDATE"),
+                List.of(),
+                StudentDeviceScope.OWN_DEVICE,
+                StudentDeviceScope.OWN_DEVICE,
+                "admin"
+        );
+
+        assertThat(updated.allowedProcessingBlocks())
+                .containsExactly("FILTER_DEVICE", "FILTER_TOPIC", "PARSE_VALIDATE");
     }
 
     @Test
@@ -177,7 +202,7 @@ class TaskPipelineConfigServiceTest {
                         true,
                         true,
                         5,
-                        List.of("FILTER_DEVICE_TOPIC", "PARSE_VALIDATE", "ROUTE"),
+                        List.of("FILTER_DEVICE", "PARSE_VALIDATE", "ROUTE"),
                         "LIVE_MQTT",
                         "GROUP_DEVICES",
                         StudentDeviceScope.OWN_DEVICE,
@@ -211,7 +236,7 @@ class TaskPipelineConfigServiceTest {
                         true,
                         true,
                         5,
-                        List.of("FILTER_DEVICE_TOPIC", "PARSE_VALIDATE", "ROUTE"),
+                        List.of("FILTER_DEVICE", "PARSE_VALIDATE", "ROUTE"),
                         "LIVE_MQTT",
                         "GROUP_DEVICES",
                         StudentDeviceScope.OWN_DEVICE,
