@@ -992,6 +992,12 @@ public class PipelineStateService {
         if ("FILTER_DEVICE_TOPIC".equals(normalized)) {
             return "FILTER_DEVICE";
         }
+        if ("PARSE_VALIDATE".equals(normalized)
+                || "ROUTE".equals(normalized)
+                || "RETRY_DLQ".equals(normalized)
+                || "ENRICH_METADATA".equals(normalized)) {
+            return PipelineBlockLibrary.NONE;
+        }
         return normalized;
     }
 

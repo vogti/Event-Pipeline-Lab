@@ -13,9 +13,7 @@ public class TaskCatalog {
             "FILTER_DEVICE",
             "FILTER_TOPIC",
             "EXTRACT_VALUE",
-            "TRANSFORM_PAYLOAD",
-            "PARSE_VALIDATE",
-            "ROUTE"
+            "TRANSFORM_PAYLOAD"
     );
 
     private static final List<String> PBV_BLOCKS_INTERMEDIATE = List.of(
@@ -24,10 +22,8 @@ public class TaskCatalog {
             "EXTRACT_VALUE",
             "TRANSFORM_PAYLOAD",
             "FILTER_RATE_LIMIT",
-            "PARSE_VALIDATE",
             "DEDUP",
-            "WINDOW_AGGREGATE",
-            "ROUTE"
+            "WINDOW_AGGREGATE"
     );
 
     private static final List<String> PBV_BLOCKS_ADVANCED = List.of(
@@ -36,13 +32,9 @@ public class TaskCatalog {
             "EXTRACT_VALUE",
             "TRANSFORM_PAYLOAD",
             "FILTER_RATE_LIMIT",
-            "PARSE_VALIDATE",
             "DEDUP",
             "WINDOW_AGGREGATE",
-            "MICRO_BATCH",
-            "ROUTE",
-            "RETRY_DLQ",
-            "ENRICH_METADATA"
+            "MICRO_BATCH"
     );
 
     private final Map<String, TaskDefinition> tasks;

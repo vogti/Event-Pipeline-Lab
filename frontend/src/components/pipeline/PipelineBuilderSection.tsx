@@ -92,7 +92,7 @@ function featureBadgeLabelKey(badge: string): I18nKey {
 
 function blockSupportsDeviceScope(blockType: string): boolean {
   const normalized = blockType.trim().toUpperCase();
-  return normalized.includes('DEVICE') || normalized === 'ENRICH_METADATA';
+  return normalized.includes('DEVICE');
 }
 
 function normalizeSlotDeviceScope(raw: unknown): string {
@@ -288,20 +288,12 @@ function processingBlockDocBodyKey(blockType: string): I18nKey {
       return 'pipelineDocBlockTransformPayloadBody';
     case 'FILTER_RATE_LIMIT':
       return 'pipelineDocBlockFilterRateLimitBody';
-    case 'PARSE_VALIDATE':
-      return 'pipelineDocBlockParseValidateBody';
     case 'DEDUP':
       return 'pipelineDocBlockDedupBody';
     case 'WINDOW_AGGREGATE':
       return 'pipelineDocBlockWindowAggregateBody';
     case 'MICRO_BATCH':
       return 'pipelineDocBlockMicroBatchBody';
-    case 'ROUTE':
-      return 'pipelineDocBlockRouteBody';
-    case 'RETRY_DLQ':
-      return 'pipelineDocBlockRetryDlqBody';
-    case 'ENRICH_METADATA':
-      return 'pipelineDocBlockEnrichMetadataBody';
     case 'NONE':
       return 'pipelineDocBlockNoneBody';
     default:
@@ -514,6 +506,124 @@ function normalizeTransformPayloadMappings(
     .filter((mapping) => mapping.from.length > 0);
 }
 
+type RateLimitConfigDraft = {
+  maxEvents: number;
+  windowMs: number;
+};
+
+type DedupStrategy = 'TIME_WINDOW' | 'EVENT_ID' | 'OFF';
+type DedupKey = 'DEVICE_EVENT_PAYLOAD' | 'DEVICE_EVENT' | 'TOPIC_PAYLOAD' | 'PAYLOAD_ONLY' | 'EVENT_ID';
+
+type DedupConfigDraft = {
+  strategy: DedupStrategy;
+  key: DedupKey;
+  windowMs: number;
+};
+
+type WindowAggregation = 'COUNT' | 'COUNT_DISTINCT_DEVICES' | 'AVG' | 'MIN' | 'MAX';
+type WindowTimeBasis = 'INGEST_TIME' | 'EVENT_TIME';
+type WindowLatePolicy = 'IGNORE' | 'GRACE';
+
+type WindowAggregateConfigDraft = {
+  aggregation: WindowAggregation;
+  windowMs: number;
+  timeBasis: WindowTimeBasis;
+  latePolicy: WindowLatePolicy;
+  graceMs: number;
+};
+
+type MicroBatchConfigDraft = {
+  batchSize: number;
+  maxWaitMs: number;
+};
+
+function parseIntWithDefault(value: unknown, fallback: number): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.round(value);
+  }
+  if (typeof value === 'string') {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return fallback;
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function parseRateLimitConfig(config: Record<string, unknown>): RateLimitConfigDraft {
+  return {
+    maxEvents: clampNumber(
+      parseIntWithDefault(config.rateLimitMaxEvents ?? config.maxEvents ?? config.eventsPerWindow, 20),
+      1,
+      10000
+    ),
+    windowMs: clampNumber(
+      parseIntWithDefault(config.rateLimitWindowMs ?? config.windowMs, 1000),
+      50,
+      600000
+    )
+  };
+}
+
+function parseDedupConfig(config: Record<string, unknown>): DedupConfigDraft {
+  const strategyRaw = String(config.dedupStrategy ?? config.strategy ?? 'TIME_WINDOW').toUpperCase();
+  const keyRaw = String(config.dedupKey ?? config.key ?? 'DEVICE_EVENT_PAYLOAD').toUpperCase();
+  return {
+    strategy:
+      strategyRaw === 'OFF' || strategyRaw === 'EVENT_ID' ? strategyRaw : 'TIME_WINDOW',
+    key:
+      keyRaw === 'DEVICE_EVENT'
+      || keyRaw === 'TOPIC_PAYLOAD'
+      || keyRaw === 'PAYLOAD_ONLY'
+      || keyRaw === 'EVENT_ID'
+        ? keyRaw
+        : 'DEVICE_EVENT_PAYLOAD',
+    windowMs: clampNumber(
+      parseIntWithDefault(config.dedupWindowMs ?? config.windowMs, 1000),
+      50,
+      600000
+    )
+  };
+}
+
+function parseWindowAggregateConfig(config: Record<string, unknown>): WindowAggregateConfigDraft {
+  const aggregationRaw = String(config.windowAggregation ?? config.aggregation ?? 'COUNT').toUpperCase();
+  const timeBasisRaw = String(config.windowTimeBasis ?? config.timeBasis ?? 'INGEST_TIME').toUpperCase();
+  const latePolicyRaw = String(config.windowLatePolicy ?? config.latePolicy ?? 'IGNORE').toUpperCase();
+  return {
+    aggregation:
+      aggregationRaw === 'COUNT_DISTINCT_DEVICES'
+      || aggregationRaw === 'AVG'
+      || aggregationRaw === 'MIN'
+      || aggregationRaw === 'MAX'
+        ? aggregationRaw
+        : 'COUNT',
+    windowMs: clampNumber(
+      parseIntWithDefault(config.windowSizeMs ?? config.sizeMs, 5000),
+      500,
+      600000
+    ),
+    timeBasis: timeBasisRaw === 'EVENT_TIME' ? 'EVENT_TIME' : 'INGEST_TIME',
+    latePolicy: latePolicyRaw === 'GRACE' ? 'GRACE' : 'IGNORE',
+    graceMs: clampNumber(
+      parseIntWithDefault(config.windowGraceMs ?? config.graceMs, 2000),
+      0,
+      120000
+    )
+  };
+}
+
+function parseMicroBatchConfig(config: Record<string, unknown>): MicroBatchConfigDraft {
+  return {
+    batchSize: clampNumber(parseIntWithDefault(config.microBatchSize ?? config.batchSize, 10), 1, 500),
+    maxWaitMs: clampNumber(parseIntWithDefault(config.microBatchMaxWaitMs ?? config.maxWaitMs, 500), 50, 60000)
+  };
+}
+
 export function PipelineBuilderSection({
   t,
   title,
@@ -557,6 +667,24 @@ export function PipelineBuilderSection({
   const [topicFilterModalMode, setTopicFilterModalMode] = useState<FilterTopicWizardMode>('guided');
   const [topicFilterModalTemplate, setTopicFilterModalTemplate] = useState<FilterTopicTemplate>('EVENT_ALL');
   const [topicFilterModalRawValue, setTopicFilterModalRawValue] = useState('');
+  const [rateLimitModalSlotIndex, setRateLimitModalSlotIndex] = useState<number | null>(null);
+  const [rateLimitDraft, setRateLimitDraft] = useState<RateLimitConfigDraft>({ maxEvents: 20, windowMs: 1000 });
+  const [dedupModalSlotIndex, setDedupModalSlotIndex] = useState<number | null>(null);
+  const [dedupDraft, setDedupDraft] = useState<DedupConfigDraft>({
+    strategy: 'TIME_WINDOW',
+    key: 'DEVICE_EVENT_PAYLOAD',
+    windowMs: 1000
+  });
+  const [windowAggregateModalSlotIndex, setWindowAggregateModalSlotIndex] = useState<number | null>(null);
+  const [windowAggregateDraft, setWindowAggregateDraft] = useState<WindowAggregateConfigDraft>({
+    aggregation: 'COUNT',
+    windowMs: 5000,
+    timeBasis: 'INGEST_TIME',
+    latePolicy: 'IGNORE',
+    graceMs: 2000
+  });
+  const [microBatchModalSlotIndex, setMicroBatchModalSlotIndex] = useState<number | null>(null);
+  const [microBatchDraft, setMicroBatchDraft] = useState<MicroBatchConfigDraft>({ batchSize: 10, maxWaitMs: 500 });
   const [transformPayloadModalSlotIndex, setTransformPayloadModalSlotIndex] = useState<number | null>(null);
   const [transformPayloadMappingsDraft, setTransformPayloadMappingsDraft] = useState<TransformPayloadMapping[]>([
     { from: '', to: '' }
@@ -752,6 +880,86 @@ export function PipelineBuilderSection({
   const topicFilterModalPreview = topicFilterModalMode === 'guided'
     ? FILTER_TOPIC_TEMPLATE_TO_FILTER[topicFilterModalTemplate]
     : topicFilterModalRawValue.trim();
+
+  const openRateLimitModal = (slotIndex: number, slotConfig: Record<string, unknown>) => {
+    setRateLimitDraft(parseRateLimitConfig(slotConfig));
+    setRateLimitModalSlotIndex(slotIndex);
+  };
+
+  const closeRateLimitModal = () => {
+    setRateLimitModalSlotIndex(null);
+  };
+
+  const saveRateLimitModal = () => {
+    if (rateLimitModalSlotIndex === null || !onChangeSlotConfig) {
+      closeRateLimitModal();
+      return;
+    }
+    onChangeSlotConfig(rateLimitModalSlotIndex, 'rateLimitMaxEvents', rateLimitDraft.maxEvents);
+    onChangeSlotConfig(rateLimitModalSlotIndex, 'rateLimitWindowMs', rateLimitDraft.windowMs);
+    closeRateLimitModal();
+  };
+
+  const openDedupModal = (slotIndex: number, slotConfig: Record<string, unknown>) => {
+    setDedupDraft(parseDedupConfig(slotConfig));
+    setDedupModalSlotIndex(slotIndex);
+  };
+
+  const closeDedupModal = () => {
+    setDedupModalSlotIndex(null);
+  };
+
+  const saveDedupModal = () => {
+    if (dedupModalSlotIndex === null || !onChangeSlotConfig) {
+      closeDedupModal();
+      return;
+    }
+    onChangeSlotConfig(dedupModalSlotIndex, 'dedupStrategy', dedupDraft.strategy);
+    onChangeSlotConfig(dedupModalSlotIndex, 'dedupKey', dedupDraft.key);
+    onChangeSlotConfig(dedupModalSlotIndex, 'dedupWindowMs', dedupDraft.windowMs);
+    closeDedupModal();
+  };
+
+  const openWindowAggregateModal = (slotIndex: number, slotConfig: Record<string, unknown>) => {
+    setWindowAggregateDraft(parseWindowAggregateConfig(slotConfig));
+    setWindowAggregateModalSlotIndex(slotIndex);
+  };
+
+  const closeWindowAggregateModal = () => {
+    setWindowAggregateModalSlotIndex(null);
+  };
+
+  const saveWindowAggregateModal = () => {
+    if (windowAggregateModalSlotIndex === null || !onChangeSlotConfig) {
+      closeWindowAggregateModal();
+      return;
+    }
+    onChangeSlotConfig(windowAggregateModalSlotIndex, 'windowAggregation', windowAggregateDraft.aggregation);
+    onChangeSlotConfig(windowAggregateModalSlotIndex, 'windowSizeMs', windowAggregateDraft.windowMs);
+    onChangeSlotConfig(windowAggregateModalSlotIndex, 'windowTimeBasis', windowAggregateDraft.timeBasis);
+    onChangeSlotConfig(windowAggregateModalSlotIndex, 'windowLatePolicy', windowAggregateDraft.latePolicy);
+    onChangeSlotConfig(windowAggregateModalSlotIndex, 'windowGraceMs', windowAggregateDraft.graceMs);
+    closeWindowAggregateModal();
+  };
+
+  const openMicroBatchModal = (slotIndex: number, slotConfig: Record<string, unknown>) => {
+    setMicroBatchDraft(parseMicroBatchConfig(slotConfig));
+    setMicroBatchModalSlotIndex(slotIndex);
+  };
+
+  const closeMicroBatchModal = () => {
+    setMicroBatchModalSlotIndex(null);
+  };
+
+  const saveMicroBatchModal = () => {
+    if (microBatchModalSlotIndex === null || !onChangeSlotConfig) {
+      closeMicroBatchModal();
+      return;
+    }
+    onChangeSlotConfig(microBatchModalSlotIndex, 'microBatchSize', microBatchDraft.batchSize);
+    onChangeSlotConfig(microBatchModalSlotIndex, 'microBatchMaxWaitMs', microBatchDraft.maxWaitMs);
+    closeMicroBatchModal();
+  };
 
   const openTransformPayloadModal = (slotIndex: number, slotConfig: Record<string, unknown>) => {
     const existingMappings = parseTransformPayloadMappings(slotConfig);
@@ -1032,10 +1240,20 @@ export function PipelineBuilderSection({
                 const slotEditable = view.permissions.processingEditable && !isTaskScopeLocked;
                 const showSlotDeviceScope = !isEmpty && blockSupportsDeviceScope(slot.blockType);
                 const isFilterTopic = !isEmpty && slot.blockType.trim().toUpperCase() === 'FILTER_TOPIC';
+                const isFilterRateLimit = !isEmpty && slot.blockType.trim().toUpperCase() === 'FILTER_RATE_LIMIT';
+                const isDedup = !isEmpty && slot.blockType.trim().toUpperCase() === 'DEDUP';
+                const isWindowAggregate = !isEmpty && slot.blockType.trim().toUpperCase() === 'WINDOW_AGGREGATE';
+                const isMicroBatch = !isEmpty && slot.blockType.trim().toUpperCase() === 'MICRO_BATCH';
                 const isTransformPayload = !isEmpty && slot.blockType.trim().toUpperCase() === 'TRANSFORM_PAYLOAD';
                 const configuredTopicFilter = isFilterTopic
                   ? extractTopicFilterFromSlotConfig(slot.config ?? {})
                   : '';
+                const configuredRateLimit = isFilterRateLimit ? parseRateLimitConfig(slot.config ?? {}) : null;
+                const configuredDedup = isDedup ? parseDedupConfig(slot.config ?? {}) : null;
+                const configuredWindowAggregate = isWindowAggregate
+                  ? parseWindowAggregateConfig(slot.config ?? {})
+                  : null;
+                const configuredMicroBatch = isMicroBatch ? parseMicroBatchConfig(slot.config ?? {}) : null;
                 const configuredTransformPayloadMappings = isTransformPayload
                   ? parseTransformPayloadMappings(slot.config ?? {})
                   : [];
@@ -1156,6 +1374,102 @@ export function PipelineBuilderSection({
                             disabled={!slotEditable || !onChangeSlotConfig}
                           >
                             {t('pipelineTransformPayloadConfigure')}
+                          </button>
+                        </div>
+                      ) : null}
+                      {isFilterRateLimit && configuredRateLimit ? (
+                        <div className="pipeline-slot-config">
+                          <span>{t('pipelineRateLimitLabel')}</span>
+                          <p className="muted mono">
+                            {configuredRateLimit.maxEvents} / {configuredRateLimit.windowMs} ms
+                          </p>
+                          <button
+                            type="button"
+                            className="button tiny secondary"
+                            onClick={() => openRateLimitModal(slot.index, slot.config ?? {})}
+                            disabled={!slotEditable || !onChangeSlotConfig}
+                          >
+                            {t('pipelineRateLimitConfigure')}
+                          </button>
+                        </div>
+                      ) : null}
+                      {isDedup && configuredDedup ? (
+                        <div className="pipeline-slot-config">
+                          <span>{t('pipelineDedupLabel')}</span>
+                          <p className="muted mono">
+                            {t(
+                              configuredDedup.strategy === 'OFF'
+                                ? 'pipelineDedupStrategyOff'
+                                : configuredDedup.strategy === 'EVENT_ID'
+                                  ? 'pipelineDedupStrategyEventId'
+                                  : 'pipelineDedupStrategyTimeWindow'
+                            )}
+                            {' | '}
+                            {t(
+                              configuredDedup.key === 'DEVICE_EVENT'
+                                ? 'pipelineDedupKeyDeviceEvent'
+                                : configuredDedup.key === 'TOPIC_PAYLOAD'
+                                  ? 'pipelineDedupKeyTopicPayload'
+                                  : configuredDedup.key === 'PAYLOAD_ONLY'
+                                    ? 'pipelineDedupKeyPayloadOnly'
+                                    : configuredDedup.key === 'EVENT_ID'
+                                      ? 'pipelineDedupKeyEventId'
+                                      : 'pipelineDedupKeyDeviceEventPayload'
+                            )}
+                            {' | '}
+                            {configuredDedup.windowMs} ms
+                          </p>
+                          <button
+                            type="button"
+                            className="button tiny secondary"
+                            onClick={() => openDedupModal(slot.index, slot.config ?? {})}
+                            disabled={!slotEditable || !onChangeSlotConfig}
+                          >
+                            {t('pipelineDedupConfigure')}
+                          </button>
+                        </div>
+                      ) : null}
+                      {isWindowAggregate && configuredWindowAggregate ? (
+                        <div className="pipeline-slot-config">
+                          <span>{t('pipelineWindowAggregateLabel')}</span>
+                          <p className="muted mono">
+                            {t(
+                              configuredWindowAggregate.aggregation === 'COUNT_DISTINCT_DEVICES'
+                                ? 'pipelineWindowAggregationCountDistinct'
+                                : configuredWindowAggregate.aggregation === 'AVG'
+                                  ? 'pipelineWindowAggregationAvg'
+                                  : configuredWindowAggregate.aggregation === 'MIN'
+                                    ? 'pipelineWindowAggregationMin'
+                                    : configuredWindowAggregate.aggregation === 'MAX'
+                                      ? 'pipelineWindowAggregationMax'
+                                      : 'pipelineWindowAggregationCount'
+                            )}
+                            {' | '}
+                            {configuredWindowAggregate.windowMs} ms
+                          </p>
+                          <button
+                            type="button"
+                            className="button tiny secondary"
+                            onClick={() => openWindowAggregateModal(slot.index, slot.config ?? {})}
+                            disabled={!slotEditable || !onChangeSlotConfig}
+                          >
+                            {t('pipelineWindowAggregateConfigure')}
+                          </button>
+                        </div>
+                      ) : null}
+                      {isMicroBatch && configuredMicroBatch ? (
+                        <div className="pipeline-slot-config">
+                          <span>{t('pipelineMicroBatchLabel')}</span>
+                          <p className="muted mono">
+                            {configuredMicroBatch.batchSize} | {configuredMicroBatch.maxWaitMs} ms
+                          </p>
+                          <button
+                            type="button"
+                            className="button tiny secondary"
+                            onClick={() => openMicroBatchModal(slot.index, slot.config ?? {})}
+                            disabled={!slotEditable || !onChangeSlotConfig}
+                          >
+                            {t('pipelineMicroBatchConfigure')}
                           </button>
                         </div>
                       ) : null}
@@ -1513,6 +1827,305 @@ export function PipelineBuilderSection({
 
             <div className="event-modal-actions">
               <button className="button" type="button" onClick={saveTopicFilterModal}>
+                {t('save')}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {rateLimitModalSlotIndex !== null ? (
+        <div className="event-modal-backdrop" onClick={closeRateLimitModal}>
+          <div className="event-modal mqtt-compose-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="panel-header">
+              <h2>{t('pipelineRateLimitModalTitle')}</h2>
+              <button
+                className="modal-close-button"
+                type="button"
+                onClick={closeRateLimitModal}
+                aria-label={t('close')}
+                title={t('close')}
+              >
+                <CloseIcon />
+              </button>
+            </div>
+            <label className="stack pipeline-field">
+              <span>{t('pipelineRateLimitMaxEvents')}</span>
+              <input
+                className="input"
+                type="number"
+                min={1}
+                max={10000}
+                value={rateLimitDraft.maxEvents}
+                onChange={(event) =>
+                  setRateLimitDraft((previous) => ({
+                    ...previous,
+                    maxEvents: clampNumber(parseIntWithDefault(event.target.value, 20), 1, 10000)
+                  }))
+                }
+              />
+            </label>
+            <label className="stack pipeline-field">
+              <span>{t('pipelineRateLimitWindowMs')}</span>
+              <input
+                className="input"
+                type="number"
+                min={50}
+                max={600000}
+                value={rateLimitDraft.windowMs}
+                onChange={(event) =>
+                  setRateLimitDraft((previous) => ({
+                    ...previous,
+                    windowMs: clampNumber(parseIntWithDefault(event.target.value, 1000), 50, 600000)
+                  }))
+                }
+              />
+            </label>
+            <div className="event-modal-actions">
+              <button className="button" type="button" onClick={saveRateLimitModal}>
+                {t('save')}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {dedupModalSlotIndex !== null ? (
+        <div className="event-modal-backdrop" onClick={closeDedupModal}>
+          <div className="event-modal mqtt-compose-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="panel-header">
+              <h2>{t('pipelineDedupModalTitle')}</h2>
+              <button
+                className="modal-close-button"
+                type="button"
+                onClick={closeDedupModal}
+                aria-label={t('close')}
+                title={t('close')}
+              >
+                <CloseIcon />
+              </button>
+            </div>
+            <label className="stack pipeline-field">
+              <span>{t('pipelineDedupStrategy')}</span>
+              <select
+                className="input"
+                value={dedupDraft.strategy}
+                onChange={(event) =>
+                  setDedupDraft((previous) => ({
+                    ...previous,
+                    strategy: event.target.value as DedupStrategy
+                  }))
+                }
+              >
+                <option value="TIME_WINDOW">{t('pipelineDedupStrategyTimeWindow')}</option>
+                <option value="EVENT_ID">{t('pipelineDedupStrategyEventId')}</option>
+                <option value="OFF">{t('pipelineDedupStrategyOff')}</option>
+              </select>
+            </label>
+            <label className="stack pipeline-field">
+              <span>{t('pipelineDedupKey')}</span>
+              <select
+                className="input"
+                value={dedupDraft.key}
+                onChange={(event) =>
+                  setDedupDraft((previous) => ({
+                    ...previous,
+                    key: event.target.value as DedupKey
+                  }))
+                }
+                disabled={dedupDraft.strategy === 'EVENT_ID'}
+              >
+                <option value="DEVICE_EVENT_PAYLOAD">{t('pipelineDedupKeyDeviceEventPayload')}</option>
+                <option value="DEVICE_EVENT">{t('pipelineDedupKeyDeviceEvent')}</option>
+                <option value="TOPIC_PAYLOAD">{t('pipelineDedupKeyTopicPayload')}</option>
+                <option value="PAYLOAD_ONLY">{t('pipelineDedupKeyPayloadOnly')}</option>
+                <option value="EVENT_ID">{t('pipelineDedupKeyEventId')}</option>
+              </select>
+            </label>
+            <label className="stack pipeline-field">
+              <span>{t('pipelineDedupWindowMs')}</span>
+              <input
+                className="input"
+                type="number"
+                min={50}
+                max={600000}
+                value={dedupDraft.windowMs}
+                onChange={(event) =>
+                  setDedupDraft((previous) => ({
+                    ...previous,
+                    windowMs: clampNumber(parseIntWithDefault(event.target.value, 1000), 50, 600000)
+                  }))
+                }
+                disabled={dedupDraft.strategy === 'OFF'}
+              />
+            </label>
+            <div className="event-modal-actions">
+              <button className="button" type="button" onClick={saveDedupModal}>
+                {t('save')}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {windowAggregateModalSlotIndex !== null ? (
+        <div className="event-modal-backdrop" onClick={closeWindowAggregateModal}>
+          <div className="event-modal mqtt-compose-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="panel-header">
+              <h2>{t('pipelineWindowAggregateModalTitle')}</h2>
+              <button
+                className="modal-close-button"
+                type="button"
+                onClick={closeWindowAggregateModal}
+                aria-label={t('close')}
+                title={t('close')}
+              >
+                <CloseIcon />
+              </button>
+            </div>
+            <label className="stack pipeline-field">
+              <span>{t('pipelineWindowAggregation')}</span>
+              <select
+                className="input"
+                value={windowAggregateDraft.aggregation}
+                onChange={(event) =>
+                  setWindowAggregateDraft((previous) => ({
+                    ...previous,
+                    aggregation: event.target.value as WindowAggregation
+                  }))
+                }
+              >
+                <option value="COUNT">{t('pipelineWindowAggregationCount')}</option>
+                <option value="COUNT_DISTINCT_DEVICES">{t('pipelineWindowAggregationCountDistinct')}</option>
+                <option value="AVG">{t('pipelineWindowAggregationAvg')}</option>
+                <option value="MIN">{t('pipelineWindowAggregationMin')}</option>
+                <option value="MAX">{t('pipelineWindowAggregationMax')}</option>
+              </select>
+            </label>
+            <label className="stack pipeline-field">
+              <span>{t('pipelineWindowSizeMs')}</span>
+              <input
+                className="input"
+                type="number"
+                min={500}
+                max={600000}
+                value={windowAggregateDraft.windowMs}
+                onChange={(event) =>
+                  setWindowAggregateDraft((previous) => ({
+                    ...previous,
+                    windowMs: clampNumber(parseIntWithDefault(event.target.value, 5000), 500, 600000)
+                  }))
+                }
+              />
+            </label>
+            <label className="stack pipeline-field">
+              <span>{t('pipelineWindowTimeBasis')}</span>
+              <select
+                className="input"
+                value={windowAggregateDraft.timeBasis}
+                onChange={(event) =>
+                  setWindowAggregateDraft((previous) => ({
+                    ...previous,
+                    timeBasis: event.target.value as WindowTimeBasis
+                  }))
+                }
+              >
+                <option value="INGEST_TIME">{t('pipelineWindowTimeBasisIngest')}</option>
+                <option value="EVENT_TIME">{t('pipelineWindowTimeBasisEvent')}</option>
+              </select>
+            </label>
+            <label className="stack pipeline-field">
+              <span>{t('pipelineWindowLatePolicy')}</span>
+              <select
+                className="input"
+                value={windowAggregateDraft.latePolicy}
+                onChange={(event) =>
+                  setWindowAggregateDraft((previous) => ({
+                    ...previous,
+                    latePolicy: event.target.value as WindowLatePolicy
+                  }))
+                }
+              >
+                <option value="IGNORE">{t('pipelineWindowLatePolicyIgnore')}</option>
+                <option value="GRACE">{t('pipelineWindowLatePolicyGrace')}</option>
+              </select>
+            </label>
+            {windowAggregateDraft.latePolicy === 'GRACE' ? (
+              <label className="stack pipeline-field">
+                <span>{t('pipelineWindowGraceMs')}</span>
+                <input
+                  className="input"
+                  type="number"
+                  min={0}
+                  max={120000}
+                  value={windowAggregateDraft.graceMs}
+                  onChange={(event) =>
+                    setWindowAggregateDraft((previous) => ({
+                      ...previous,
+                      graceMs: clampNumber(parseIntWithDefault(event.target.value, 2000), 0, 120000)
+                    }))
+                  }
+                />
+              </label>
+            ) : null}
+            <div className="event-modal-actions">
+              <button className="button" type="button" onClick={saveWindowAggregateModal}>
+                {t('save')}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {microBatchModalSlotIndex !== null ? (
+        <div className="event-modal-backdrop" onClick={closeMicroBatchModal}>
+          <div className="event-modal mqtt-compose-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="panel-header">
+              <h2>{t('pipelineMicroBatchModalTitle')}</h2>
+              <button
+                className="modal-close-button"
+                type="button"
+                onClick={closeMicroBatchModal}
+                aria-label={t('close')}
+                title={t('close')}
+              >
+                <CloseIcon />
+              </button>
+            </div>
+            <label className="stack pipeline-field">
+              <span>{t('pipelineMicroBatchSize')}</span>
+              <input
+                className="input"
+                type="number"
+                min={1}
+                max={500}
+                value={microBatchDraft.batchSize}
+                onChange={(event) =>
+                  setMicroBatchDraft((previous) => ({
+                    ...previous,
+                    batchSize: clampNumber(parseIntWithDefault(event.target.value, 10), 1, 500)
+                  }))
+                }
+              />
+            </label>
+            <label className="stack pipeline-field">
+              <span>{t('pipelineMicroBatchMaxWaitMs')}</span>
+              <input
+                className="input"
+                type="number"
+                min={50}
+                max={60000}
+                value={microBatchDraft.maxWaitMs}
+                onChange={(event) =>
+                  setMicroBatchDraft((previous) => ({
+                    ...previous,
+                    maxWaitMs: clampNumber(parseIntWithDefault(event.target.value, 500), 50, 60000)
+                  }))
+                }
+              />
+            </label>
+            <div className="event-modal-actions">
+              <button className="button" type="button" onClick={saveMicroBatchModal}>
                 {t('save')}
               </button>
             </div>

@@ -37,7 +37,7 @@ class TaskPipelineConfigServiceTest {
         override.setTaskId("task_test");
         override.setVisibleToStudents(false);
         override.setSlotCount(6);
-        override.setAllowedProcessingBlocksJson("[\"dedup\",\"UNKNOWN\",\"route\",\"dedup\",\"none\"]");
+        override.setAllowedProcessingBlocksJson("[\"dedup\",\"UNKNOWN\",\"dedup\",\"none\"]");
         override.setScenarioOverlaysJson("[\"delay:400ms\",\"duplicates:12%\"]");
         when(repository.findById("task_test")).thenReturn(Optional.of(override));
 
@@ -45,7 +45,7 @@ class TaskPipelineConfigServiceTest {
 
         assertThat(overridden.pipeline().visibleToStudents()).isFalse();
         assertThat(overridden.pipeline().slotCount()).isEqualTo(6);
-        assertThat(overridden.pipeline().allowedProcessingBlocks()).containsExactly("DEDUP", "ROUTE");
+        assertThat(overridden.pipeline().allowedProcessingBlocks()).containsExactly("DEDUP");
         assertThat(overridden.pipeline().scenarioOverlays()).containsExactly("duplicates:12%", "delay:400ms");
         assertThat(overridden.pipeline().lecturerMode()).isTrue();
         assertThat(overridden.pipeline().inputMode()).isEqualTo("LIVE_MQTT");
@@ -64,7 +64,7 @@ class TaskPipelineConfigServiceTest {
         TaskDefinition overridden = service.applyOverrides(baselineTaskDefinition());
 
         assertThat(overridden.pipeline().allowedProcessingBlocks())
-                .containsExactly("FILTER_DEVICE", "PARSE_VALIDATE", "ROUTE");
+                .containsExactly("FILTER_DEVICE", "FILTER_TOPIC", "DEDUP");
         assertThat(overridden.pipeline().scenarioOverlays()).isEmpty();
     }
 
@@ -97,7 +97,7 @@ class TaskPipelineConfigServiceTest {
                 baselineTaskDefinition(),
                 false,
                 4,
-                List.of("parse_validate", "route", "route"),
+                List.of("filter_rate_limit", "dedup", "dedup"),
                 List.of("delay:250ms", "drop:4%"),
                 StudentDeviceScope.ALL_DEVICES,
                 StudentDeviceScope.ADMIN_DEVICE,
@@ -106,7 +106,7 @@ class TaskPipelineConfigServiceTest {
 
         assertThat(updated.visibleToStudents()).isFalse();
         assertThat(updated.slotCount()).isEqualTo(4);
-        assertThat(updated.allowedProcessingBlocks()).containsExactly("PARSE_VALIDATE", "ROUTE");
+        assertThat(updated.allowedProcessingBlocks()).containsExactly("FILTER_RATE_LIMIT", "DEDUP");
         assertThat(updated.scenarioOverlays()).containsExactly("delay:250ms", "drops:4%");
         assertThat(updated.studentEventVisibilityScope()).isEqualTo(StudentDeviceScope.ALL_DEVICES);
         assertThat(updated.studentCommandTargetScope()).isEqualTo(StudentDeviceScope.ADMIN_DEVICE);
@@ -130,7 +130,7 @@ class TaskPipelineConfigServiceTest {
                 baselineTaskDefinition(),
                 true,
                 5,
-                List.of("FILTER_DEVICE_TOPIC", "FILTER_TOPIC", "PARSE_VALIDATE"),
+                List.of("FILTER_DEVICE_TOPIC", "FILTER_TOPIC", "DEDUP"),
                 List.of(),
                 StudentDeviceScope.OWN_DEVICE,
                 StudentDeviceScope.OWN_DEVICE,
@@ -138,7 +138,7 @@ class TaskPipelineConfigServiceTest {
         );
 
         assertThat(updated.allowedProcessingBlocks())
-                .containsExactly("FILTER_DEVICE", "FILTER_TOPIC", "PARSE_VALIDATE");
+                .containsExactly("FILTER_DEVICE", "FILTER_TOPIC", "DEDUP");
     }
 
     @Test
@@ -147,7 +147,7 @@ class TaskPipelineConfigServiceTest {
                 baselineTaskDefinition(),
                 true,
                 5,
-                List.of("ROUTE", "NOT_A_BLOCK"),
+                List.of("FILTER_TOPIC", "NOT_A_BLOCK"),
                 List.of(),
                 StudentDeviceScope.OWN_DEVICE,
                 StudentDeviceScope.OWN_DEVICE,
@@ -167,7 +167,7 @@ class TaskPipelineConfigServiceTest {
                 baselineTaskDefinition(),
                 true,
                 7,
-                List.of("ROUTE"),
+                List.of("FILTER_TOPIC"),
                 List.of(),
                 StudentDeviceScope.OWN_DEVICE,
                 StudentDeviceScope.OWN_DEVICE,
@@ -202,7 +202,7 @@ class TaskPipelineConfigServiceTest {
                         true,
                         true,
                         5,
-                        List.of("FILTER_DEVICE", "PARSE_VALIDATE", "ROUTE"),
+                        List.of("FILTER_DEVICE", "FILTER_TOPIC", "DEDUP"),
                         "LIVE_MQTT",
                         "GROUP_DEVICES",
                         StudentDeviceScope.OWN_DEVICE,
@@ -236,7 +236,7 @@ class TaskPipelineConfigServiceTest {
                         true,
                         true,
                         5,
-                        List.of("FILTER_DEVICE", "PARSE_VALIDATE", "ROUTE"),
+                        List.of("FILTER_DEVICE", "FILTER_TOPIC", "DEDUP"),
                         "LIVE_MQTT",
                         "GROUP_DEVICES",
                         StudentDeviceScope.OWN_DEVICE,

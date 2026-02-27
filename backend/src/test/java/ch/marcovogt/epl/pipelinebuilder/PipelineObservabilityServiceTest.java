@@ -35,8 +35,11 @@ class PipelineObservabilityServiceTest {
                 "CONSTRAINED",
                 2,
                 List.of(
-                        new PipelineSlot(0, "FILTER_RATE_LIMIT", java.util.Map.of()),
-                        new PipelineSlot(1, "ENRICH_METADATA", java.util.Map.of())
+                        new PipelineSlot(0, "FILTER_RATE_LIMIT", java.util.Map.of(
+                                "rateLimitMaxEvents", 2,
+                                "rateLimitWindowMs", 1000
+                        )),
+                        new PipelineSlot(1, "EXTRACT_VALUE", java.util.Map.of())
                 )
         );
 
@@ -64,7 +67,7 @@ class PipelineObservabilityServiceTest {
         PipelineProcessingSection processing = new PipelineProcessingSection(
                 "CONSTRAINED",
                 1,
-                List.of(new PipelineSlot(0, "DEDUP", java.util.Map.of()))
+                List.of(new PipelineSlot(0, "DEDUP", java.util.Map.of("dedupWindowMs", 10_000)))
         );
 
         CanonicalEventDto event = event("same", "{\"counter\":1}");

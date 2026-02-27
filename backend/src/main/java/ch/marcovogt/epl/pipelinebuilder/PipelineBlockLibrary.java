@@ -14,13 +14,9 @@ public final class PipelineBlockLibrary {
             "EXTRACT_VALUE",
             "TRANSFORM_PAYLOAD",
             "FILTER_RATE_LIMIT",
-            "PARSE_VALIDATE",
             "DEDUP",
             "WINDOW_AGGREGATE",
-            "MICRO_BATCH",
-            "ROUTE",
-            "RETRY_DLQ",
-            "ENRICH_METADATA"
+            "MICRO_BATCH"
     );
 
     private static final Set<String> ALL_BLOCK_SET = Set.copyOf(ALL_BLOCKS);

@@ -14,11 +14,13 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Deque;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -27,7 +29,19 @@ import org.springframework.stereotype.Service;
 @Service
 public class PipelineObservabilityService {
 
-    private static final Duration DEDUP_TTL = Duration.ofSeconds(10);
+    private static final int DEFAULT_RATE_LIMIT_MAX_EVENTS = 20;
+    private static final long DEFAULT_RATE_LIMIT_WINDOW_MS = 1_000L;
+    private static final String DEFAULT_DEDUP_STRATEGY = "TIME_WINDOW";
+    private static final String DEFAULT_DEDUP_KEY = "DEVICE_EVENT_PAYLOAD";
+    private static final long DEFAULT_DEDUP_WINDOW_MS = 1_000L;
+    private static final String DEFAULT_WINDOW_AGGREGATION = "COUNT";
+    private static final String DEFAULT_WINDOW_TIME_BASIS = "INGEST_TIME";
+    private static final String DEFAULT_WINDOW_LATE_POLICY = "IGNORE";
+    private static final long DEFAULT_WINDOW_SIZE_MS = 5_000L;
+    private static final long DEFAULT_WINDOW_GRACE_MS = 2_000L;
+    private static final int DEFAULT_MICRO_BATCH_SIZE = 10;
+    private static final long DEFAULT_MICRO_BATCH_MAX_WAIT_MS = 500L;
+    private static final int MAX_DEDUP_STORE_SIZE = 5_000;
     private static final String MODE_EPHEMERAL = "EPHEMERAL";
     private static final String MODE_PERSISTED = "PERSISTED";
 
@@ -200,7 +214,7 @@ public class PipelineObservabilityService {
                     blockType,
                     stateType(blockType),
                     stateEntryCount(state, blockType),
-                    stateTtlSeconds(blockType),
+                    stateTtlSeconds(state, blockType),
                     stateMemoryBytes(state, blockType),
                     state.inCount,
                     state.outCount,
@@ -397,61 +411,200 @@ public class PipelineObservabilityService {
                 yield BlockResult.pass(next, state.backlogDepth);
             }
             case "FILTER_RATE_LIMIT" -> {
-                state.rateLimiterCursor = (state.rateLimiterCursor + 1) % 5;
-                if (state.rateLimiterCursor != 0) {
+                int maxEvents = configInt(
+                        blockConfig,
+                        List.of("rateLimitMaxEvents", "maxEvents", "eventsPerWindow"),
+                        DEFAULT_RATE_LIMIT_MAX_EVENTS,
+                        1,
+                        10_000
+                );
+                long windowMs = configLong(
+                        blockConfig,
+                        List.of("rateLimitWindowMs", "windowMs"),
+                        DEFAULT_RATE_LIMIT_WINDOW_MS,
+                        50,
+                        600_000
+                );
+                Instant now = event.ingestTs == null ? Instant.now(clock) : event.ingestTs;
+                pruneRateLimit(state, now, windowMs);
+                if (state.rateLimitAcceptedAt.size() >= maxEvents) {
+                    state.backlogDepth = Math.max(0, state.rateLimitAcceptedAt.size() - maxEvents + 1);
                     yield BlockResult.drop("rate_limited", state.backlogDepth);
                 }
-                yield BlockResult.pass(next, state.backlogDepth);
-            }
-            case "PARSE_VALIDATE" -> {
-                if (!event.valid) {
-                    yield BlockResult.drop("invalid", state.backlogDepth);
-                }
-                mutablePayloadObject(next).put("validated", true);
+                state.rateLimitAcceptedAt.addLast(now);
+                state.backlogDepth = Math.max(0, state.rateLimitAcceptedAt.size() - maxEvents);
                 yield BlockResult.pass(next, state.backlogDepth);
             }
             case "DEDUP" -> {
-                pruneDedup(state, event.ingestTs == null ? Instant.now(clock) : event.ingestTs);
-                String dedupKey = event.deviceId + "|" + event.eventType + "|" + event.payload.toString().hashCode();
+                String strategy = configEnum(
+                        blockConfig,
+                        List.of("dedupStrategy", "strategy"),
+                        Set.of("OFF", "TIME_WINDOW", "EVENT_ID"),
+                        DEFAULT_DEDUP_STRATEGY
+                );
+                if ("OFF".equals(strategy)) {
+                    state.dedupSeenAt.clear();
+                    state.backlogDepth = 0;
+                    yield BlockResult.pass(next, state.backlogDepth);
+                }
+
+                long windowMs = configLong(
+                        blockConfig,
+                        List.of("dedupWindowMs", "windowMs"),
+                        DEFAULT_DEDUP_WINDOW_MS,
+                        50,
+                        600_000
+                );
+                Instant now = event.ingestTs == null ? Instant.now(clock) : event.ingestTs;
+                state.dedupWindowMs = windowMs;
+                pruneDedup(state, now, windowMs);
+
+                String dedupKey = dedupKey(event, blockConfig, strategy);
+                if (dedupKey.isBlank()) {
+                    yield BlockResult.pass(next, state.backlogDepth);
+                }
                 if (state.dedupSeenAt.containsKey(dedupKey)) {
                     yield BlockResult.drop("duplicate", state.backlogDepth);
                 }
-                state.dedupSeenAt.put(dedupKey, Instant.now(clock));
+                state.dedupSeenAt.put(dedupKey, now);
                 trimDedup(state);
+                state.backlogDepth = state.dedupSeenAt.size();
                 yield BlockResult.pass(next, state.backlogDepth);
             }
             case "WINDOW_AGGREGATE" -> {
+                long windowSizeMs = configLong(
+                        blockConfig,
+                        List.of("windowSizeMs", "sizeMs"),
+                        DEFAULT_WINDOW_SIZE_MS,
+                        500,
+                        600_000
+                );
+                String aggregation = configEnum(
+                        blockConfig,
+                        List.of("windowAggregation", "aggregation"),
+                        Set.of("COUNT", "COUNT_DISTINCT_DEVICES", "AVG", "MIN", "MAX"),
+                        DEFAULT_WINDOW_AGGREGATION
+                );
+                String timeBasis = configEnum(
+                        blockConfig,
+                        List.of("windowTimeBasis", "timeBasis"),
+                        Set.of("INGEST_TIME", "EVENT_TIME"),
+                        DEFAULT_WINDOW_TIME_BASIS
+                );
+                String latePolicy = configEnum(
+                        blockConfig,
+                        List.of("windowLatePolicy", "latePolicy"),
+                        Set.of("IGNORE", "GRACE"),
+                        DEFAULT_WINDOW_LATE_POLICY
+                );
+                long graceMs = configLong(
+                        blockConfig,
+                        List.of("windowGraceMs", "graceMs"),
+                        DEFAULT_WINDOW_GRACE_MS,
+                        0,
+                        120_000
+                );
+
+                Instant timestamp = resolveWindowTimestamp(event, timeBasis);
+                long timestampMs = timestamp.toEpochMilli();
+                long windowStartMs = (timestampMs / windowSizeMs) * windowSizeMs;
+
+                if (state.windowStartEpochMs == Long.MIN_VALUE || windowStartMs > state.windowStartEpochMs) {
+                    resetWindowAggregateState(state, windowStartMs);
+                } else if (windowStartMs < state.windowStartEpochMs) {
+                    long latenessMs = state.windowStartEpochMs - windowStartMs;
+                    if ("IGNORE".equals(latePolicy) || latenessMs > graceMs) {
+                        yield BlockResult.drop("late_event", state.backlogDepth);
+                    }
+                }
+
+                String extractedValue = EventValueExtractor.extractValue(
+                        event.category,
+                        event.eventType,
+                        event.topic,
+                        event.payload,
+                        objectMapper
+                );
+                Double numericValue = parseDoubleOrNull(extractedValue);
+                if (("AVG".equals(aggregation) || "MIN".equals(aggregation) || "MAX".equals(aggregation))
+                        && numericValue == null) {
+                    yield BlockResult.drop("non_numeric", state.backlogDepth);
+                }
+
                 state.windowCount += 1;
-                state.backlogDepth = state.windowCount % 10;
-                next.eventType = event.eventType + ".windowed";
-                mutablePayloadObject(next).put("windowCount", state.windowCount);
+                if (numericValue != null) {
+                    state.windowValueSum += numericValue;
+                    if (state.windowValueMin == null || numericValue < state.windowValueMin) {
+                        state.windowValueMin = numericValue;
+                    }
+                    if (state.windowValueMax == null || numericValue > state.windowValueMax) {
+                        state.windowValueMax = numericValue;
+                    }
+                }
+                state.windowDistinctDevices.add(event.deviceId);
+                state.backlogDepth = state.windowCount;
+                state.windowSizeMs = windowSizeMs;
+
+                ObjectNode payload = objectMapper.createObjectNode();
+                payload.put("aggregation", aggregation);
+                payload.put("timeBasis", timeBasis);
+                payload.put("windowStartTs", Instant.ofEpochMilli(state.windowStartEpochMs).toString());
+                payload.put("windowEndTs", Instant.ofEpochMilli(state.windowStartEpochMs + windowSizeMs).toString());
+                payload.put("windowSizeMs", windowSizeMs);
+                payload.put("eventCount", state.windowCount);
+                if (!state.windowDistinctDevices.isEmpty()) {
+                    payload.put("distinctDeviceCount", state.windowDistinctDevices.size());
+                }
+                JsonNode aggregateValue = aggregateValueNode(aggregation, state);
+                payload.set("value", aggregateValue);
+
+                next.eventType = event.eventType + ".window.aggregate";
+                next.payload = payload;
                 yield BlockResult.pass(next, state.backlogDepth);
             }
             case "MICRO_BATCH" -> {
-                state.microBatchCount += 1;
-                state.backlogDepth = state.microBatchCount % 5;
-                next.eventType = event.eventType + ".batched";
-                mutablePayloadObject(next).put("microBatchPending", state.backlogDepth);
-                yield BlockResult.pass(next, state.backlogDepth);
-            }
-            case "ROUTE" -> {
-                next.eventType = event.eventType + ".routed";
-                mutablePayloadObject(next).put("route", routeForCategory(event.category));
-                yield BlockResult.pass(next, state.backlogDepth);
-            }
-            case "RETRY_DLQ" -> {
-                int bucket = Math.abs((event.traceId + "|" + state.inCount).hashCode()) % 20;
-                if (bucket == 0) {
-                    state.errorCount += 1L;
-                    yield BlockResult.drop("dlq", state.backlogDepth);
+                int batchSize = configInt(
+                        blockConfig,
+                        List.of("microBatchSize", "batchSize"),
+                        DEFAULT_MICRO_BATCH_SIZE,
+                        1,
+                        500
+                );
+                long maxWaitMs = configLong(
+                        blockConfig,
+                        List.of("microBatchMaxWaitMs", "maxWaitMs"),
+                        DEFAULT_MICRO_BATCH_MAX_WAIT_MS,
+                        50,
+                        60_000
+                );
+                Instant now = event.ingestTs == null ? Instant.now(clock) : event.ingestTs;
+                state.microBatchMaxWaitMs = maxWaitMs;
+                if (state.microBatchStartedAt == null || state.microBatchCount <= 0) {
+                    state.microBatchStartedAt = now;
+                    state.microBatchCount = 0;
                 }
-                yield BlockResult.pass(next, state.backlogDepth);
-            }
-            case "ENRICH_METADATA" -> {
-                ObjectNode payloadObject = mutablePayloadObject(next);
-                payloadObject.put("groupKey", groupKey);
-                payloadObject.put("taskId", taskId);
-                payloadObject.put("traceId", event.traceId);
+                state.microBatchCount += 1;
+                state.backlogDepth = state.microBatchCount;
+
+                boolean flushBySize = state.microBatchCount >= batchSize;
+                boolean flushByTime = !flushBySize
+                        && Duration.between(state.microBatchStartedAt, now).toMillis() >= maxWaitMs;
+                if (!flushBySize && !flushByTime) {
+                    yield BlockResult.drop("micro_batch_buffering", state.backlogDepth);
+                }
+
+                int emittedCount = state.microBatchCount;
+                String flushReason = flushBySize ? "size" : "time";
+                state.microBatchCount = 0;
+                state.microBatchStartedAt = null;
+                state.backlogDepth = 0;
+
+                ObjectNode payload = mutablePayloadObject(next);
+                payload.put("batchEventCount", emittedCount);
+                payload.put("batchSize", batchSize);
+                payload.put("maxWaitMs", maxWaitMs);
+                payload.put("flushReason", flushReason);
+                next.eventType = event.eventType + ".micro_batch";
                 yield BlockResult.pass(next, state.backlogDepth);
             }
             default -> BlockResult.pass(next, state.backlogDepth);
@@ -477,31 +630,114 @@ public class PipelineObservabilityService {
         state.dropReasons.merge(key, 1L, Long::sum);
     }
 
-    private void pruneDedup(BlockState state, Instant now) {
+    private void pruneRateLimit(BlockState state, Instant now, long windowMs) {
+        if (state.rateLimitAcceptedAt.isEmpty()) {
+            return;
+        }
+        Instant threshold = now.minusMillis(windowMs);
+        while (!state.rateLimitAcceptedAt.isEmpty()
+                && state.rateLimitAcceptedAt.peekFirst().isBefore(threshold)) {
+            state.rateLimitAcceptedAt.removeFirst();
+        }
+    }
+
+    private void pruneDedup(BlockState state, Instant now, long windowMs) {
         if (state.dedupSeenAt.isEmpty()) {
             return;
         }
-        Instant threshold = now.minus(DEDUP_TTL);
+        Instant threshold = now.minusMillis(windowMs);
         state.dedupSeenAt.entrySet().removeIf(entry -> entry.getValue().isBefore(threshold));
     }
 
     private void trimDedup(BlockState state) {
-        while (state.dedupSeenAt.size() > 300) {
+        while (state.dedupSeenAt.size() > MAX_DEDUP_STORE_SIZE) {
             String eldest = state.dedupSeenAt.keySet().iterator().next();
             state.dedupSeenAt.remove(eldest);
         }
     }
 
+    private String dedupKey(RuntimeEvent event, Map<String, Object> blockConfig, String strategy) {
+        if ("EVENT_ID".equals(strategy)) {
+            return event.sourceEventId == null ? "" : event.sourceEventId;
+        }
+        String keyMode = configEnum(
+                blockConfig,
+                List.of("dedupKey", "key"),
+                Set.of("EVENT_ID", "DEVICE_EVENT_PAYLOAD", "DEVICE_EVENT", "TOPIC_PAYLOAD", "PAYLOAD_ONLY"),
+                DEFAULT_DEDUP_KEY
+        );
+        String payloadFingerprint = payloadAsString(event.payload);
+        return switch (keyMode) {
+            case "EVENT_ID" -> event.sourceEventId == null ? "" : event.sourceEventId;
+            case "DEVICE_EVENT" -> event.deviceId + "|" + event.eventType;
+            case "TOPIC_PAYLOAD" -> event.topic + "|" + payloadFingerprint;
+            case "PAYLOAD_ONLY" -> payloadFingerprint;
+            default -> event.deviceId + "|" + event.eventType + "|" + payloadFingerprint;
+        };
+    }
+
+    private Instant resolveWindowTimestamp(RuntimeEvent event, String timeBasis) {
+        if ("EVENT_TIME".equals(timeBasis) && event.deviceTs != null) {
+            return event.deviceTs;
+        }
+        return event.ingestTs == null ? Instant.now(clock) : event.ingestTs;
+    }
+
+    private JsonNode aggregateValueNode(String aggregation, BlockState state) {
+        return switch (aggregation) {
+            case "COUNT" -> objectMapper.getNodeFactory().numberNode(state.windowCount);
+            case "COUNT_DISTINCT_DEVICES" -> objectMapper.getNodeFactory().numberNode(state.windowDistinctDevices.size());
+            case "AVG" -> objectMapper.getNodeFactory().numberNode(
+                    state.windowCount == 0 ? 0.0d : state.windowValueSum / state.windowCount
+            );
+            case "MIN" -> state.windowValueMin == null
+                    ? objectMapper.getNodeFactory().nullNode()
+                    : objectMapper.getNodeFactory().numberNode(state.windowValueMin);
+            case "MAX" -> state.windowValueMax == null
+                    ? objectMapper.getNodeFactory().nullNode()
+                    : objectMapper.getNodeFactory().numberNode(state.windowValueMax);
+            default -> objectMapper.getNodeFactory().numberNode(state.windowCount);
+        };
+    }
+
+    private Double parseDoubleOrNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return Double.parseDouble(value.trim());
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    private void resetWindowAggregateState(BlockState state, long windowStartMs) {
+        state.windowStartEpochMs = windowStartMs;
+        state.windowCount = 0;
+        state.windowValueSum = 0.0d;
+        state.windowValueMin = null;
+        state.windowValueMax = null;
+        state.windowDistinctDevices.clear();
+        state.backlogDepth = 0;
+    }
+
     private void resetStateStoreForBlock(BlockState state, String blockType) {
         String normalized = blockType == null ? PipelineBlockLibrary.NONE : blockType.trim().toUpperCase(Locale.ROOT);
         switch (normalized) {
-            case "DEDUP" -> state.dedupSeenAt.clear();
-            case "WINDOW_AGGREGATE" -> {
-                state.windowCount = 0;
+            case "FILTER_RATE_LIMIT" -> {
+                state.rateLimitAcceptedAt.clear();
                 state.backlogDepth = 0;
+            }
+            case "DEDUP" -> {
+                state.dedupSeenAt.clear();
+                state.backlogDepth = 0;
+            }
+            case "WINDOW_AGGREGATE" -> {
+                resetWindowAggregateState(state, Long.MIN_VALUE);
             }
             case "MICRO_BATCH" -> {
                 state.microBatchCount = 0;
+                state.microBatchStartedAt = null;
                 state.backlogDepth = 0;
             }
             default -> {
@@ -524,16 +760,18 @@ public class PipelineObservabilityService {
         String normalized = blockType == null ? PipelineBlockLibrary.NONE : blockType.trim().toUpperCase(Locale.ROOT);
         return switch (normalized) {
             case "DEDUP" -> state.dedupSeenAt.size();
-            case "WINDOW_AGGREGATE" -> state.windowCount;
+            case "WINDOW_AGGREGATE" -> state.windowStartEpochMs == Long.MIN_VALUE ? 0L : state.windowCount;
             case "MICRO_BATCH" -> state.microBatchCount;
             default -> 0L;
         };
     }
 
-    private Long stateTtlSeconds(String blockType) {
+    private Long stateTtlSeconds(BlockState state, String blockType) {
         String normalized = blockType == null ? PipelineBlockLibrary.NONE : blockType.trim().toUpperCase(Locale.ROOT);
         return switch (normalized) {
-            case "DEDUP" -> DEDUP_TTL.toSeconds();
+            case "DEDUP" -> Math.max(1L, state.dedupWindowMs / 1_000L);
+            case "WINDOW_AGGREGATE" -> Math.max(1L, state.windowSizeMs / 1_000L);
+            case "MICRO_BATCH" -> Math.max(1L, state.microBatchMaxWaitMs / 1_000L);
             default -> null;
         };
     }
@@ -542,7 +780,7 @@ public class PipelineObservabilityService {
         String normalized = blockType == null ? PipelineBlockLibrary.NONE : blockType.trim().toUpperCase(Locale.ROOT);
         return switch (normalized) {
             case "DEDUP" -> state.dedupSeenAt.size() * 96L;
-            case "WINDOW_AGGREGATE" -> 128L + (state.windowCount * 24L);
+            case "WINDOW_AGGREGATE" -> 160L + (state.windowDistinctDevices.size() * 48L);
             case "MICRO_BATCH" -> 128L + (state.microBatchCount * 24L);
             default -> 0L;
         };
@@ -577,6 +815,69 @@ public class PipelineObservabilityService {
         }
         Object raw = config.get(key);
         return raw == null ? "" : String.valueOf(raw).trim();
+    }
+
+    private String configString(Map<String, Object> config, List<String> keys) {
+        if (keys == null || keys.isEmpty()) {
+            return "";
+        }
+        for (String key : keys) {
+            String value = configString(config, key);
+            if (!value.isBlank()) {
+                return value;
+            }
+        }
+        return "";
+    }
+
+    private String configEnum(
+            Map<String, Object> config,
+            List<String> keys,
+            Set<String> allowed,
+            String fallback
+    ) {
+        String raw = configString(config, keys).toUpperCase(Locale.ROOT);
+        if (allowed.contains(raw)) {
+            return raw;
+        }
+        return fallback;
+    }
+
+    private int configInt(
+            Map<String, Object> config,
+            List<String> keys,
+            int fallback,
+            int min,
+            int max
+    ) {
+        long parsed = configLong(config, keys, fallback, min, max);
+        return (int) parsed;
+    }
+
+    private long configLong(
+            Map<String, Object> config,
+            List<String> keys,
+            long fallback,
+            long min,
+            long max
+    ) {
+        if (min > max) {
+            return fallback;
+        }
+        String raw = configString(config, keys);
+        if (raw.isBlank()) {
+            return clampLong(fallback, min, max);
+        }
+        try {
+            long parsed = Long.parseLong(raw);
+            return clampLong(parsed, min, max);
+        } catch (NumberFormatException ex) {
+            return clampLong(fallback, min, max);
+        }
+    }
+
+    private long clampLong(long value, long min, long max) {
+        return Math.max(min, Math.min(max, value));
     }
 
     private String firstNonBlank(String... candidates) {
@@ -752,18 +1053,6 @@ public class PipelineObservabilityService {
         return fi == filterLevels.length - 1 && "#".equals(filterLevels[fi]);
     }
 
-    private String routeForCategory(EventCategory category) {
-        if (category == null) {
-            return "sink.default";
-        }
-        return switch (category) {
-            case BUTTON, COUNTER, SENSOR -> "sink.signal";
-            case STATUS -> "sink.monitoring";
-            case COMMAND, ACK -> "sink.control";
-            case INTERNAL -> "sink.quarantine";
-        };
-    }
-
     private PipelineSampleEventDto sampleFor(
             RuntimeEvent input,
             RuntimeEvent output,
@@ -809,11 +1098,9 @@ public class PipelineObservabilityService {
         long elapsedNs = System.nanoTime() - startedNs;
         double baseline = switch (blockType == null ? "" : blockType.toUpperCase(Locale.ROOT)) {
             case "FILTER_DEVICE", "FILTER_DEVICE_TOPIC", "FILTER_TOPIC", "EXTRACT_VALUE", "TRANSFORM_PAYLOAD",
-                    "FILTER_RATE_LIMIT", "PARSE_VALIDATE" -> 0.20;
+                    "FILTER_RATE_LIMIT" -> 0.20;
             case "DEDUP" -> 0.35;
             case "WINDOW_AGGREGATE", "MICRO_BATCH" -> 0.45;
-            case "RETRY_DLQ" -> 0.30;
-            case "ENRICH_METADATA" -> 0.25;
             default -> 0.10;
         };
         double calculated = elapsedNs / 1_000_000.0d + baseline;
@@ -866,10 +1153,19 @@ public class PipelineObservabilityService {
         private long dropCount;
         private long errorCount;
         private int backlogDepth;
-        private int rateLimiterCursor;
+        private long dedupWindowMs = DEFAULT_DEDUP_WINDOW_MS;
+        private long windowSizeMs = DEFAULT_WINDOW_SIZE_MS;
+        private long microBatchMaxWaitMs = DEFAULT_MICRO_BATCH_MAX_WAIT_MS;
         private int windowCount;
+        private long windowStartEpochMs = Long.MIN_VALUE;
+        private double windowValueSum;
+        private Double windowValueMin;
+        private Double windowValueMax;
+        private final Set<String> windowDistinctDevices = new HashSet<>();
         private int microBatchCount;
+        private Instant microBatchStartedAt;
         private final LinkedHashMap<String, Long> dropReasons = new LinkedHashMap<>();
+        private final Deque<Instant> rateLimitAcceptedAt = new ArrayDeque<>();
         private final LinkedHashMap<String, Instant> dedupSeenAt = new LinkedHashMap<>();
         private final Deque<Double> latenciesMs = new ArrayDeque<>();
         private final Deque<PipelineSampleEventDto> samples = new ArrayDeque<>();
@@ -896,6 +1192,7 @@ public class PipelineObservabilityService {
 
     private static final class RuntimeEvent {
         private final String traceId;
+        private final String sourceEventId;
         private final String deviceId;
         private final String topic;
         private String eventType;
@@ -908,6 +1205,7 @@ public class PipelineObservabilityService {
 
         private RuntimeEvent(
                 String traceId,
+                String sourceEventId,
                 String deviceId,
                 String topic,
                 String eventType,
@@ -919,6 +1217,7 @@ public class PipelineObservabilityService {
                 JsonNode payload
         ) {
             this.traceId = traceId;
+            this.sourceEventId = sourceEventId;
             this.deviceId = deviceId;
             this.topic = topic;
             this.eventType = eventType;
@@ -933,6 +1232,7 @@ public class PipelineObservabilityService {
         static RuntimeEvent from(CanonicalEventDto event, ObjectMapper objectMapper) {
             return new RuntimeEvent(
                     UUID.randomUUID().toString(),
+                    event.id() == null ? null : event.id().toString(),
                     event.deviceId(),
                     event.topic(),
                     event.eventType(),
@@ -949,6 +1249,7 @@ public class PipelineObservabilityService {
             JsonNode payloadCopy = payload == null ? objectMapper.getNodeFactory().nullNode() : payload.deepCopy();
             return new RuntimeEvent(
                     traceId,
+                    sourceEventId,
                     deviceId,
                     topic,
                     eventType,
