@@ -102,6 +102,34 @@ function normalizeSlotDeviceScope(raw: unknown): string {
   return 'OWN_DEVICE';
 }
 
+function buildDisplaySlots(processing: PipelineProcessingSection): PipelineProcessingSection['slots'] {
+  const maxSlotCount = Math.max(1, processing.slotCount);
+  const byIndex = new Map<number, PipelineProcessingSection['slots'][number]>();
+  for (const slot of processing.slots) {
+    if (slot.index < 0 || slot.index >= maxSlotCount) {
+      continue;
+    }
+    byIndex.set(slot.index, slot);
+  }
+
+  let lastConfiguredIndex = -1;
+  for (const slot of byIndex.values()) {
+    if ((slot.blockType ?? 'NONE') !== 'NONE' && slot.index > lastConfiguredIndex) {
+      lastConfiguredIndex = slot.index;
+    }
+  }
+
+  const visibleSlotCount = Math.min(maxSlotCount, Math.max(1, lastConfiguredIndex + 2));
+  return Array.from({ length: visibleSlotCount }, (_, slotIndex) => {
+    const slot = byIndex.get(slotIndex);
+    return {
+      index: slotIndex,
+      blockType: slot?.blockType ?? 'NONE',
+      config: slot?.config ?? {}
+    };
+  });
+}
+
 export function PipelineBuilderSection({
   t,
   title,
@@ -184,14 +212,7 @@ export function PipelineBuilderSection({
     onLogReplayMaxRecordsChange &&
     typeof logReplayMaxRecords === 'number'
   );
-  const processingSlots = Array.from({ length: processing.slotCount }, (_, slotIndex) => {
-    const slot = processing.slots.find((entry) => entry.index === slotIndex);
-    return {
-      index: slotIndex,
-      blockType: slot?.blockType ?? 'NONE',
-      config: slot?.config ?? {}
-    };
-  });
+  const processingSlots = buildDisplaySlots(processing);
   const libraryBlockOptions = blockOptions.filter((entry) => entry !== 'NONE');
 
   const setSlotBlockType = (slotIndex: number, nextBlockType: string) => {
@@ -482,11 +503,9 @@ export function PipelineBuilderSection({
                       onDragOver={(event) => onSlotDragOver(event, slot.index)}
                       onDrop={(event) => onSlotDrop(event, slot.index)}
                     >
-                      <header className="pipeline-flow-node-header">
-                        <span className="chip">
-                          {t('pipelineSlot')} {slot.index + 1}
-                        </span>
-                        {view.permissions.processingEditable ? (
+                      {view.permissions.processingEditable && !isEmpty ? (
+                        <div className="pipeline-flow-node-header">
+                          <span />
                           <button
                             type="button"
                             className="button tiny ghost"
@@ -494,8 +513,8 @@ export function PipelineBuilderSection({
                           >
                             ×
                           </button>
-                        ) : null}
-                      </header>
+                        </div>
+                      ) : null}
                       <strong className="mono">{slot.blockType}</strong>
                       <select
                         className="input pipeline-slot-select"
