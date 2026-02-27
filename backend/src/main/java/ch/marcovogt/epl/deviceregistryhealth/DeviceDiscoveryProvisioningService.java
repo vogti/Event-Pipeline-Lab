@@ -79,6 +79,7 @@ public class DeviceDiscoveryProvisioningService {
     }
 
     @EventListener(ApplicationReadyEvent.class)
+    @Transactional
     public void reconcileOnStartup() {
         reconcileForCurrentSettings();
     }

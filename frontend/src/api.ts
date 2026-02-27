@@ -131,6 +131,37 @@ async function request<T>(
   return (await parseResponseBody(response)) as T;
 }
 
+function isTransientGatewayError(error: unknown): boolean {
+  if (error instanceof ApiError) {
+    return error.status === 502 || error.status === 503 || error.status === 504;
+  }
+  if (error instanceof TypeError) {
+    return true;
+  }
+  return false;
+}
+
+async function requestWithGatewayRetry<T>(
+  path: string,
+  options: RequestInit = {},
+  token?: string,
+  maxAttempts = 3
+): Promise<T> {
+  const attempts = Math.max(1, Math.min(maxAttempts, 5));
+  let lastError: unknown = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await request<T>(path, options, token);
+    } catch (error) {
+      lastError = error;
+      if (!isTransientGatewayError(error) || attempt >= attempts) {
+        throw error;
+      }
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('Request failed');
+}
+
 async function requestBlob(
   path: string,
   options: RequestInit = {},
@@ -162,7 +193,7 @@ async function requestBlob(
 
 export const api = {
   login(username: string, pin: string): Promise<AuthMe> {
-    return request<AuthMe>('/api/auth/login', {
+    return requestWithGatewayRetry<AuthMe>('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify({ username, pin })
     });

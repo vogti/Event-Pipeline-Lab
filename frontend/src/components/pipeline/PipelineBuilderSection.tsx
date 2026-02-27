@@ -307,8 +307,8 @@ export function PipelineBuilderSection({
         </div>
       ) : null}
 
-      <div className="pipeline-grid">
-        <article className="pipeline-column">
+      <div className="pipeline-sections">
+        <article className="pipeline-panel pipeline-panel-input">
           <h4>{t('pipelineInput')}</h4>
           <label className="stack pipeline-field">
             <span>{t('pipelineInputMode')}</span>
@@ -427,7 +427,7 @@ export function PipelineBuilderSection({
           {!view.permissions.inputEditable ? <p className="muted">{t('pipelineReadOnlyTask')}</p> : null}
         </article>
 
-        <article className="pipeline-column pipeline-processing-column">
+        <article className="pipeline-panel pipeline-processing-panel">
           <h4>{t('pipelineProcessing')}</h4>
           <div className="pipeline-builder-workbench">
             <section className="pipeline-block-library">
@@ -542,7 +542,7 @@ export function PipelineBuilderSection({
           {!view.permissions.processingEditable ? <p className="muted">{t('pipelineReadOnlyTask')}</p> : null}
         </article>
 
-        <article className="pipeline-column">
+        <article className="pipeline-panel pipeline-panel-sink">
           <h4>{t('pipelineSink')}</h4>
           <label className="stack pipeline-field">
             <span>{t('pipelineSinkTargets')}</span>
