@@ -112,8 +112,16 @@
 }
 
 .panel-refresh-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 0.95rem;
   height: 0.95rem;
+}
+
+.panel-refresh-icon svg {
+  width: 100%;
+  height: 100%;
 }
 
 .panel-refresh-icon.spinning {

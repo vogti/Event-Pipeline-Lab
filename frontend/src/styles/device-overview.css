@@ -106,6 +106,19 @@
   gap: 0.35rem;
 }
 
+.task-reorder-button {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 10px;
+  border-color: rgba(45, 67, 84, 0.12);
+  background: rgba(242, 248, 252, 0.38);
+}
+
+.task-reorder-button:hover:enabled {
+  border-color: rgba(24, 88, 117, 0.24);
+  background: rgba(225, 240, 248, 0.62);
+}
+
 .task-config-meta-row {
   display: flex;
   align-items: center;

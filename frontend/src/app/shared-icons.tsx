@@ -119,3 +119,33 @@ export function CloseIcon() {
     </svg>
   );
 }
+
+export function ArrowUpIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path
+        d="M12 6.2v11.6M7.4 10.8 12 6.2l4.6 4.6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export function ArrowDownIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path
+        d="M12 17.8V6.2m4.6 7L12 17.8l-4.6-4.6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}

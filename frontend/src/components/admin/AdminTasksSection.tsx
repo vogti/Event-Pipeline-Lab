@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { I18nKey } from '../../i18n';
 import type { StudentDeviceScope, TaskInfo, TaskPipelineConfig } from '../../types';
-import { CloseIcon } from '../../app/shared-icons';
+import { ArrowDownIcon, ArrowUpIcon, CloseIcon } from '../../app/shared-icons';
 import { PipelineScenarioEditor } from '../pipeline/PipelineScenarioEditor';
 
 interface TaskDetailsDraft {
@@ -563,22 +563,28 @@ export function AdminTasksSection({
                   <div className="task-header-right">
                     <div className="task-reorder-controls">
                       <button
-                        className="button tiny secondary"
+                        className="panel-refresh-button task-reorder-button"
                         type="button"
                         onClick={() => moveTask(task.id, -1)}
                         disabled={!canMoveUp || taskReorderBusy}
                         title={t('taskMoveUp')}
+                        aria-label={t('taskMoveUp')}
                       >
-                        {t('taskMoveUp')}
+                        <span className="panel-refresh-icon" aria-hidden="true">
+                          <ArrowUpIcon />
+                        </span>
                       </button>
                       <button
-                        className="button tiny secondary"
+                        className="panel-refresh-button task-reorder-button"
                         type="button"
                         onClick={() => moveTask(task.id, 1)}
                         disabled={!canMoveDown || taskReorderBusy}
                         title={t('taskMoveDown')}
+                        aria-label={t('taskMoveDown')}
                       >
-                        {t('taskMoveDown')}
+                        <span className="panel-refresh-icon" aria-hidden="true">
+                          <ArrowDownIcon />
+                        </span>
                       </button>
                     </div>
                     {task.active ? <span className="chip">{t('statusActive')}</span> : null}
@@ -602,16 +608,6 @@ export function AdminTasksSection({
                   >
                     {t('edit')}
                   </button>
-                  {task.deletable ? (
-                    <button
-                      className="button danger"
-                      type="button"
-                      onClick={() => confirmDeleteTask(task)}
-                      disabled={isTaskDeleteBusy(task.id)}
-                    >
-                      {isTaskDeleteBusy(task.id) ? t('loading') : t('taskDelete')}
-                    </button>
-                  ) : null}
                 </div>
               </article>
             );
