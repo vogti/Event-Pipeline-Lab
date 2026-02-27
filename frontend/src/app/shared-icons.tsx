@@ -120,6 +120,16 @@ export function CloseIcon() {
   );
 }
 
+export function InfoIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <circle cx="12" cy="12" r="8.2" fill="none" stroke="currentColor" strokeWidth="1.8" />
+      <line x1="12" y1="10.5" x2="12" y2="15.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <circle cx="12" cy="7.3" r="1" fill="currentColor" />
+    </svg>
+  );
+}
+
 export function ArrowUpIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">

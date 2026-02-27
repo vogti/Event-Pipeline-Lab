@@ -197,6 +197,23 @@
   min-height: 1rem;
 }
 
+.pipeline-node-header-actions {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.2rem;
+}
+
+.pipeline-info-button {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+}
+
+.pipeline-info-button svg {
+  height: 0.95rem;
+  width: 0.95rem;
+}
+
 .pipeline-slot-select {
   font-size: 0.74rem;
 }
@@ -462,6 +479,19 @@
   flex-wrap: wrap;
   gap: 0.4rem;
   margin-top: 0.5rem;
+}
+
+.pipeline-doc-modal {
+  max-width: 680px;
+}
+
+.pipeline-doc-modal-body {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.pipeline-doc-modal-body p {
+  margin: 0;
 }
 
 .pipeline-virtual-signal-line {

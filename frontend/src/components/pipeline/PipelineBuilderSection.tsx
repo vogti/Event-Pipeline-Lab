@@ -12,7 +12,7 @@ import type {
   MqttComposerTemplate,
   MqttEventDraft
 } from '../../app/shared-types';
-import { CloseIcon } from '../../app/shared-icons';
+import { CloseIcon, InfoIcon } from '../../app/shared-icons';
 import { AdminMqttEventModal } from '../admin/AdminMqttEventModal';
 import type {
   PipelineBlockObservability,
@@ -39,8 +39,6 @@ interface PipelineBuilderSectionProps {
   onChangeSlotBlock: (slotIndex: number, blockType: string) => void;
   onChangeSlotConfig?: (slotIndex: number, key: string, value: unknown) => void;
   onInputModeChange?: (nextMode: string) => void;
-  onDeviceScopeChange?: (nextScope: string) => void;
-  onIngestFiltersChange?: (nextValue: string) => void;
   onAddSink?: (sinkType: 'SEND_EVENT' | 'VIRTUAL_SIGNAL') => void;
   onRemoveSink?: (sinkId: string) => void;
   onConfigureSendEventSink?: (sinkId: string, config: Record<string, unknown>) => void;
@@ -64,10 +62,6 @@ interface PipelineBuilderSectionProps {
   onRestartStateRetained?: () => void;
   stateControlBusy?: boolean;
   formatTs: (value: TimestampValue) => string;
-}
-
-function listToMultiline(value: string[]): string {
-  return value.join('\n');
 }
 
 function inputModeLabel(t: (key: I18nKey) => string, mode: string): string {
@@ -281,6 +275,50 @@ function sinkDisplayNameKey(type: PipelineSinkType): I18nKey {
   return 'pipelineSinkEventFeed';
 }
 
+function processingBlockDocBodyKey(blockType: string): I18nKey {
+  const normalized = blockType.trim().toUpperCase();
+  switch (normalized) {
+    case 'FILTER_DEVICE':
+      return 'pipelineDocBlockFilterDeviceBody';
+    case 'FILTER_TOPIC':
+      return 'pipelineDocBlockFilterTopicBody';
+    case 'EXTRACT_VALUE':
+      return 'pipelineDocBlockExtractValueBody';
+    case 'TRANSFORM_PAYLOAD':
+      return 'pipelineDocBlockTransformPayloadBody';
+    case 'FILTER_RATE_LIMIT':
+      return 'pipelineDocBlockFilterRateLimitBody';
+    case 'PARSE_VALIDATE':
+      return 'pipelineDocBlockParseValidateBody';
+    case 'DEDUP':
+      return 'pipelineDocBlockDedupBody';
+    case 'WINDOW_AGGREGATE':
+      return 'pipelineDocBlockWindowAggregateBody';
+    case 'MICRO_BATCH':
+      return 'pipelineDocBlockMicroBatchBody';
+    case 'ROUTE':
+      return 'pipelineDocBlockRouteBody';
+    case 'RETRY_DLQ':
+      return 'pipelineDocBlockRetryDlqBody';
+    case 'ENRICH_METADATA':
+      return 'pipelineDocBlockEnrichMetadataBody';
+    case 'NONE':
+      return 'pipelineDocBlockNoneBody';
+    default:
+      return 'pipelineDocBlockUnknownBody';
+  }
+}
+
+function sinkDocBodyKey(type: PipelineSinkType): I18nKey {
+  if (type === 'SEND_EVENT') {
+    return 'pipelineDocSinkSendEventBody';
+  }
+  if (type === 'VIRTUAL_SIGNAL') {
+    return 'pipelineDocSinkVirtualSignalBody';
+  }
+  return 'pipelineDocSinkEventFeedBody';
+}
+
 type SampleViewMode = 'rendered' | 'raw';
 
 function parseJson(value: string | null | undefined): unknown {
@@ -487,8 +525,6 @@ export function PipelineBuilderSection({
   onChangeSlotBlock,
   onChangeSlotConfig,
   onInputModeChange,
-  onDeviceScopeChange,
-  onIngestFiltersChange,
   onAddSink,
   onRemoveSink,
   onConfigureSendEventSink,
@@ -526,6 +562,7 @@ export function PipelineBuilderSection({
     { from: '', to: '' }
   ]);
   const [sinkEditorSinkId, setSinkEditorSinkId] = useState<string | null>(null);
+  const [blockInfoModal, setBlockInfoModal] = useState<{ title: string; bodyKey: I18nKey } | null>(null);
   const [sinkComposerMode, setSinkComposerMode] = useState<MqttComposerMode>('guided');
   const [sinkDraft, setSinkDraft] = useState<MqttEventDraft>(() => createMqttEventDraft());
 
@@ -858,6 +895,20 @@ export function PipelineBuilderSection({
     }));
   };
 
+  const openProcessingBlockInfo = (blockType: string) => {
+    setBlockInfoModal({
+      title: blockType.trim().toUpperCase(),
+      bodyKey: processingBlockDocBodyKey(blockType)
+    });
+  };
+
+  const openSinkBlockInfo = (sinkType: PipelineSinkType) => {
+    setBlockInfoModal({
+      title: t(sinkDisplayNameKey(sinkType)),
+      bodyKey: sinkDocBodyKey(sinkType)
+    });
+  };
+
   return (
     <section className="panel pipeline-builder full-width">
       <header className="panel-header">
@@ -965,16 +1016,6 @@ export function PipelineBuilderSection({
             ) : null}
           </section>
         ) : null}
-        <label className="stack pipeline-field">
-          <span>{t('pipelineIngestFilters')}</span>
-          <textarea
-            className="input"
-            value={listToMultiline(view.input.ingestFilters)}
-            onChange={(event) => onIngestFiltersChange?.(event.target.value)}
-            disabled={!view.permissions.inputEditable}
-            rows={3}
-          />
-        </label>
         {!view.permissions.inputEditable ? <p className="muted">{t('pipelineReadOnlyTask')}</p> : null}
       </article>
 
@@ -1032,15 +1073,28 @@ export function PipelineBuilderSection({
                     >
                       <div className="pipeline-flow-node-header">
                         <span className="pipeline-flow-node-title" />
-                        {slotEditable && !isEmpty ? (
-                          <button
-                            type="button"
-                            className="button tiny ghost"
-                            onClick={() => setSlotBlockType(slot.index, 'NONE')}
-                          >
-                            ×
-                          </button>
-                        ) : null}
+                        <div className="pipeline-node-header-actions">
+                          {!isEmpty ? (
+                            <button
+                              type="button"
+                              className="button tiny ghost pipeline-info-button"
+                              onClick={() => openProcessingBlockInfo(slot.blockType)}
+                              aria-label={t('pipelineBlockInfo')}
+                              title={t('pipelineBlockInfo')}
+                            >
+                              <InfoIcon />
+                            </button>
+                          ) : null}
+                          {slotEditable && !isEmpty ? (
+                            <button
+                              type="button"
+                              className="button tiny ghost"
+                              onClick={() => setSlotBlockType(slot.index, 'NONE')}
+                            >
+                              ×
+                            </button>
+                          ) : null}
+                        </div>
                       </div>
                       <strong className="mono">
                         {isEmpty ? t('pipelineDropBlockHint') : slot.blockType}
@@ -1300,15 +1354,26 @@ export function PipelineBuilderSection({
               <article className="pipeline-sink-node" key={sinkNode.id}>
                 <header className="pipeline-sink-node-header">
                   <strong>{sinkLabel}</strong>
-                  {view.permissions.sinkEditable && sinkType !== 'EVENT_FEED' && sinkType !== 'VIRTUAL_SIGNAL' ? (
+                  <div className="pipeline-node-header-actions">
                     <button
-                      className="button tiny ghost"
+                      className="button tiny ghost pipeline-info-button"
                       type="button"
-                      onClick={() => onRemoveSink?.(sinkNode.id)}
+                      onClick={() => openSinkBlockInfo(sinkType)}
+                      aria-label={t('pipelineBlockInfo')}
+                      title={t('pipelineBlockInfo')}
                     >
-                      {t('pipelineSinkRemove')}
+                      <InfoIcon />
                     </button>
-                  ) : null}
+                    {view.permissions.sinkEditable && sinkType !== 'EVENT_FEED' && sinkType !== 'VIRTUAL_SIGNAL' ? (
+                      <button
+                        className="button tiny ghost"
+                        type="button"
+                        onClick={() => onRemoveSink?.(sinkNode.id)}
+                      >
+                        {t('pipelineSinkRemove')}
+                      </button>
+                    ) : null}
+                  </div>
                 </header>
 
                 {sinkType === 'EVENT_FEED' ? (
@@ -1518,6 +1583,30 @@ export function PipelineBuilderSection({
               <button className="button" type="button" onClick={saveTransformPayloadModal}>
                 {t('save')}
               </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {blockInfoModal !== null ? (
+        <div className="event-modal-backdrop" onClick={() => setBlockInfoModal(null)}>
+          <div className="event-modal pipeline-doc-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="panel-header">
+              <h2>{blockInfoModal.title}</h2>
+              <button
+                className="modal-close-button"
+                type="button"
+                onClick={() => setBlockInfoModal(null)}
+                aria-label={t('close')}
+                title={t('close')}
+              >
+                <CloseIcon />
+              </button>
+            </div>
+            <div className="pipeline-doc-modal-body">
+              {t(blockInfoModal.bodyKey).split('\n').map((line, index) => (
+                <p key={`pipeline-doc-line-${index}`}>{line}</p>
+              ))}
             </div>
           </div>
         </div>

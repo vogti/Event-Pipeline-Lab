@@ -122,13 +122,6 @@ import {
   resolveMqttDeviceId
 } from './app/mqtt-composer';
 
-function parsePipelineListInput(value: string): string[] {
-  return value
-    .split(/\r?\n|,/)
-    .map((entry) => entry.trim())
-    .filter((entry, index, array) => entry.length > 0 && array.indexOf(entry) === index);
-}
-
 const PIPELINE_AUTOSAVE_DEBOUNCE_MS = 650;
 
 function processingSectionSignature(value: PipelineProcessingSection | null | undefined): string {
@@ -2215,36 +2208,6 @@ export default function App() {
         input: {
           ...previous.input,
           mode: nextMode
-        }
-      };
-    });
-  }, []);
-
-  const changeAdminPipelineDeviceScope = useCallback((nextScope: string) => {
-    setAdminPipelineDraft((previous) => {
-      if (!previous) {
-        return previous;
-      }
-      return {
-        ...previous,
-        input: {
-          ...previous.input,
-          deviceScope: nextScope
-        }
-      };
-    });
-  }, []);
-
-  const changeAdminPipelineIngestFilters = useCallback((raw: string) => {
-    setAdminPipelineDraft((previous) => {
-      if (!previous) {
-        return previous;
-      }
-      return {
-        ...previous,
-        input: {
-          ...previous.input,
-          ingestFilters: parsePipelineListInput(raw)
         }
       };
     });
@@ -4474,8 +4437,6 @@ export default function App() {
                   onChangeSlotBlock={changeAdminPipelineSlot}
                   onChangeSlotConfig={changeAdminPipelineSlotConfig}
                   onInputModeChange={changeAdminPipelineInputMode}
-                  onDeviceScopeChange={changeAdminPipelineDeviceScope}
-                  onIngestFiltersChange={changeAdminPipelineIngestFilters}
                   onAddSink={addAdminPipelineSink}
                   onRemoveSink={removeAdminPipelineSink}
                   onConfigureSendEventSink={configureAdminPipelineSendSink}
