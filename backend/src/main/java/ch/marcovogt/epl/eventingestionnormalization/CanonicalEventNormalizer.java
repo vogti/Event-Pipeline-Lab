@@ -175,19 +175,27 @@ public class CanonicalEventNormalizer {
             }
         }
 
+        String resolvedDeviceId = (deviceId == null || deviceId.isBlank()) ? "unknown" : deviceId.trim();
+        if (eventType != null && !eventType.isBlank()) {
+            String lowerEventType = eventType.toLowerCase(Locale.ROOT);
+            if (lowerEventType.startsWith("button.")) {
+                String[] parts = lowerEventType.split("\\.");
+                String buttonName = parts.length >= 2 ? parts[1].trim() : "";
+                if (buttonName.isBlank()) {
+                    return resolvedDeviceId + "/event/button";
+                }
+                return resolvedDeviceId + "/event/button/" + buttonName;
+            }
+        }
+
         if (!normalized.endsWith("/events/rpc")) {
             return normalized;
         }
 
-        String resolvedDeviceId = (deviceId == null || deviceId.isBlank()) ? "unknown" : deviceId.trim();
         if (eventType == null || eventType.isBlank()) {
             return normalized;
         }
         String lowerEventType = eventType.toLowerCase(Locale.ROOT);
-
-        if (lowerEventType.startsWith("button.")) {
-            return resolvedDeviceId + "/event/button";
-        }
         if (lowerEventType.startsWith("counter.")) {
             return resolvedDeviceId + "/event/counter";
         }

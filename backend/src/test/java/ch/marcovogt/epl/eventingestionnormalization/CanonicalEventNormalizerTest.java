@@ -25,7 +25,7 @@ class CanonicalEventNormalizerTest {
         NormalizedEvent normalized = normalizer.normalize(topic, payload, Instant.parse("2026-02-25T10:00:00Z"));
 
         assertThat(normalized.event().getDeviceId()).isEqualTo("epld01");
-        assertThat(normalized.event().getTopic()).isEqualTo("epld01/event/button");
+        assertThat(normalized.event().getTopic()).isEqualTo("epld01/event/button/black");
         assertThat(normalized.event().getEventType()).isEqualTo("button.black.press");
         assertThat(normalized.event().isValid()).isTrue();
     }
@@ -46,7 +46,7 @@ class CanonicalEventNormalizerTest {
         NormalizedEvent normalized = normalizer.normalize(topic, payload, Instant.parse("2026-02-25T10:00:01Z"));
 
         assertThat(normalized.event().getDeviceId()).isEqualTo("epld01");
-        assertThat(normalized.event().getTopic()).isEqualTo("epld01/event/button");
+        assertThat(normalized.event().getTopic()).isEqualTo("epld01/event/button/red");
         assertThat(normalized.event().getEventType()).isEqualTo("button.red.press");
         assertThat(normalized.event().getDeviceTs()).isNotNull();
     }

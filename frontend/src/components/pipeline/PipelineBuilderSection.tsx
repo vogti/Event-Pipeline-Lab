@@ -329,6 +329,8 @@ type FilterTopicTemplate =
   | 'ANY'
   | 'EVENT_ALL'
   | 'EVENT_BUTTON'
+  | 'EVENT_BUTTON_RED'
+  | 'EVENT_BUTTON_BLACK'
   | 'EVENT_COUNTER'
   | 'EVENT_SENSOR'
   | 'EVENT_SENSOR_LDR'
@@ -342,7 +344,9 @@ type FilterTopicTemplate =
 const FILTER_TOPIC_TEMPLATE_TO_FILTER: Record<FilterTopicTemplate, string> = {
   ANY: '#',
   EVENT_ALL: '+/event/#',
-  EVENT_BUTTON: '+/event/button',
+  EVENT_BUTTON: '+/event/button/#',
+  EVENT_BUTTON_RED: '+/event/button/red',
+  EVENT_BUTTON_BLACK: '+/event/button/black',
   EVENT_COUNTER: '+/event/counter',
   EVENT_SENSOR: '+/event/sensor/#',
   EVENT_SENSOR_LDR: '+/event/sensor/ldr',
@@ -358,6 +362,8 @@ const FILTER_TOPIC_TEMPLATE_OPTIONS: Array<{ id: FilterTopicTemplate; labelKey: 
   { id: 'ANY', labelKey: 'pipelineFilterTopicTemplateAny' },
   { id: 'EVENT_ALL', labelKey: 'pipelineFilterTopicTemplateEventAll' },
   { id: 'EVENT_BUTTON', labelKey: 'pipelineFilterTopicTemplateEventButton' },
+  { id: 'EVENT_BUTTON_RED', labelKey: 'pipelineFilterTopicTemplateEventButtonRed' },
+  { id: 'EVENT_BUTTON_BLACK', labelKey: 'pipelineFilterTopicTemplateEventButtonBlack' },
   { id: 'EVENT_COUNTER', labelKey: 'pipelineFilterTopicTemplateEventCounter' },
   { id: 'EVENT_SENSOR', labelKey: 'pipelineFilterTopicTemplateEventSensor' },
   { id: 'EVENT_SENSOR_LDR', labelKey: 'pipelineFilterTopicTemplateEventSensorLdr' },
@@ -382,6 +388,9 @@ function extractTopicFilterFromSlotConfig(config: Record<string, unknown>): stri
 
 function templateFromTopicFilter(filter: string): FilterTopicTemplate | null {
   const normalized = filter.trim();
+  if (normalized === '+/event/button') {
+    return 'EVENT_BUTTON';
+  }
   const matched = Object.entries(FILTER_TOPIC_TEMPLATE_TO_FILTER).find(([, value]) => value === normalized);
   return (matched?.[0] as FilterTopicTemplate | undefined) ?? null;
 }

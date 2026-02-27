@@ -95,10 +95,12 @@ export function AdminMqttEventModal({
       return;
     }
     const topic = draft.deviceId ? `${draft.deviceId}/command/led/${draft.ledColor}` : '';
-    const payload = draft.ledOn ? 'on' : 'off';
     onDraftChange('rawTopic', topic);
-    onDraftChange('rawPayload', payload);
-  }, [activeTab, draft.deviceId, draft.ledColor, draft.ledOn, onDraftChange]);
+    if (!hidePayloadFields) {
+      const payload = draft.ledOn ? 'on' : 'off';
+      onDraftChange('rawPayload', payload);
+    }
+  }, [activeTab, draft.deviceId, draft.ledColor, draft.ledOn, hidePayloadFields, onDraftChange]);
 
   if (!open) {
     return null;
@@ -198,18 +200,20 @@ export function AdminMqttEventModal({
                 <option value="orange">{t('commandOrangeLed')}</option>
               </select>
             </label>
-            <label>
-              <span>{t('mqttLedState')}</span>
-              <select
-                className="input"
-                value={draft.ledOn ? 'on' : 'off'}
-                onChange={(event) => onDraftChange('ledOn', event.target.value === 'on')}
-                disabled={busy}
-              >
-                <option value="on">{t('stateOn')}</option>
-                <option value="off">{t('stateOff')}</option>
-              </select>
-            </label>
+            {!hidePayloadFields ? (
+              <label>
+                <span>{t('mqttLedState')}</span>
+                <select
+                  className="input"
+                  value={draft.ledOn ? 'on' : 'off'}
+                  onChange={(event) => onDraftChange('ledOn', event.target.value === 'on')}
+                  disabled={busy}
+                >
+                  <option value="on">{t('stateOn')}</option>
+                  <option value="off">{t('stateOff')}</option>
+                </select>
+              </label>
+            ) : null}
             <label>
               <span>{t('mqttQos')}</span>
               <select
@@ -363,18 +367,20 @@ export function AdminMqttEventModal({
                     <option value="orange">{t('commandOrangeLed')}</option>
                   </select>
                 </label>
-                <label>
-                  <span>{t('mqttLedState')}</span>
-                  <select
-                    className="input"
-                    value={draft.ledOn ? 'on' : 'off'}
-                    onChange={(event) => onDraftChange('ledOn', event.target.value === 'on')}
-                    disabled={busy}
-                  >
-                    <option value="on">{t('stateOn')}</option>
-                    <option value="off">{t('stateOff')}</option>
-                  </select>
-                </label>
+                {!hidePayloadFields ? (
+                  <label>
+                    <span>{t('mqttLedState')}</span>
+                    <select
+                      className="input"
+                      value={draft.ledOn ? 'on' : 'off'}
+                      onChange={(event) => onDraftChange('ledOn', event.target.value === 'on')}
+                      disabled={busy}
+                    >
+                      <option value="on">{t('stateOn')}</option>
+                      <option value="off">{t('stateOff')}</option>
+                    </select>
+                  </label>
+                ) : null}
               </div>
             ) : null}
 
