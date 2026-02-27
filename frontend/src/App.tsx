@@ -129,6 +129,36 @@ function parsePipelineListInput(value: string): string[] {
     .filter((entry, index, array) => entry.length > 0 && array.indexOf(entry) === index);
 }
 
+const PIPELINE_AUTOSAVE_DEBOUNCE_MS = 650;
+
+function processingSectionSignature(value: PipelineProcessingSection | null | undefined): string {
+  return JSON.stringify(value ?? null);
+}
+
+function sinkSectionSignature(value: PipelineSinkSection | null | undefined): string {
+  return JSON.stringify(value ? withNormalizedPipelineSinkSection(value) : null);
+}
+
+function pipelineStudentDraftSignature(
+  processing: PipelineProcessingSection | null | undefined,
+  sink: PipelineSinkSection | null | undefined
+): string {
+  return `${processingSectionSignature(processing)}::${sinkSectionSignature(sink)}`;
+}
+
+function pipelineAdminDraftSignature(
+  view: Pick<PipelineView, 'input' | 'processing' | 'sink'> | null | undefined
+): string {
+  if (!view) {
+    return 'null';
+  }
+  return JSON.stringify(view.input)
+    + '::'
+    + processingSectionSignature(view.processing)
+    + '::'
+    + sinkSectionSignature(view.sink);
+}
+
 function normalizePipelineSinkNodes(nodes: PipelineSinkNode[] | null | undefined): PipelineSinkNode[] {
   const normalized = Array.isArray(nodes) ? [...nodes] : [];
   const result: PipelineSinkNode[] = [
@@ -449,6 +479,10 @@ export default function App() {
   const recentFeedClearTimerRef = useRef<number | null>(null);
   const adminPipelineGroupKeyRef = useRef<string>('');
   const nextToastIdRef = useRef(1);
+  const studentPipelineAutosaveTimerRef = useRef<number | null>(null);
+  const adminPipelineAutosaveTimerRef = useRef<number | null>(null);
+  const studentPipelineSaveInFlightRef = useRef(false);
+  const adminPipelineSaveInFlightRef = useRef(false);
 
   const reportBackgroundError = useCallback((context: string, error: unknown) => {
     const message = toErrorMessage(error);
@@ -1009,6 +1043,14 @@ export default function App() {
 
   const studentActiveTaskId = studentData?.activeTask.id ?? '';
   const hasStudentData = studentData !== null;
+  const studentPipelineDraftSig = useMemo(
+    () => pipelineStudentDraftSignature(studentPipelineDraft, studentPipelineSinkDraft),
+    [studentPipelineDraft, studentPipelineSinkDraft]
+  );
+  const studentPipelineSavedSig = useMemo(
+    () => (studentPipeline ? pipelineStudentDraftSignature(studentPipeline.processing, studentPipeline.sink) : 'null'),
+    [studentPipeline]
+  );
   const studentPipelineEditorView = useMemo<PipelineView | null>(() => {
     if (!studentPipeline) {
       return null;
@@ -1019,6 +1061,14 @@ export default function App() {
       sink: studentPipelineSinkDraft ?? studentPipeline.sink
     };
   }, [studentPipeline, studentPipelineDraft, studentPipelineSinkDraft]);
+  const adminPipelineDraftSig = useMemo(
+    () => pipelineAdminDraftSignature(adminPipelineDraft),
+    [adminPipelineDraft]
+  );
+  const adminPipelineSavedSig = useMemo(
+    () => pipelineAdminDraftSignature(adminPipeline),
+    [adminPipeline]
+  );
 
   useEffect(() => {
     if (!token || session?.role !== 'STUDENT' || !hasStudentData) {
@@ -1713,30 +1763,54 @@ export default function App() {
     }
   };
 
-  const saveStudentPipeline = async () => {
+  const saveStudentPipeline = useCallback(async () => {
     if (!token || !studentPipelineDraft || !studentPipelineSinkDraft) {
       return;
     }
+    if (studentPipelineSaveInFlightRef.current) {
+      return;
+    }
 
-    setBusyKey('student-pipeline');
-    setErrorMessage(null);
+    const currentDraftSig = pipelineStudentDraftSignature(studentPipelineDraft, studentPipelineSinkDraft);
+    if (currentDraftSig === studentPipelineSavedSig) {
+      return;
+    }
+
+    studentPipelineSaveInFlightRef.current = true;
+    const sentProcessing = studentPipelineDraft;
+    const sentSink = studentPipelineSinkDraft;
+    const sentProcessingSig = processingSectionSignature(sentProcessing);
+    const sentSinkSig = sinkSectionSignature(sentSink);
 
     try {
       const updated = normalizePipelineView(await api.updateStudentPipeline(
         token,
-        studentPipelineDraft,
-        studentPipelineSinkDraft
+        sentProcessing,
+        sentSink
       ));
       setStudentPipeline(updated);
-      setStudentPipelineDraft(updated.processing);
-      setStudentPipelineSinkDraft(updated.sink);
-      pushToast(t('pipelineUpdated'));
+      setStudentPipelineDraft((previous) => {
+        if (!previous) {
+          return updated.processing;
+        }
+        return processingSectionSignature(previous) === sentProcessingSig
+          ? updated.processing
+          : previous;
+      });
+      setStudentPipelineSinkDraft((previous) => {
+        if (!previous) {
+          return updated.sink;
+        }
+        return sinkSectionSignature(previous) === sentSinkSig
+          ? updated.sink
+          : previous;
+      });
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
-      setBusyKey(null);
+      studentPipelineSaveInFlightRef.current = false;
     }
-  };
+  }, [token, studentPipelineDraft, studentPipelineSinkDraft, studentPipelineSavedSig]);
 
   const resetStudentPipelineState = async () => {
     if (!token || !studentPipeline) {
@@ -1823,6 +1897,44 @@ export default function App() {
     });
   }, []);
 
+  useEffect(() => {
+    if (studentPipelineAutosaveTimerRef.current !== null) {
+      window.clearTimeout(studentPipelineAutosaveTimerRef.current);
+      studentPipelineAutosaveTimerRef.current = null;
+    }
+    if (
+      !token
+      || session?.role !== 'STUDENT'
+      || !studentPipelineDraft
+      || !studentPipelineSinkDraft
+      || studentPipelineSavedSig === 'null'
+    ) {
+      return;
+    }
+    if (studentPipelineDraftSig === studentPipelineSavedSig) {
+      return;
+    }
+    studentPipelineAutosaveTimerRef.current = window.setTimeout(() => {
+      studentPipelineAutosaveTimerRef.current = null;
+      void saveStudentPipeline();
+    }, PIPELINE_AUTOSAVE_DEBOUNCE_MS);
+
+    return () => {
+      if (studentPipelineAutosaveTimerRef.current !== null) {
+        window.clearTimeout(studentPipelineAutosaveTimerRef.current);
+        studentPipelineAutosaveTimerRef.current = null;
+      }
+    };
+  }, [
+    token,
+    session?.role,
+    studentPipelineDraft,
+    studentPipelineSinkDraft,
+    studentPipelineDraftSig,
+    studentPipelineSavedSig,
+    saveStudentPipeline
+  ]);
+
   const openAdminDefaultPipelineBuilder = useCallback(() => {
     setAdminPage('pipeline');
     setAdminPipelineGroupContextKey(null);
@@ -1876,30 +1988,84 @@ export default function App() {
     }
   };
 
-  const saveAdminPipeline = async () => {
+  const saveAdminPipeline = useCallback(async () => {
     if (!token || !adminPipelineDraft || !adminPipelineGroupKey) {
       return;
     }
+    if (adminPipelineSaveInFlightRef.current) {
+      return;
+    }
 
-    setBusyKey('admin-pipeline');
-    setErrorMessage(null);
+    const currentDraftSig = pipelineAdminDraftSignature(adminPipelineDraft);
+    if (currentDraftSig === adminPipelineSavedSig) {
+      return;
+    }
+
+    adminPipelineSaveInFlightRef.current = true;
+    const sentDraft = adminPipelineDraft;
+    const sentDraftSig = pipelineAdminDraftSignature(sentDraft);
+
     try {
       const updated = normalizePipelineView(await api.updateAdminPipeline(
         token,
         adminPipelineGroupKey,
-        adminPipelineDraft.input,
-        adminPipelineDraft.processing,
-        adminPipelineDraft.sink
+        sentDraft.input,
+        sentDraft.processing,
+        sentDraft.sink
       ));
       setAdminPipeline(updated);
-      setAdminPipelineDraft(updated);
-      pushToast(t('pipelineUpdated'));
+      setAdminPipelineDraft((previous) => {
+        if (!previous) {
+          return updated;
+        }
+        return pipelineAdminDraftSignature(previous) === sentDraftSig
+          ? updated
+          : previous;
+      });
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
-      setBusyKey(null);
+      adminPipelineSaveInFlightRef.current = false;
     }
-  };
+  }, [token, adminPipelineDraft, adminPipelineGroupKey, adminPipelineSavedSig]);
+
+  useEffect(() => {
+    if (adminPipelineAutosaveTimerRef.current !== null) {
+      window.clearTimeout(adminPipelineAutosaveTimerRef.current);
+      adminPipelineAutosaveTimerRef.current = null;
+    }
+    if (
+      !token
+      || session?.role !== 'ADMIN'
+      || !adminPipelineDraft
+      || !adminPipelineGroupKey
+      || adminPipelineSavedSig === 'null'
+    ) {
+      return;
+    }
+    if (adminPipelineDraftSig === adminPipelineSavedSig) {
+      return;
+    }
+    adminPipelineAutosaveTimerRef.current = window.setTimeout(() => {
+      adminPipelineAutosaveTimerRef.current = null;
+      void saveAdminPipeline();
+    }, PIPELINE_AUTOSAVE_DEBOUNCE_MS);
+
+    return () => {
+      if (adminPipelineAutosaveTimerRef.current !== null) {
+        window.clearTimeout(adminPipelineAutosaveTimerRef.current);
+        adminPipelineAutosaveTimerRef.current = null;
+      }
+    };
+  }, [
+    token,
+    session?.role,
+    adminPipelineDraft,
+    adminPipelineGroupKey,
+    adminPipelineDraftSig,
+    adminPipelineSavedSig,
+    saveAdminPipeline
+  ]);
 
   const controlAdminPipelineState = async (
     action: 'RESET_STATE' | 'RESTART_STATE_LOST' | 'RESTART_STATE_RETAINED'
@@ -4080,8 +4246,6 @@ export default function App() {
               onRemoveSink={removeStudentPipelineSink}
               onConfigureSendEventSink={configureStudentPipelineSendSink}
               lecturerDeviceAvailable={Boolean(studentData.settings.adminDeviceId?.trim())}
-              onSave={saveStudentPipeline}
-              saveBusy={busyKey === 'student-pipeline'}
               onResetState={resetStudentPipelineState}
               onResetSinkCounter={resetStudentPipelineSinkCounter}
               stateControlBusy={busyKey === 'student-pipeline-state'}
@@ -4330,8 +4494,6 @@ export default function App() {
                   onLogReplay={replayAdminPipelineLog}
                   logReplayBusy={busyKey === 'admin-pipeline-log-replay'}
                   logReplayResult={adminPipelineReplayResult}
-                  onSave={saveAdminPipeline}
-                  saveBusy={busyKey === 'admin-pipeline' || busyKey === 'admin-pipeline-load'}
                   onResetState={() => {
                     void controlAdminPipelineState('RESET_STATE');
                   }}

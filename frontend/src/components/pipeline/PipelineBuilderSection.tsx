@@ -63,8 +63,6 @@ interface PipelineBuilderSectionProps {
   onRestartStateLost?: () => void;
   onRestartStateRetained?: () => void;
   stateControlBusy?: boolean;
-  onSave: () => void;
-  saveBusy: boolean;
   formatTs: (value: TimestampValue) => string;
 }
 
@@ -513,8 +511,6 @@ export function PipelineBuilderSection({
   onRestartStateLost,
   onRestartStateRetained,
   stateControlBusy,
-  onSave,
-  saveBusy,
   formatTs
 }: PipelineBuilderSectionProps) {
   const [dragOverSlotIndex, setDragOverSlotIndex] = useState<number | null>(null);
@@ -569,8 +565,6 @@ export function PipelineBuilderSection({
 
   const processing = draftProcessing ?? view.processing;
   const blockOptions = ['NONE', ...view.permissions.allowedProcessingBlocks.filter((entry) => entry !== 'NONE')];
-  const hasEditableSection =
-    view.permissions.processingEditable || view.permissions.inputEditable || view.permissions.sinkEditable;
   const modeFeatureBadges = view.input.mode === 'LOG_MODE'
     ? ['retention', 'replay', 'offsets', 'consumer_groups']
     : ['realtime_pubsub', 'no_offset_replay'];
@@ -868,11 +862,6 @@ export function PipelineBuilderSection({
     <section className="panel pipeline-builder full-width">
       <header className="panel-header">
         <h3>{title}</h3>
-        <div className="pipeline-builder-actions">
-          <button className="button small" type="button" onClick={onSave} disabled={saveBusy || !hasEditableSection}>
-            {saveBusy ? t('loading') : t('pipelineSave')}
-          </button>
-        </div>
       </header>
       {contextNotice ? (
         <div className="pipeline-context-banner">
