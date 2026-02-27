@@ -16,16 +16,18 @@ interface PipelineBuilderSectionProps {
   t: (key: I18nKey) => string;
   title: string;
   view: PipelineView | null;
-  groupOptions?: string[];
-  selectedGroupKey?: string;
-  onSelectGroup?: (groupKey: string) => void;
+  contextNotice?: string | null;
+  contextActionLabel?: string;
+  onContextAction?: () => void;
   draftProcessing: PipelineProcessingSection | null;
   onChangeSlotBlock: (slotIndex: number, blockType: string) => void;
+  onChangeSlotConfig?: (slotIndex: number, key: string, value: unknown) => void;
   onInputModeChange?: (nextMode: string) => void;
   onDeviceScopeChange?: (nextScope: string) => void;
   onIngestFiltersChange?: (nextValue: string) => void;
   onSinkTargetsChange?: (nextValue: string) => void;
   onSinkGoalChange?: (nextValue: string) => void;
+  lecturerDeviceAvailable?: boolean;
   logModeStatus?: PipelineLogModeStatus | null;
   logModeStatusBusy?: boolean;
   onRefreshLogModeStatus?: () => void;
@@ -75,20 +77,47 @@ function featureBadgeLabelKey(badge: string): I18nKey {
   }
 }
 
+function blockSupportsDeviceScope(blockType: string): boolean {
+  const normalized = blockType.trim().toUpperCase();
+  return normalized.includes('DEVICE') || normalized === 'ENRICH_METADATA';
+}
+
+function normalizeSlotDeviceScope(raw: unknown): string {
+  if (typeof raw !== 'string') {
+    return 'OWN_DEVICE';
+  }
+  const normalized = raw.trim().toUpperCase();
+  if (normalized === 'SINGLE_DEVICE') {
+    return 'LECTURER_DEVICE';
+  }
+  if (normalized === 'GROUP_DEVICES') {
+    return 'OWN_DEVICE';
+  }
+  if (normalized === 'ALL_DEVICES') {
+    return 'ALL_DEVICES';
+  }
+  if (normalized === 'LECTURER_DEVICE' || normalized === 'OWN_DEVICE') {
+    return normalized;
+  }
+  return 'OWN_DEVICE';
+}
+
 export function PipelineBuilderSection({
   t,
   title,
   view,
-  groupOptions,
-  selectedGroupKey,
-  onSelectGroup,
+  contextNotice,
+  contextActionLabel,
+  onContextAction,
   draftProcessing,
   onChangeSlotBlock,
+  onChangeSlotConfig,
   onInputModeChange,
   onDeviceScopeChange,
   onIngestFiltersChange,
   onSinkTargetsChange,
   onSinkGoalChange,
+  lecturerDeviceAvailable = true,
   logModeStatus,
   logModeStatusBusy,
   onRefreshLogModeStatus,
@@ -115,7 +144,17 @@ export function PipelineBuilderSection({
         <header className="panel-header">
           <h3>{title}</h3>
         </header>
-        <p className="muted">{t('loading')}</p>
+        {contextNotice ? (
+          <div className="pipeline-context-banner">
+            <span>{contextNotice}</span>
+            {onContextAction && contextActionLabel ? (
+              <button className="button tiny secondary" type="button" onClick={onContextAction}>
+                {contextActionLabel}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+        {!contextNotice ? <p className="muted">{t('loading')}</p> : null}
       </section>
     );
   }
@@ -149,7 +188,8 @@ export function PipelineBuilderSection({
     const slot = processing.slots.find((entry) => entry.index === slotIndex);
     return {
       index: slotIndex,
-      blockType: slot?.blockType ?? 'NONE'
+      blockType: slot?.blockType ?? 'NONE',
+      config: slot?.config ?? {}
     };
   });
   const libraryBlockOptions = blockOptions.filter((entry) => entry !== 'NONE');
@@ -251,27 +291,21 @@ export function PipelineBuilderSection({
       <header className="panel-header">
         <h3>{title}</h3>
         <div className="pipeline-builder-actions">
-          {groupOptions && onSelectGroup ? (
-            <select
-              className="input"
-              value={selectedGroupKey ?? ''}
-              onChange={(event) => onSelectGroup(event.target.value)}
-            >
-              {groupOptions.length === 0 ? (
-                <option value="">{t('pipelineNoGroups')}</option>
-              ) : null}
-              {groupOptions.map((groupKey) => (
-                <option key={groupKey} value={groupKey}>
-                  {groupKey}
-                </option>
-              ))}
-            </select>
-          ) : null}
           <button className="button small" type="button" onClick={onSave} disabled={saveBusy || !hasEditableSection}>
             {saveBusy ? t('loading') : t('pipelineSave')}
           </button>
         </div>
       </header>
+      {contextNotice ? (
+        <div className="pipeline-context-banner">
+          <span>{contextNotice}</span>
+          {onContextAction && contextActionLabel ? (
+            <button className="button tiny secondary" type="button" onClick={onContextAction}>
+              {contextActionLabel}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="pipeline-grid">
         <article className="pipeline-column">
@@ -373,9 +407,11 @@ export function PipelineBuilderSection({
               onChange={(event) => onDeviceScopeChange?.(event.target.value)}
               disabled={!view.permissions.inputEditable}
             >
-              <option value="SINGLE_DEVICE">SINGLE_DEVICE</option>
-              <option value="GROUP_DEVICES">GROUP_DEVICES</option>
-              <option value="ALL_DEVICES">ALL_DEVICES</option>
+              <option value="SINGLE_DEVICE" disabled={!lecturerDeviceAvailable}>
+                {t('pipelineDeviceScopeLecturer')}
+              </option>
+              <option value="GROUP_DEVICES">{t('pipelineDeviceScopeOwn')}</option>
+              <option value="ALL_DEVICES">{t('pipelineDeviceScopeAll')}</option>
             </select>
           </label>
           <label className="stack pipeline-field">
@@ -423,6 +459,8 @@ export function PipelineBuilderSection({
               {processingSlots.map((slot) => {
                 const isEmpty = slot.blockType === 'NONE';
                 const isDropTarget = dragOverSlotIndex === slot.index;
+                const showSlotDeviceScope = !isEmpty && blockSupportsDeviceScope(slot.blockType);
+                const slotDeviceScope = normalizeSlotDeviceScope(slot.config.deviceScope);
                 return (
                   <Fragment key={slot.index}>
                     <div className="pipeline-flow-connector" aria-hidden="true">
@@ -471,6 +509,24 @@ export function PipelineBuilderSection({
                           </option>
                         ))}
                       </select>
+                      {showSlotDeviceScope ? (
+                        <label className="stack pipeline-slot-config">
+                          <span>{t('pipelineDeviceScope')}</span>
+                          <select
+                            className="input pipeline-slot-select"
+                            value={slotDeviceScope}
+                            onChange={(event) =>
+                              onChangeSlotConfig?.(slot.index, 'deviceScope', event.target.value)}
+                            disabled={!view.permissions.processingEditable}
+                          >
+                            <option value="LECTURER_DEVICE" disabled={!lecturerDeviceAvailable}>
+                              {t('pipelineDeviceScopeLecturer')}
+                            </option>
+                            <option value="OWN_DEVICE">{t('pipelineDeviceScopeOwn')}</option>
+                            <option value="ALL_DEVICES">{t('pipelineDeviceScopeAll')}</option>
+                          </select>
+                        </label>
+                      ) : null}
                     </div>
                   </Fragment>
                 );
