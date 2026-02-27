@@ -93,6 +93,7 @@ import { AdminPageNav } from './components/admin/AdminPageNav';
 import { AdminSettingsSection } from './components/admin/AdminSettingsSection';
 import { AppTopBar } from './components/layout/AppTopBar';
 import { MainStateBanners } from './components/layout/MainStateBanners';
+import { ToastStack, type ToastMessage } from './components/layout/ToastStack';
 import { LoginSection } from './components/auth/LoginSection';
 import { StudentFeedSection } from './components/student/StudentFeedSection';
 import { StudentOnboardingSection } from './components/student/StudentOnboardingSection';
@@ -197,7 +198,7 @@ export default function App() {
 
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [infoMessage, setInfoMessage] = useState<string | null>(null);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [wsConnection, setWsConnection] = useState<WsConnectionState>('disconnected');
 
   const [defaultLanguageMode, setDefaultLanguageMode] = useState<LanguageMode>('BROWSER_EN_FALLBACK');
@@ -239,10 +240,28 @@ export default function App() {
   const userMenuRef = useRef<HTMLDivElement>(null);
   const recentFeedClearTimerRef = useRef<number | null>(null);
   const adminPipelineGroupKeyRef = useRef<string>('');
+  const nextToastIdRef = useRef(1);
 
   const reportBackgroundError = useCallback((context: string, error: unknown) => {
     const message = toErrorMessage(error);
     console.warn(`[EPL UI background] ${context}: ${message}`);
+  }, []);
+
+  const pushToast = useCallback((text: string) => {
+    const toastId = nextToastIdRef.current;
+    nextToastIdRef.current += 1;
+
+    setToasts((previous) => {
+      const next = [...previous, { id: toastId, text }];
+      if (next.length > 4) {
+        return next.slice(next.length - 4);
+      }
+      return next;
+    });
+  }, []);
+
+  const dismissToast = useCallback((toastId: number) => {
+    setToasts((previous) => previous.filter((toast) => toast.id !== toastId));
   }, []);
 
   const clearRecentFeedHighlights = useCallback(() => {
@@ -462,6 +481,7 @@ export default function App() {
     setSystemDataImportSelection(createSystemDataPartSelection(false));
     setFeedScenarioConfig(null);
     setFeedScenarioDraft([]);
+    setToasts([]);
     adminDataRef.current = null;
     deferredAdminFeedRef.current = [];
     clearRecentFeedHighlights();
@@ -1279,7 +1299,6 @@ export default function App() {
   const handleLogin = async () => {
     setBusyKey('login');
     setErrorMessage(null);
-    setInfoMessage(null);
 
     try {
       const me = await api.login(loginUsername.trim(), loginPin.trim());
@@ -1328,7 +1347,7 @@ export default function App() {
     try {
       const updated = await api.updateDisplayName(token, displayNameDraft.trim());
       setSession(updated);
-      setInfoMessage(t('displayNameSaved'));
+      pushToast(t('displayNameSaved'));
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
@@ -1385,7 +1404,7 @@ export default function App() {
         };
       });
       setStudentConfigDraft(safeConfigMap(updated.config));
-      setInfoMessage(t('configSaved'));
+      pushToast(t('configSaved'));
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
@@ -1405,7 +1424,7 @@ export default function App() {
       const updated = await api.updateStudentPipeline(token, studentPipelineDraft);
       setStudentPipeline(updated);
       setStudentPipelineDraft(updated.processing);
-      setInfoMessage(t('pipelineUpdated'));
+      pushToast(t('pipelineUpdated'));
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
@@ -1423,7 +1442,7 @@ export default function App() {
       const updated = await api.resetStudentPipelineState(token);
       setStudentPipeline(updated);
       setStudentPipelineDraft(updated.processing);
-      setInfoMessage(t('pipelineStateResetDone'));
+      pushToast(t('pipelineStateResetDone'));
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
@@ -1474,7 +1493,7 @@ export default function App() {
       if (adminPipelineGroupKeyRef.current === groupKey) {
         await loadAdminPipelineForGroup(groupKey);
       }
-      setInfoMessage(reset.hadProgress ? t('groupResetDone') : t('groupNoChangesYet'));
+      pushToast(reset.hadProgress ? t('groupResetDone') : t('groupNoChangesYet'));
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
@@ -1499,7 +1518,7 @@ export default function App() {
       );
       setAdminPipeline(updated);
       setAdminPipelineDraft(updated);
-      setInfoMessage(t('pipelineUpdated'));
+      pushToast(t('pipelineUpdated'));
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
@@ -1520,9 +1539,9 @@ export default function App() {
       setAdminPipeline(updated);
       setAdminPipelineDraft(updated);
       if (action === 'RESET_STATE') {
-        setInfoMessage(t('pipelineStateResetDone'));
+        pushToast(t('pipelineStateResetDone'));
       } else {
-        setInfoMessage(t('pipelineRestartDone'));
+        pushToast(t('pipelineRestartDone'));
       }
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
@@ -1584,7 +1603,7 @@ export default function App() {
       if (replay.nextOffset !== null && replay.nextOffset !== undefined) {
         setAdminPipelineReplayFromOffset(String(replay.nextOffset));
       }
-      setInfoMessage(t('pipelineReplayDone'));
+      pushToast(t('pipelineReplayDone'));
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
@@ -1754,7 +1773,7 @@ export default function App() {
       const updated = await api.updateAdminScenarios(token, feedScenarioDraft);
       setFeedScenarioConfig(updated);
       setFeedScenarioDraft(updated.scenarioOverlays);
-      setInfoMessage(t('settingsUpdated'));
+      pushToast(t('settingsUpdated'));
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
@@ -1780,7 +1799,7 @@ export default function App() {
       );
       setAdminTaskPipelineConfig(updated);
       setAdminTaskPipelineConfigDraft(updated);
-      setInfoMessage(t('pipelineTaskConfigSaved'));
+      pushToast(t('pipelineTaskConfigSaved'));
 
       const activeTaskId = adminData?.tasks.find((task) => task.active)?.id ?? '';
       if (activeTaskId && activeTaskId === updated.taskId) {
@@ -1840,7 +1859,7 @@ export default function App() {
       });
       setAdminPipelineTaskId(task.id);
       void loadAdminTaskPipelineConfig(task.id);
-      setInfoMessage(t('taskUpdated'));
+      pushToast(t('taskUpdated'));
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
@@ -1878,7 +1897,7 @@ export default function App() {
       setAdminSettingsDraftTimeFormat24h(updated.timeFormat24h);
       setAdminSettingsDraftVirtualVisible(updated.studentVirtualDeviceVisible);
       setAdminSettingsDraftAdminDeviceId(updated.adminDeviceId);
-      setInfoMessage(t('settingsUpdated'));
+      pushToast(t('settingsUpdated'));
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
@@ -2109,7 +2128,7 @@ export default function App() {
     try {
       const updated = await api.updateAdminDevicePin(token, pinEditorDeviceId, nextPin);
       setPinEditorValue(updated.pin);
-      setInfoMessage(t('pinSaved'));
+      pushToast(t('pinSaved'));
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
@@ -2265,6 +2284,7 @@ export default function App() {
     try {
       await api.adminPublishMqttEvent(token, topic, payload, mqttEventDraft.qos, mqttEventDraft.retained);
       setMqttModalOpen(false);
+      pushToast(t('mqttEventSent'));
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
@@ -2356,7 +2376,7 @@ export default function App() {
 
       const latestStatus = await api.adminSystemStatus(token);
       setAdminSystemStatus((previous) => (sameAdminSystemStatus(previous, latestStatus) ? previous : latestStatus));
-      setInfoMessage(`${t('resetStoredEventsDone')}: ${reset.deletedEvents}`);
+      pushToast(`${t('resetStoredEventsDone')}: ${reset.deletedEvents}`);
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
@@ -2393,7 +2413,6 @@ export default function App() {
     setSystemDataImportFile(file);
     setSystemDataImportVerify(null);
     setSystemDataImportSelection(createSystemDataPartSelection(false));
-    setInfoMessage(null);
     setErrorMessage(null);
   }, []);
 
@@ -2421,6 +2440,7 @@ export default function App() {
       link.click();
       link.remove();
       window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+      pushToast(t('systemDataExportDone'));
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
@@ -2451,7 +2471,7 @@ export default function App() {
       setSystemDataImportSelection(selected);
 
       if (verified.valid) {
-        setInfoMessage(t('systemDataImportValid'));
+        pushToast(t('systemDataImportValid'));
       } else {
         setErrorMessage(verified.errors.join(' | ') || t('systemDataImportInvalid'));
       }
@@ -2492,7 +2512,7 @@ export default function App() {
       const summary = imported.importedParts
         .map((entry) => `${systemDataPartLabel(entry.part, t)} (${entry.rowCount})`)
         .join(', ');
-      setInfoMessage(`${t('systemDataImportDone')}: ${summary}`);
+      pushToast(`${t('systemDataImportDone')}: ${summary}`);
       await refreshAdminData();
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
@@ -3296,10 +3316,11 @@ export default function App() {
       />
 
       <main className="content">
+        <ToastStack t={t} toasts={toasts} onDismiss={dismissToast} />
+
         <MainStateBanners
           t={t}
           errorMessage={errorMessage}
-          infoMessage={infoMessage}
           booting={booting}
         />
 
