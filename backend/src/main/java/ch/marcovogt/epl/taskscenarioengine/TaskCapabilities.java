@@ -8,6 +8,8 @@ public record TaskCapabilities(
         boolean canFilterByTopic,
         boolean showInternalEventsToggle,
         List<String> allowedConfigOptions,
-        List<String> studentCommandWhitelist
+        List<String> studentCommandWhitelist,
+        StudentDeviceScope studentEventVisibilityScope,
+        StudentDeviceScope studentCommandTargetScope
 ) {
 }

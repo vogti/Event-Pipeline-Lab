@@ -99,6 +99,8 @@ class TaskPipelineConfigServiceTest {
                 4,
                 List.of("parse_validate", "route", "route"),
                 List.of("delay:250ms", "drop:4%"),
+                StudentDeviceScope.ALL_DEVICES,
+                StudentDeviceScope.ADMIN_DEVICE,
                 "admin"
         );
 
@@ -106,6 +108,8 @@ class TaskPipelineConfigServiceTest {
         assertThat(updated.slotCount()).isEqualTo(4);
         assertThat(updated.allowedProcessingBlocks()).containsExactly("PARSE_VALIDATE", "ROUTE");
         assertThat(updated.scenarioOverlays()).containsExactly("delay:250ms", "drops:4%");
+        assertThat(updated.studentEventVisibilityScope()).isEqualTo(StudentDeviceScope.ALL_DEVICES);
+        assertThat(updated.studentCommandTargetScope()).isEqualTo(StudentDeviceScope.ADMIN_DEVICE);
         assertThat(updated.overrideActive()).isTrue();
         assertThat(updated.availableProcessingBlocks()).doesNotContain(PipelineBlockLibrary.NONE);
         assertThat(updated.updatedBy()).isEqualTo("admin");
@@ -120,6 +124,8 @@ class TaskPipelineConfigServiceTest {
                 5,
                 List.of("ROUTE", "NOT_A_BLOCK"),
                 List.of(),
+                StudentDeviceScope.OWN_DEVICE,
+                StudentDeviceScope.OWN_DEVICE,
                 "admin"
         ))
                 .isInstanceOf(ResponseStatusException.class)
@@ -138,6 +144,8 @@ class TaskPipelineConfigServiceTest {
                 7,
                 List.of("ROUTE"),
                 List.of(),
+                StudentDeviceScope.OWN_DEVICE,
+                StudentDeviceScope.OWN_DEVICE,
                 "admin"
         ))
                 .isInstanceOf(ResponseStatusException.class)
@@ -155,7 +163,16 @@ class TaskPipelineConfigServiceTest {
                 "Task",
                 "Description",
                 "Description",
-                new TaskCapabilities(false, false, false, false, List.of(), List.of()),
+                new TaskCapabilities(
+                        false,
+                        false,
+                        false,
+                        false,
+                        List.of(),
+                        List.of(),
+                        StudentDeviceScope.OWN_DEVICE,
+                        StudentDeviceScope.OWN_DEVICE
+                ),
                 new PipelineTaskConfig(
                         true,
                         true,
@@ -163,6 +180,8 @@ class TaskPipelineConfigServiceTest {
                         List.of("FILTER_DEVICE_TOPIC", "PARSE_VALIDATE", "ROUTE"),
                         "LIVE_MQTT",
                         "GROUP_DEVICES",
+                        StudentDeviceScope.OWN_DEVICE,
+                        StudentDeviceScope.OWN_DEVICE,
                         List.of(),
                         List.of(),
                         List.of("DEVICE_CONTROL"),
@@ -178,7 +197,16 @@ class TaskPipelineConfigServiceTest {
                 "Task",
                 "Description",
                 "Description",
-                new TaskCapabilities(false, false, false, false, List.of(), List.of()),
+                new TaskCapabilities(
+                        false,
+                        false,
+                        false,
+                        false,
+                        List.of(),
+                        List.of(),
+                        StudentDeviceScope.OWN_DEVICE,
+                        StudentDeviceScope.OWN_DEVICE
+                ),
                 new PipelineTaskConfig(
                         true,
                         true,
@@ -186,6 +214,8 @@ class TaskPipelineConfigServiceTest {
                         List.of("FILTER_DEVICE_TOPIC", "PARSE_VALIDATE", "ROUTE"),
                         "LIVE_MQTT",
                         "GROUP_DEVICES",
+                        StudentDeviceScope.OWN_DEVICE,
+                        StudentDeviceScope.OWN_DEVICE,
                         List.of(),
                         List.of("delay:300ms"),
                         List.of("DEVICE_CONTROL"),

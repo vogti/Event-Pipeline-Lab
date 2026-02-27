@@ -9,6 +9,8 @@ public record TaskPipelineConfigDto(
         int slotCount,
         List<String> allowedProcessingBlocks,
         List<String> scenarioOverlays,
+        StudentDeviceScope studentEventVisibilityScope,
+        StudentDeviceScope studentCommandTargetScope,
         List<String> availableProcessingBlocks,
         int minSlotCount,
         int maxSlotCount,

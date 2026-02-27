@@ -14,6 +14,7 @@ export type EventCategory =
 export type EventFeedStage = 'BEFORE_PIPELINE' | 'AFTER_PIPELINE';
 
 export type DeviceCommandType = 'LED_GREEN' | 'LED_ORANGE' | 'COUNTER_RESET';
+export type StudentDeviceScope = 'OWN_DEVICE' | 'ADMIN_DEVICE' | 'ALL_DEVICES';
 export type TimestampValue = string | number | null;
 
 export interface AuthMe {
@@ -42,6 +43,8 @@ export interface TaskPipelineConfig {
   slotCount: number;
   allowedProcessingBlocks: string[];
   scenarioOverlays: string[];
+  studentEventVisibilityScope: StudentDeviceScope;
+  studentCommandTargetScope: StudentDeviceScope;
   availableProcessingBlocks: string[];
   minSlotCount: number;
   maxSlotCount: number;
@@ -58,6 +61,8 @@ export interface TaskCapabilities {
   showInternalEventsToggle: boolean;
   allowedConfigOptions: string[];
   studentCommandWhitelist: string[];
+  studentEventVisibilityScope: StudentDeviceScope;
+  studentCommandTargetScope: StudentDeviceScope;
 }
 
 export interface GroupConfig {

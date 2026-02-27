@@ -526,7 +526,9 @@ function sameTaskCapabilities(a: TaskCapabilities, b: TaskCapabilities): boolean
     a.canFilterByTopic === b.canFilterByTopic &&
     a.showInternalEventsToggle === b.showInternalEventsToggle &&
     sameStringArray(a.allowedConfigOptions, b.allowedConfigOptions) &&
-    sameStringArray(a.studentCommandWhitelist, b.studentCommandWhitelist)
+    sameStringArray(a.studentCommandWhitelist, b.studentCommandWhitelist) &&
+    a.studentEventVisibilityScope === b.studentEventVisibilityScope &&
+    a.studentCommandTargetScope === b.studentCommandTargetScope
   );
 }
 

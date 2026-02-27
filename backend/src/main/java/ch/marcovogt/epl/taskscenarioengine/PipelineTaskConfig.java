@@ -9,6 +9,8 @@ public record PipelineTaskConfig(
         List<String> allowedProcessingBlocks,
         String inputMode,
         String deviceScope,
+        StudentDeviceScope studentEventVisibilityScope,
+        StudentDeviceScope studentCommandTargetScope,
         List<String> ingestFilters,
         List<String> scenarioOverlays,
         List<String> sinkTargets,

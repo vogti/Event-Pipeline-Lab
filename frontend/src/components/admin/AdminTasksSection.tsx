@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { I18nKey } from '../../i18n';
-import type { TaskInfo, TaskPipelineConfig } from '../../types';
+import type { StudentDeviceScope, TaskInfo, TaskPipelineConfig } from '../../types';
 import { CloseIcon } from '../../app/shared-icons';
 import { PipelineScenarioEditor } from '../pipeline/PipelineScenarioEditor';
 
@@ -16,7 +16,7 @@ interface CreateTaskDraft extends TaskDetailsDraft {
   templateTaskId: string;
 }
 
-type TaskSettingsTab = 'details' | 'pipeline' | 'disturbances';
+type TaskSettingsTab = 'details' | 'pipeline' | 'events' | 'disturbances';
 
 interface AdminTasksSectionProps {
   t: (key: I18nKey) => string;
@@ -33,6 +33,8 @@ interface AdminTasksSectionProps {
   isTaskDeleteBusy: (taskId: string) => boolean;
   onSelectTask: (taskId: string) => void;
   onToggleVisibleToStudents: (visible: boolean) => void;
+  onStudentEventVisibilityScopeChange: (scope: StudentDeviceScope) => void;
+  onStudentCommandTargetScopeChange: (scope: StudentDeviceScope) => void;
   onToggleAllowedBlock: (blockType: string, enabled: boolean) => void;
   onScenarioOverlaysChange: (scenarioOverlays: string[]) => void;
   onSaveTaskConfig: () => void;
@@ -76,6 +78,8 @@ export function AdminTasksSection({
   isTaskDeleteBusy,
   onSelectTask,
   onToggleVisibleToStudents,
+  onStudentEventVisibilityScopeChange,
+  onStudentCommandTargetScopeChange,
   onToggleAllowedBlock,
   onScenarioOverlaysChange,
   onSaveTaskConfig,
@@ -229,6 +233,15 @@ export function AdminTasksSection({
           <button
             type="button"
             role="tab"
+            aria-selected={settingsTab === 'events'}
+            className={`task-settings-tab ${settingsTab === 'events' ? 'active' : ''}`}
+            onClick={() => setSettingsTab('events')}
+          >
+            {t('taskSettingsTabEvents')}
+          </button>
+          <button
+            type="button"
+            role="tab"
             aria-selected={settingsTab === 'disturbances'}
             className={`task-settings-tab ${settingsTab === 'disturbances' ? 'active' : ''}`}
             onClick={() => setSettingsTab('disturbances')}
@@ -365,6 +378,53 @@ export function AdminTasksSection({
                     disabled={taskConfigBusy}
                     onChange={onScenarioOverlaysChange}
                   />
+                </div>
+
+                <button
+                  className="button small"
+                  type="button"
+                  onClick={onSaveTaskConfig}
+                  disabled={taskConfigBusy}
+                >
+                  {taskConfigBusy ? t('loading') : t('save')}
+                </button>
+              </>
+            ) : (
+              <p className="muted">{t('loading')}</p>
+            )
+          ) : null}
+
+          {settingsTab === 'events' ? (
+            editingTaskConfig ? (
+              <>
+                <div className="stack pipeline-field">
+                  <span>{t('taskEventsVisibilityScopeLabel')}</span>
+                  <select
+                    className="input"
+                    value={editingTaskConfig.studentEventVisibilityScope ?? 'OWN_DEVICE'}
+                    onChange={(event) =>
+                      onStudentEventVisibilityScopeChange(event.target.value as StudentDeviceScope)
+                    }
+                  >
+                    <option value="OWN_DEVICE">{t('taskDeviceScopeOwn')}</option>
+                    <option value="ADMIN_DEVICE">{t('taskDeviceScopeAdmin')}</option>
+                    <option value="ALL_DEVICES">{t('taskDeviceScopeAll')}</option>
+                  </select>
+                </div>
+
+                <div className="stack pipeline-field">
+                  <span>{t('taskEventsCommandScopeLabel')}</span>
+                  <select
+                    className="input"
+                    value={editingTaskConfig.studentCommandTargetScope ?? 'OWN_DEVICE'}
+                    onChange={(event) =>
+                      onStudentCommandTargetScopeChange(event.target.value as StudentDeviceScope)
+                    }
+                  >
+                    <option value="OWN_DEVICE">{t('taskDeviceScopeOwn')}</option>
+                    <option value="ADMIN_DEVICE">{t('taskDeviceScopeAdmin')}</option>
+                    <option value="ALL_DEVICES">{t('taskDeviceScopeAll')}</option>
+                  </select>
                 </div>
 
                 <button

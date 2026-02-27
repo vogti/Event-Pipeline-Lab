@@ -8,6 +8,7 @@ import type {
   EventFeedStage,
   ResetEventsResponse,
   FeedScenarioConfig,
+  StudentDeviceScope,
   SystemDataImportApplyResponse,
   SystemDataImportVerifyResponse,
   SystemDataPart,
@@ -268,7 +269,9 @@ export const api = {
     visibleToStudents: boolean,
     slotCount: number,
     allowedProcessingBlocks: string[],
-    scenarioOverlays: string[]
+    scenarioOverlays: string[],
+    studentEventVisibilityScope: StudentDeviceScope,
+    studentCommandTargetScope: StudentDeviceScope
   ): Promise<TaskPipelineConfig> {
     return request<TaskPipelineConfig>(
       '/api/admin/task-pipeline-config',
@@ -279,7 +282,9 @@ export const api = {
           visibleToStudents,
           slotCount,
           allowedProcessingBlocks,
-          scenarioOverlays
+          scenarioOverlays,
+          studentEventVisibilityScope,
+          studentCommandTargetScope
         })
       },
       token

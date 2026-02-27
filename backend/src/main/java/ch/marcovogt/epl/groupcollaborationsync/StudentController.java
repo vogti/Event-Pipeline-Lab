@@ -9,10 +9,12 @@ import ch.marcovogt.epl.authsession.AuthMeResponse;
 import ch.marcovogt.epl.authsession.AuthService;
 import ch.marcovogt.epl.authsession.RequestAuth;
 import ch.marcovogt.epl.authsession.SessionPrincipal;
+import ch.marcovogt.epl.common.DeviceIdMapping;
 import ch.marcovogt.epl.eventfeedquery.EventFeedStage;
 import ch.marcovogt.epl.eventfeedquery.EventFeedService;
 import ch.marcovogt.epl.mqttgateway.MqttCommandPublisher;
 import ch.marcovogt.epl.realtimewebsocket.RealtimeSyncService;
+import ch.marcovogt.epl.taskscenarioengine.StudentDeviceScope;
 import ch.marcovogt.epl.taskscenarioengine.TaskCapabilities;
 import ch.marcovogt.epl.taskscenarioengine.TaskInfoDto;
 import ch.marcovogt.epl.taskscenarioengine.TaskStateService;
@@ -134,14 +136,23 @@ public class StudentController {
         if (!capabilities.canSendDeviceCommands()) {
             throw AuthExceptions.forbidden();
         }
-        if (!principal.groupKey().equals(body.deviceId())) {
-            throw AuthExceptions.forbidden();
-        }
         if (!capabilities.studentCommandWhitelist().contains(body.command().name())) {
             throw AuthExceptions.forbidden();
         }
 
-        publish(body.command(), body.deviceId(), body.on());
+        String targetDeviceId = body.deviceId() == null ? "" : body.deviceId().trim().toLowerCase();
+        if (!DeviceIdMapping.isPhysicalDeviceId(targetDeviceId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "deviceId must reference a physical EPLD id");
+        }
+
+        StudentDeviceScope targetScope = capabilities.studentCommandTargetScope() == null
+                ? StudentDeviceScope.OWN_DEVICE
+                : capabilities.studentCommandTargetScope();
+        if (!isAllowedCommandTarget(targetScope, targetDeviceId, principal.groupKey())) {
+            throw AuthExceptions.forbidden();
+        }
+
+        publish(body.command(), targetDeviceId, body.on());
     }
 
     private void validateConfigKeys(StudentConfigUpdateRequest body, TaskCapabilities capabilities) {
@@ -169,5 +180,16 @@ public class StudentController {
             case COUNTER_RESET -> mqttCommandPublisher.publishCounterReset(deviceId);
             default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported command");
         }
+    }
+
+    private boolean isAllowedCommandTarget(StudentDeviceScope scope, String targetDeviceId, String studentGroupKey) {
+        return switch (scope) {
+            case ALL_DEVICES -> true;
+            case ADMIN_DEVICE -> {
+                String adminDeviceId = appSettingsService.getAdminDeviceId();
+                yield adminDeviceId != null && adminDeviceId.equalsIgnoreCase(targetDeviceId);
+            }
+            case OWN_DEVICE -> studentGroupKey != null && studentGroupKey.equalsIgnoreCase(targetDeviceId);
+        };
     }
 }

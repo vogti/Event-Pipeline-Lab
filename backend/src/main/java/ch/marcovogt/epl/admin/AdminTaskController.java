@@ -105,6 +105,8 @@ public class AdminTaskController {
                 body.slotCount(),
                 body.allowedProcessingBlocks(),
                 body.scenarioOverlays(),
+                body.studentEventVisibilityScope(),
+                body.studentCommandTargetScope(),
                 principal.username()
         );
 
@@ -116,7 +118,9 @@ public class AdminTaskController {
                         "visibleToStudents", updated.visibleToStudents(),
                         "slotCount", updated.slotCount(),
                         "allowedBlocks", updated.allowedProcessingBlocks(),
-                        "scenarioOverlays", updated.scenarioOverlays()
+                        "scenarioOverlays", updated.scenarioOverlays(),
+                        "studentEventVisibilityScope", updated.studentEventVisibilityScope(),
+                        "studentCommandTargetScope", updated.studentCommandTargetScope()
                 )
         );
 

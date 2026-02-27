@@ -33,7 +33,9 @@ public class TaskStateService {
             true,
             true,
             List.of("*"),
-            List.of("LED_GREEN", "LED_ORANGE", "COUNTER_RESET")
+            List.of("LED_GREEN", "LED_ORANGE", "COUNTER_RESET"),
+            StudentDeviceScope.ALL_DEVICES,
+            StudentDeviceScope.ALL_DEVICES
     );
 
     private final TaskStateRepository taskStateRepository;
@@ -189,12 +191,12 @@ public class TaskStateService {
         if (principal.role() == AppRole.ADMIN) {
             return ADMIN_CAPABILITIES;
         }
-        return getActiveTask().studentCapabilities();
+        return effectiveStudentCapabilities(getActiveTask());
     }
 
     @Transactional(readOnly = true)
     public TaskCapabilities currentStudentCapabilities() {
-        return getActiveTask().studentCapabilities();
+        return effectiveStudentCapabilities(getActiveTask());
     }
 
     @Transactional(readOnly = true)
@@ -210,6 +212,8 @@ public class TaskStateService {
             int slotCount,
             List<String> allowedProcessingBlocks,
             List<String> scenarioOverlays,
+            StudentDeviceScope studentEventVisibilityScope,
+            StudentDeviceScope studentCommandTargetScope,
             String actor
     ) {
         TaskDefinition baseline = resolveTaskById(taskId);
@@ -219,6 +223,8 @@ public class TaskStateService {
                 slotCount,
                 allowedProcessingBlocks,
                 scenarioOverlays,
+                studentEventVisibilityScope,
+                studentCommandTargetScope,
                 actor
         );
     }
@@ -514,6 +520,33 @@ public class TaskStateService {
                 nonBlankOrDefault(state.getDescriptionEn(), id),
                 capabilities,
                 pipeline
+        );
+    }
+
+    private TaskCapabilities effectiveStudentCapabilities(TaskDefinition definition) {
+        TaskCapabilities base = definition.studentCapabilities();
+        PipelineTaskConfig pipeline = definition.pipeline();
+
+        StudentDeviceScope eventScope = pipeline != null && pipeline.studentEventVisibilityScope() != null
+                ? pipeline.studentEventVisibilityScope()
+                : (base.studentEventVisibilityScope() != null
+                ? base.studentEventVisibilityScope()
+                : (base.canViewRoomEvents() ? StudentDeviceScope.ALL_DEVICES : StudentDeviceScope.OWN_DEVICE));
+        StudentDeviceScope commandScope = pipeline != null && pipeline.studentCommandTargetScope() != null
+                ? pipeline.studentCommandTargetScope()
+                : (base.studentCommandTargetScope() != null
+                ? base.studentCommandTargetScope()
+                : StudentDeviceScope.OWN_DEVICE);
+
+        return new TaskCapabilities(
+                eventScope == StudentDeviceScope.ALL_DEVICES,
+                base.canSendDeviceCommands(),
+                base.canFilterByTopic(),
+                base.showInternalEventsToggle(),
+                base.allowedConfigOptions(),
+                base.studentCommandWhitelist(),
+                eventScope,
+                commandScope
         );
     }
 

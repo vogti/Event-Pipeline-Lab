@@ -55,7 +55,9 @@ public class TaskCatalog {
                                 false,
                                 false,
                                 List.of("displayMode", "sensorFocus"),
-                                List.of()
+                                List.of(),
+                                StudentDeviceScope.OWN_DEVICE,
+                                StudentDeviceScope.OWN_DEVICE
                         ),
                         pipelineConfig(
                                 true,
@@ -63,6 +65,8 @@ public class TaskCatalog {
                                 PBV_BLOCKS_BASIC,
                                 "LIVE_MQTT",
                                 "GROUP_DEVICES",
+                                StudentDeviceScope.OWN_DEVICE,
+                                StudentDeviceScope.OWN_DEVICE,
                                 List.of(),
                                 List.of(),
                                 List.of("DEVICE_CONTROL"),
@@ -85,7 +89,9 @@ public class TaskCatalog {
                                 true,
                                 true,
                                 List.of("displayMode", "sensorFocus", "topicPreset"),
-                                List.of()
+                                List.of(),
+                                StudentDeviceScope.ALL_DEVICES,
+                                StudentDeviceScope.OWN_DEVICE
                         ),
                         pipelineConfig(
                                 true,
@@ -93,6 +99,8 @@ public class TaskCatalog {
                                 PBV_BLOCKS_INTERMEDIATE,
                                 "LIVE_MQTT",
                                 "ALL_DEVICES",
+                                StudentDeviceScope.ALL_DEVICES,
+                                StudentDeviceScope.OWN_DEVICE,
                                 List.of("eventType != status.system"),
                                 List.of("delay:300ms"),
                                 List.of("VIRTUAL_SIGNAL"),
@@ -115,7 +123,9 @@ public class TaskCatalog {
                                 true,
                                 false,
                                 List.of("displayMode", "sensorFocus", "commandPanel", "pipelineStateReset"),
-                                List.of("LED_GREEN", "LED_ORANGE", "COUNTER_RESET")
+                                List.of("LED_GREEN", "LED_ORANGE", "COUNTER_RESET"),
+                                StudentDeviceScope.OWN_DEVICE,
+                                StudentDeviceScope.OWN_DEVICE
                         ),
                         pipelineConfig(
                                 true,
@@ -123,6 +133,8 @@ public class TaskCatalog {
                                 PBV_BLOCKS_ADVANCED,
                                 "LIVE_MQTT",
                                 "GROUP_DEVICES",
+                                StudentDeviceScope.OWN_DEVICE,
+                                StudentDeviceScope.OWN_DEVICE,
                                 List.of(),
                                 List.of("duplicates:10%"),
                                 List.of("DEVICE_CONTROL", "VIRTUAL_SIGNAL"),
@@ -151,7 +163,9 @@ public class TaskCatalog {
                                         "topicPreset",
                                         "pipelineStateReset"
                                 ),
-                                List.of("LED_GREEN", "LED_ORANGE", "COUNTER_RESET")
+                                List.of("LED_GREEN", "LED_ORANGE", "COUNTER_RESET"),
+                                StudentDeviceScope.ALL_DEVICES,
+                                StudentDeviceScope.OWN_DEVICE
                         ),
                         pipelineConfig(
                                 true,
@@ -159,6 +173,8 @@ public class TaskCatalog {
                                 PBV_BLOCKS_ADVANCED,
                                 "LIVE_MQTT",
                                 "ALL_DEVICES",
+                                StudentDeviceScope.ALL_DEVICES,
+                                StudentDeviceScope.OWN_DEVICE,
                                 List.of(),
                                 List.of("delay:500ms", "duplicates:15%"),
                                 List.of("DEVICE_CONTROL", "VIRTUAL_SIGNAL", "STORAGE"),
@@ -188,6 +204,8 @@ public class TaskCatalog {
             List<String> allowedBlocks,
             String inputMode,
             String deviceScope,
+            StudentDeviceScope studentEventVisibilityScope,
+            StudentDeviceScope studentCommandTargetScope,
             List<String> ingestFilters,
             List<String> scenarioOverlays,
             List<String> sinkTargets,
@@ -200,6 +218,8 @@ public class TaskCatalog {
                 List.copyOf(allowedBlocks),
                 inputMode,
                 deviceScope,
+                studentEventVisibilityScope,
+                studentCommandTargetScope,
                 List.copyOf(ingestFilters),
                 List.copyOf(scenarioOverlays),
                 List.copyOf(sinkTargets),

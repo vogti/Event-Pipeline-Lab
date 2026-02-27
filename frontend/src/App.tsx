@@ -13,6 +13,7 @@ import type {
   PipelineObservabilityUpdate,
   PipelineCompareRow,
   PipelineProcessingSection,
+  StudentDeviceScope,
   TaskPipelineConfig,
   PipelineView,
   SystemDataImportVerifyResponse,
@@ -193,6 +194,13 @@ function toggleStringInList(values: string[], value: string, enabled: boolean): 
   return values.filter((entry) => entry !== value);
 }
 
+function normalizeStudentDeviceScope(raw: string | null | undefined): StudentDeviceScope {
+  if (raw === 'ADMIN_DEVICE' || raw === 'ALL_DEVICES' || raw === 'OWN_DEVICE') {
+    return raw;
+  }
+  return 'OWN_DEVICE';
+}
+
 export default function App() {
   const [token, setToken] = useState<string | null>(() => getStoredToken());
   const [session, setSession] = useState<AuthMe | null>(null);
@@ -212,6 +220,7 @@ export default function App() {
   const [studentOnboardingDone, setStudentOnboardingDone] = useState(false);
   const [studentPipeline, setStudentPipeline] = useState<PipelineView | null>(null);
   const [studentPipelineDraft, setStudentPipelineDraft] = useState<PipelineProcessingSection | null>(null);
+  const [studentCommandTargetDeviceId, setStudentCommandTargetDeviceId] = useState('');
 
   const [adminData, setAdminData] = useState<AdminViewData | null>(null);
   const [adminSystemStatus, setAdminSystemStatus] = useState<AdminSystemStatus | null>(null);
@@ -810,6 +819,31 @@ export default function App() {
     }
     setStudentShowInternal(false);
   }, [studentData]);
+
+  useEffect(() => {
+    const scopeRaw = studentData?.capabilities.studentCommandTargetScope;
+    const adminDeviceId = studentData?.settings.adminDeviceId?.trim() ?? '';
+    if (session?.role !== 'STUDENT' || !scopeRaw || !session.groupKey) {
+      setStudentCommandTargetDeviceId('');
+      return;
+    }
+    const ownDeviceId = session.groupKey.trim();
+    const scope = normalizeStudentDeviceScope(scopeRaw);
+    setStudentCommandTargetDeviceId((previous) => {
+      if (scope === 'OWN_DEVICE') {
+        return ownDeviceId;
+      }
+      if (scope === 'ADMIN_DEVICE') {
+        return adminDeviceId;
+      }
+      return previous.trim() ? previous : ownDeviceId;
+    });
+  }, [
+    session?.role,
+    session?.groupKey,
+    studentData?.capabilities.studentCommandTargetScope,
+    studentData?.settings.adminDeviceId
+  ]);
 
   const studentActiveTaskId = studentData?.activeTask.id ?? '';
   const hasStudentData = studentData !== null;
@@ -1807,6 +1841,30 @@ export default function App() {
     });
   }, []);
 
+  const changeTaskPipelineStudentEventVisibilityScope = useCallback((scope: StudentDeviceScope) => {
+    setAdminTaskPipelineConfigDraft((previous) => {
+      if (!previous) {
+        return previous;
+      }
+      return {
+        ...previous,
+        studentEventVisibilityScope: scope
+      };
+    });
+  }, []);
+
+  const changeTaskPipelineStudentCommandTargetScope = useCallback((scope: StudentDeviceScope) => {
+    setAdminTaskPipelineConfigDraft((previous) => {
+      if (!previous) {
+        return previous;
+      }
+      return {
+        ...previous,
+        studentCommandTargetScope: scope
+      };
+    });
+  }, []);
+
   const toggleTaskPipelineAllowedBlock = useCallback((blockType: string, enabled: boolean) => {
     setAdminTaskPipelineConfigDraft((previous) => {
       if (!previous) {
@@ -1871,7 +1929,9 @@ export default function App() {
         adminTaskPipelineConfigDraft.visibleToStudents,
         adminTaskPipelineConfigDraft.slotCount,
         adminTaskPipelineConfigDraft.allowedProcessingBlocks,
-        adminTaskPipelineConfigDraft.scenarioOverlays
+        adminTaskPipelineConfigDraft.scenarioOverlays,
+        normalizeStudentDeviceScope(adminTaskPipelineConfigDraft.studentEventVisibilityScope),
+        normalizeStudentDeviceScope(adminTaskPipelineConfigDraft.studentCommandTargetScope)
       );
       setAdminTaskPipelineConfig(updated);
       setAdminTaskPipelineConfigDraft(updated);
@@ -2050,11 +2110,24 @@ export default function App() {
       return;
     }
 
-    setBusyKey(`student-command-${command}-${String(on)}`);
+    const scope = normalizeStudentDeviceScope(studentData?.capabilities.studentCommandTargetScope);
+    const ownDeviceId = session.groupKey.trim();
+    const adminDeviceId = studentData?.settings.adminDeviceId?.trim() ?? '';
+    const targetDeviceId = scope === 'OWN_DEVICE'
+      ? ownDeviceId
+      : scope === 'ADMIN_DEVICE'
+        ? adminDeviceId
+        : studentCommandTargetDeviceId.trim();
+    if (!targetDeviceId) {
+      setErrorMessage(t('invalidInput'));
+      return;
+    }
+
+    setBusyKey(`student-command-${command}-${String(on)}-${targetDeviceId}`);
     setErrorMessage(null);
 
     try {
-      await api.sendStudentCommand(token, session.groupKey, command, on);
+      await api.sendStudentCommand(token, targetDeviceId, command, on);
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
@@ -3725,7 +3798,24 @@ export default function App() {
               <StudentCommandsSection
                 t={t}
                 studentCommandWhitelist={studentData.capabilities.studentCommandWhitelist}
-                busyKey={busyKey}
+                commandTargetScope={normalizeStudentDeviceScope(
+                  studentData.capabilities.studentCommandTargetScope
+                )}
+                targetDeviceId={studentCommandTargetDeviceId}
+                ownDeviceId={session.groupKey ?? ''}
+                adminDeviceId={studentData.settings.adminDeviceId?.trim() ?? ''}
+                onTargetDeviceIdChange={setStudentCommandTargetDeviceId}
+                isCommandBusy={(command, on) => {
+                  const scope = normalizeStudentDeviceScope(studentData.capabilities.studentCommandTargetScope);
+                  const ownDeviceId = session.groupKey?.trim() ?? '';
+                  const adminDeviceId = studentData.settings.adminDeviceId?.trim() ?? '';
+                  const targetDeviceId = scope === 'OWN_DEVICE'
+                    ? ownDeviceId
+                    : scope === 'ADMIN_DEVICE'
+                      ? adminDeviceId
+                      : studentCommandTargetDeviceId.trim();
+                  return busyKey === `student-command-${command}-${String(on)}-${targetDeviceId}`;
+                }}
                 onSendCommand={sendStudentCommand}
               />
             ) : null}
@@ -3865,6 +3955,8 @@ export default function App() {
                   isTaskDeleteBusy={(taskId) => busyKey === `admin-task-delete-${taskId}`}
                   onSelectTask={selectAdminPipelineTask}
                   onToggleVisibleToStudents={changeTaskPipelineVisibleToStudents}
+                  onStudentEventVisibilityScopeChange={changeTaskPipelineStudentEventVisibilityScope}
+                  onStudentCommandTargetScopeChange={changeTaskPipelineStudentCommandTargetScope}
                   onToggleAllowedBlock={toggleTaskPipelineAllowedBlock}
                   onScenarioOverlaysChange={changeTaskPipelineScenarioOverlays}
                   onSaveTaskConfig={saveAdminTaskPipelineConfig}

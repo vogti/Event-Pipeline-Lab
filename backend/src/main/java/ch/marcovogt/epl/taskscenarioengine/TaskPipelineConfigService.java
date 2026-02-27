@@ -54,6 +54,16 @@ public class TaskPipelineConfigService {
                 allowedBlocks.isEmpty() ? base.allowedProcessingBlocks() : allowedBlocks,
                 base.inputMode(),
                 base.deviceScope(),
+                normalizeScope(
+                        override.getStudentEventVisibilityScope() == null
+                                ? base.studentEventVisibilityScope()
+                                : override.getStudentEventVisibilityScope()
+                ),
+                normalizeScope(
+                        override.getStudentCommandTargetScope() == null
+                                ? base.studentCommandTargetScope()
+                                : override.getStudentCommandTargetScope()
+                ),
                 base.ingestFilters(),
                 scenarioOverlays,
                 base.sinkTargets(),
@@ -81,6 +91,8 @@ public class TaskPipelineConfigService {
                 clampSlotCount(pipeline.slotCount()),
                 normalizeAllowedBlocks(pipeline.allowedProcessingBlocks()),
                 normalizeScenarioOverlays(pipeline.scenarioOverlays()),
+                normalizeScope(pipeline.studentEventVisibilityScope()),
+                normalizeScope(pipeline.studentCommandTargetScope()),
                 availableBlocks(),
                 MIN_SLOT_COUNT,
                 MAX_SLOT_COUNT,
@@ -98,11 +110,15 @@ public class TaskPipelineConfigService {
             int slotCount,
             List<String> allowedProcessingBlocks,
             List<String> scenarioOverlays,
+            StudentDeviceScope studentEventVisibilityScope,
+            StudentDeviceScope studentCommandTargetScope,
             String actor
     ) {
         int normalizedSlotCount = clampSlotCountStrict(slotCount);
         List<String> normalizedAllowedBlocks = normalizeAllowedBlocksStrict(allowedProcessingBlocks);
         List<String> normalizedScenarioOverlays = normalizeScenarioOverlaysStrict(scenarioOverlays);
+        StudentDeviceScope normalizedEventScope = normalizeScope(studentEventVisibilityScope);
+        StudentDeviceScope normalizedCommandScope = normalizeScope(studentCommandTargetScope);
 
         TaskPipelineConfigState state = repository.findById(baselineDefinition.id())
                 .orElseGet(() -> {
@@ -115,6 +131,8 @@ public class TaskPipelineConfigService {
         state.setSlotCount(normalizedSlotCount);
         state.setAllowedProcessingBlocksJson(serializeAllowedBlocks(normalizedAllowedBlocks));
         state.setScenarioOverlaysJson(serializeScenarioOverlays(normalizedScenarioOverlays));
+        state.setStudentEventVisibilityScope(normalizedEventScope);
+        state.setStudentCommandTargetScope(normalizedCommandScope);
         state.setUpdatedAt(Instant.now(clock));
         state.setUpdatedBy(actor == null || actor.isBlank() ? "system" : actor);
         repository.save(state);
@@ -259,5 +277,9 @@ public class TaskPipelineConfigService {
             return List.of();
         }
         return PipelineScenarioOverlayCodec.normalize(raw, true);
+    }
+
+    private StudentDeviceScope normalizeScope(StudentDeviceScope scope) {
+        return scope == null ? StudentDeviceScope.OWN_DEVICE : scope;
     }
 }

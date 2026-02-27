@@ -2,6 +2,8 @@ package ch.marcovogt.epl.taskscenarioengine;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
@@ -25,6 +27,14 @@ public class TaskPipelineConfigState {
 
     @Column(name = "scenario_overlays_json", columnDefinition = "text")
     private String scenarioOverlaysJson;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "student_event_visibility_scope", length = 32)
+    private StudentDeviceScope studentEventVisibilityScope;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "student_command_target_scope", length = 32)
+    private StudentDeviceScope studentCommandTargetScope;
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
@@ -70,6 +80,22 @@ public class TaskPipelineConfigState {
 
     public void setScenarioOverlaysJson(String scenarioOverlaysJson) {
         this.scenarioOverlaysJson = scenarioOverlaysJson;
+    }
+
+    public StudentDeviceScope getStudentEventVisibilityScope() {
+        return studentEventVisibilityScope;
+    }
+
+    public void setStudentEventVisibilityScope(StudentDeviceScope studentEventVisibilityScope) {
+        this.studentEventVisibilityScope = studentEventVisibilityScope;
+    }
+
+    public StudentDeviceScope getStudentCommandTargetScope() {
+        return studentCommandTargetScope;
+    }
+
+    public void setStudentCommandTargetScope(StudentDeviceScope studentCommandTargetScope) {
+        this.studentCommandTargetScope = studentCommandTargetScope;
     }
 
     public Instant getUpdatedAt() {

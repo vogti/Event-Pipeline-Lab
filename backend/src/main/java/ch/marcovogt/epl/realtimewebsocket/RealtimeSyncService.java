@@ -11,6 +11,7 @@ import ch.marcovogt.epl.eventingestionnormalization.CanonicalEventDto;
 import ch.marcovogt.epl.groupcollaborationsync.GroupConfigDto;
 import ch.marcovogt.epl.pipelinebuilder.PipelineObservabilityUpdateDto;
 import ch.marcovogt.epl.pipelinebuilder.PipelineViewDto;
+import ch.marcovogt.epl.taskscenarioengine.StudentDeviceScope;
 import ch.marcovogt.epl.taskscenarioengine.TaskCapabilities;
 import ch.marcovogt.epl.taskscenarioengine.TaskDefinition;
 import ch.marcovogt.epl.taskscenarioengine.TaskStateService;
@@ -48,13 +49,24 @@ public class RealtimeSyncService {
         }
 
         TaskCapabilities capabilities = taskStateService.currentStudentCapabilities();
-        if (capabilities.canViewRoomEvents()) {
+        StudentDeviceScope scope = capabilities.studentEventVisibilityScope() == null
+                ? (capabilities.canViewRoomEvents() ? StudentDeviceScope.ALL_DEVICES : StudentDeviceScope.OWN_DEVICE)
+                : capabilities.studentEventVisibilityScope();
+        if (scope == StudentDeviceScope.ALL_DEVICES) {
             studentBroadcaster.broadcastToAll("event.feed.append", eventDto);
             return;
         }
 
-        String groupKey = eventDto.groupKey();
-        if (groupKey != null && !groupKey.isBlank()) {
+        if (scope == StudentDeviceScope.ADMIN_DEVICE) {
+            String adminDeviceId = appSettingsService.getAdminDeviceId();
+            if (adminDeviceId != null && adminDeviceId.equalsIgnoreCase(eventDto.deviceId())) {
+                studentBroadcaster.broadcastToAll("event.feed.append", eventDto);
+            }
+            return;
+        }
+
+        String groupKey = resolveGroupKey(eventDto);
+        if (groupKey != null) {
             studentBroadcaster.broadcastToGroup(groupKey, "event.feed.append", eventDto);
         }
     }
@@ -66,13 +78,24 @@ public class RealtimeSyncService {
         }
 
         TaskCapabilities capabilities = taskStateService.currentStudentCapabilities();
-        if (capabilities.canViewRoomEvents()) {
+        StudentDeviceScope scope = capabilities.studentEventVisibilityScope() == null
+                ? (capabilities.canViewRoomEvents() ? StudentDeviceScope.ALL_DEVICES : StudentDeviceScope.OWN_DEVICE)
+                : capabilities.studentEventVisibilityScope();
+        if (scope == StudentDeviceScope.ALL_DEVICES) {
             studentBroadcaster.broadcastToAll("event.pipeline.append", eventDto);
             return;
         }
 
-        String groupKey = eventDto.groupKey();
-        if (groupKey != null && !groupKey.isBlank()) {
+        if (scope == StudentDeviceScope.ADMIN_DEVICE) {
+            String adminDeviceId = appSettingsService.getAdminDeviceId();
+            if (adminDeviceId != null && adminDeviceId.equalsIgnoreCase(eventDto.deviceId())) {
+                studentBroadcaster.broadcastToAll("event.pipeline.append", eventDto);
+            }
+            return;
+        }
+
+        String groupKey = resolveGroupKey(eventDto);
+        if (groupKey != null) {
             studentBroadcaster.broadcastToGroup(groupKey, "event.pipeline.append", eventDto);
         }
     }
@@ -105,12 +128,22 @@ public class RealtimeSyncService {
     }
 
     public void broadcastTaskAndCapabilities(TaskDefinition definition) {
-        studentBroadcaster.broadcastToAll("task.updated", definition);
+        TaskCapabilities currentStudentCapabilities = taskStateService.currentStudentCapabilities();
+        TaskDefinition studentTaskPayload = new TaskDefinition(
+                definition.id(),
+                definition.titleDe(),
+                definition.titleEn(),
+                definition.descriptionDe(),
+                definition.descriptionEn(),
+                currentStudentCapabilities,
+                definition.pipeline()
+        );
+        studentBroadcaster.broadcastToAll("task.updated", studentTaskPayload);
         for (String groupKey : authService.listStudentGroupKeys()) {
             studentBroadcaster.broadcastToGroup(
                     groupKey,
                     "capabilities.updated",
-                    taskStateService.currentStudentCapabilities()
+                    currentStudentCapabilities
             );
         }
         adminBroadcaster.broadcast("task.updated", definition);
@@ -152,5 +185,12 @@ public class RealtimeSyncService {
     public void broadcastPipelineObservability(PipelineObservabilityUpdateDto update) {
         studentBroadcaster.broadcastToGroup(update.groupKey(), "pipeline.observability.updated", update);
         adminBroadcaster.broadcast("pipeline.observability.updated", update);
+    }
+
+    private String resolveGroupKey(CanonicalEventDto eventDto) {
+        if (eventDto.groupKey() != null && !eventDto.groupKey().isBlank()) {
+            return eventDto.groupKey();
+        }
+        return DeviceIdMapping.groupKeyForDevice(eventDto.deviceId()).orElse(null);
     }
 }

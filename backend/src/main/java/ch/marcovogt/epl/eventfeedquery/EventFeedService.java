@@ -7,6 +7,7 @@ import ch.marcovogt.epl.common.DeviceIdMapping;
 import ch.marcovogt.epl.common.EventCategory;
 import ch.marcovogt.epl.eventingestionnormalization.CanonicalEventDto;
 import ch.marcovogt.epl.eventingestionnormalization.CanonicalEventRepository;
+import ch.marcovogt.epl.taskscenarioengine.StudentDeviceScope;
 import ch.marcovogt.epl.taskscenarioengine.TaskCapabilities;
 import java.util.Comparator;
 import java.util.List;
@@ -142,12 +143,30 @@ public class EventFeedService {
             return requestedDeviceId == null || requestedDeviceId.equals(event.deviceId());
         }
 
-        String effectiveGroup = hasText(event.groupKey()) ? event.groupKey() : event.deviceId();
-        if (!capabilities.canViewRoomEvents() && !principal.groupKey().equals(effectiveGroup)) {
+        StudentDeviceScope scope = capabilities.studentEventVisibilityScope() == null
+                ? (capabilities.canViewRoomEvents() ? StudentDeviceScope.ALL_DEVICES : StudentDeviceScope.OWN_DEVICE)
+                : capabilities.studentEventVisibilityScope();
+        if (!isVisibleForStudentScope(event, principal.groupKey(), scope)) {
             return false;
         }
 
         return requestedDeviceId == null || requestedDeviceId.equals(event.deviceId());
+    }
+
+    private boolean isVisibleForStudentScope(CanonicalEventDto event, String groupKey, StudentDeviceScope scope) {
+        if (scope == StudentDeviceScope.ALL_DEVICES) {
+            return true;
+        }
+
+        if (scope == StudentDeviceScope.ADMIN_DEVICE) {
+            String adminDeviceId = appSettingsService.getAdminDeviceId();
+            return hasText(adminDeviceId) && adminDeviceId.equalsIgnoreCase(event.deviceId());
+        }
+
+        String effectiveGroup = hasText(event.groupKey())
+                ? event.groupKey().trim()
+                : DeviceIdMapping.groupKeyForDevice(event.deviceId()).orElse(event.deviceId());
+        return groupKey != null && groupKey.equalsIgnoreCase(effectiveGroup);
     }
 
     private boolean hasText(String value) {
