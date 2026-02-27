@@ -123,6 +123,33 @@ function normalizeSlotDeviceScope(raw: unknown): string {
   return 'OWN_DEVICE';
 }
 
+function slotDeviceScopeLabel(t: (key: I18nKey) => string, raw: unknown): string {
+  const normalized = normalizeSlotDeviceScope(raw);
+  if (normalized === 'LECTURER_DEVICE') {
+    return t('pipelineDeviceScopeLecturer');
+  }
+  if (normalized === 'ALL_DEVICES') {
+    return t('pipelineDeviceScopeAll');
+  }
+  return t('pipelineDeviceScopeOwn');
+}
+
+function isTaskScopeLockedFilterSlot(slot: PipelineProcessingSection['slots'][number]): boolean {
+  if (slot.index !== 0) {
+    return false;
+  }
+  if ((slot.blockType ?? '').trim().toUpperCase() !== 'FILTER_DEVICE') {
+    return false;
+  }
+  const config = slot.config ?? {};
+  const locked = config.taskScopeLocked;
+  if (locked === true) {
+    return true;
+  }
+  const origin = config.taskScopeOrigin;
+  return typeof origin === 'string' && origin.trim().toLowerCase() === 'task_device_scope';
+}
+
 function buildDisplaySlots(processing: PipelineProcessingSection): PipelineProcessingSection['slots'] {
   const byIndex = new Map<number, PipelineProcessingSection['slots'][number]>();
   for (const slot of processing.slots) {
@@ -612,8 +639,8 @@ export function PipelineBuilderSection({
     setSlotBlockType(targetSlot.index, blockType);
   };
 
-  const onSlotDragOver = (event: DragEvent<HTMLDivElement>, slotIndex: number) => {
-    if (!view.permissions.processingEditable) {
+  const onSlotDragOver = (event: DragEvent<HTMLDivElement>, slotIndex: number, slotLocked: boolean) => {
+    if (!view.permissions.processingEditable || slotLocked) {
       return;
     }
     const dragBlockType = readDragBlockType(event);
@@ -627,8 +654,8 @@ export function PipelineBuilderSection({
     }
   };
 
-  const onSlotDrop = (event: DragEvent<HTMLDivElement>, slotIndex: number) => {
-    if (!view.permissions.processingEditable) {
+  const onSlotDrop = (event: DragEvent<HTMLDivElement>, slotIndex: number, slotLocked: boolean) => {
+    if (!view.permissions.processingEditable || slotLocked) {
       return;
     }
     const dragBlockType = readDragBlockType(event);
@@ -950,21 +977,6 @@ export function PipelineBuilderSection({
           </section>
         ) : null}
         <label className="stack pipeline-field">
-          <span>{t('pipelineDeviceScope')}</span>
-          <select
-            className="input"
-            value={view.input.deviceScope}
-            onChange={(event) => onDeviceScopeChange?.(event.target.value)}
-            disabled={!view.permissions.inputEditable}
-          >
-            <option value="SINGLE_DEVICE" disabled={!lecturerDeviceAvailable}>
-              {t('pipelineDeviceScopeLecturer')}
-            </option>
-            <option value="GROUP_DEVICES">{t('pipelineDeviceScopeOwn')}</option>
-            <option value="ALL_DEVICES">{t('pipelineDeviceScopeAll')}</option>
-          </select>
-        </label>
-        <label className="stack pipeline-field">
           <span>{t('pipelineIngestFilters')}</span>
           <textarea
             className="input"
@@ -986,6 +998,8 @@ export function PipelineBuilderSection({
               {processingSlots.map((slot) => {
                 const isEmpty = slot.blockType === 'NONE';
                 const isDropTarget = dragOverSlotIndex === slot.index;
+                const isTaskScopeLocked = isTaskScopeLockedFilterSlot(slot);
+                const slotEditable = view.permissions.processingEditable && !isTaskScopeLocked;
                 const showSlotDeviceScope = !isEmpty && blockSupportsDeviceScope(slot.blockType);
                 const isFilterTopic = !isEmpty && slot.blockType.trim().toUpperCase() === 'FILTER_TOPIC';
                 const isTransformPayload = !isEmpty && slot.blockType.trim().toUpperCase() === 'TRANSFORM_PAYLOAD';
@@ -1015,21 +1029,21 @@ export function PipelineBuilderSection({
                       className={`pipeline-flow-node slot ${isEmpty ? 'empty' : 'filled'} ${
                         isDropTarget ? 'drag-over' : ''
                       }`}
-                      draggable={view.permissions.processingEditable && !isEmpty}
+                      draggable={slotEditable && !isEmpty}
                       onDragStart={(event) => {
-                        if (isEmpty) {
+                        if (isEmpty || !slotEditable) {
                           event.preventDefault();
                           return;
                         }
                         setDragPayload(event, slot.blockType, slot.index);
                       }}
                       onDragEnd={() => setDragOverSlotIndex(null)}
-                      onDragOver={(event) => onSlotDragOver(event, slot.index)}
-                      onDrop={(event) => onSlotDrop(event, slot.index)}
+                      onDragOver={(event) => onSlotDragOver(event, slot.index, isTaskScopeLocked)}
+                      onDrop={(event) => onSlotDrop(event, slot.index, isTaskScopeLocked)}
                     >
                       <div className="pipeline-flow-node-header">
                         <span className="pipeline-flow-node-title" />
-                        {view.permissions.processingEditable && !isEmpty ? (
+                        {slotEditable && !isEmpty ? (
                           <button
                             type="button"
                             className="button tiny ghost"
@@ -1045,19 +1059,25 @@ export function PipelineBuilderSection({
                       {showSlotDeviceScope ? (
                         <label className="stack pipeline-slot-config">
                           <span>{t('pipelineDeviceScope')}</span>
-                          <select
-                            className="input pipeline-slot-select"
-                            value={slotDeviceScope}
-                            onChange={(event) =>
-                              onChangeSlotConfig?.(slot.index, 'deviceScope', event.target.value)}
-                            disabled={!view.permissions.processingEditable}
-                          >
-                            <option value="LECTURER_DEVICE" disabled={!lecturerDeviceAvailable}>
-                              {t('pipelineDeviceScopeLecturer')}
-                            </option>
-                            <option value="OWN_DEVICE">{t('pipelineDeviceScopeOwn')}</option>
-                            <option value="ALL_DEVICES">{t('pipelineDeviceScopeAll')}</option>
-                          </select>
+                          {isTaskScopeLocked ? (
+                            <p className="muted">
+                              {slotDeviceScopeLabel(t, slot.config?.deviceScope)} | {t('pipelineTaskScopeFixed')}
+                            </p>
+                          ) : (
+                            <select
+                              className="input pipeline-slot-select"
+                              value={slotDeviceScope}
+                              onChange={(event) =>
+                                onChangeSlotConfig?.(slot.index, 'deviceScope', event.target.value)}
+                              disabled={!slotEditable}
+                            >
+                              <option value="LECTURER_DEVICE" disabled={!lecturerDeviceAvailable}>
+                                {t('pipelineDeviceScopeLecturer')}
+                              </option>
+                              <option value="OWN_DEVICE">{t('pipelineDeviceScopeOwn')}</option>
+                              <option value="ALL_DEVICES">{t('pipelineDeviceScopeAll')}</option>
+                            </select>
+                          )}
                         </label>
                       ) : null}
                       {isFilterTopic ? (
@@ -1072,7 +1092,7 @@ export function PipelineBuilderSection({
                             type="button"
                             className="button tiny secondary"
                             onClick={() => openTopicFilterModal(slot.index, slot.config ?? {})}
-                            disabled={!view.permissions.processingEditable || !onChangeSlotConfig}
+                            disabled={!slotEditable || !onChangeSlotConfig}
                           >
                             {t('pipelineFilterTopicConfigure')}
                           </button>
@@ -1090,7 +1110,7 @@ export function PipelineBuilderSection({
                             type="button"
                             className="button tiny secondary"
                             onClick={() => openTransformPayloadModal(slot.index, slot.config ?? {})}
-                            disabled={!view.permissions.processingEditable || !onChangeSlotConfig}
+                            disabled={!slotEditable || !onChangeSlotConfig}
                           >
                             {t('pipelineTransformPayloadConfigure')}
                           </button>

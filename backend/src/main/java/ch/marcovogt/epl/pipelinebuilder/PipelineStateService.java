@@ -31,6 +31,9 @@ public class PipelineStateService {
     private static final String GLOBAL_OWNER_KEY = "global";
     private static final Set<String> INPUT_MODES = Set.of("LIVE_MQTT", "LOG_MODE");
     private static final Set<String> DEVICE_SCOPES = Set.of("SINGLE_DEVICE", "GROUP_DEVICES", "ALL_DEVICES");
+    private static final String TASK_SCOPE_LOCKED_KEY = "taskScopeLocked";
+    private static final String TASK_SCOPE_ORIGIN_KEY = "taskScopeOrigin";
+    private static final String TASK_SCOPE_ORIGIN_VALUE = "task_device_scope";
 
     private final PipelineStateRepository pipelineStateRepository;
     private final TaskStateService taskStateService;
@@ -76,10 +79,11 @@ public class PipelineStateService {
                 ? loadOrCreate(task.id(), PipelineOwnerType.ADMIN_GLOBAL, GLOBAL_OWNER_KEY, defaults)
                 : null;
         PipelineStatePayload effective = effectivePayload(config, groupPayload, globalState, defaults);
+        PipelineProcessingSection effectiveProcessing = withTaskDeviceScopeFilter(config, effective.processing());
         PipelineObservabilityDto observability = pipelineObservabilityService.snapshot(
                 task.id(),
                 normalizedGroupKey,
-                effective.processing()
+                effectiveProcessing
         );
         PipelineSinkRuntimeSection sinkRuntime = pipelineSinkExecutionService.snapshot(
                 task.id(),
@@ -91,7 +95,7 @@ public class PipelineStateService {
                 task.id(),
                 normalizedGroupKey,
                 effective.input(),
-                effective.processing(),
+                effectiveProcessing,
                 effective.sink(),
                 sinkRuntime,
                 new PipelinePermissions(
@@ -103,7 +107,7 @@ public class PipelineStateService {
                         false,
                         config.lecturerMode(),
                         config.allowedProcessingBlocks(),
-                        effective.processing().slotCount()
+                        effectiveProcessing.slotCount()
                 ),
                 observability,
                 effectiveRevision(groupState, globalState),
@@ -128,9 +132,10 @@ public class PipelineStateService {
         PipelineStatePayload defaults = defaultPayload(config);
         PipelineState groupState = loadOrCreate(task.id(), PipelineOwnerType.GROUP, groupKey, defaults);
         PipelineStatePayload current = deserializeOrDefault(groupState.getStateJson(), defaults);
+        PipelineProcessingSection requestedProcessing = withoutTaskDeviceScopeFilter(processingSection);
 
         PipelineProcessingSection normalizedProcessing = normalizeProcessing(
-                processingSection,
+                requestedProcessing,
                 config.slotCount(),
                 config.allowedProcessingBlocks(),
                 true
@@ -164,10 +169,11 @@ public class PipelineStateService {
                 ? loadOrCreate(task.id(), PipelineOwnerType.ADMIN_GLOBAL, GLOBAL_OWNER_KEY, defaults)
                 : null;
         PipelineStatePayload effective = effectivePayload(config, groupPayload, globalState, defaults);
+        PipelineProcessingSection effectiveProcessing = withTaskDeviceScopeFilter(config, effective.processing());
         PipelineObservabilityDto observability = pipelineObservabilityService.snapshot(
                 task.id(),
                 normalizedGroupKey,
-                effective.processing()
+                effectiveProcessing
         );
         PipelineSinkRuntimeSection sinkRuntime = pipelineSinkExecutionService.snapshot(
                 task.id(),
@@ -179,7 +185,7 @@ public class PipelineStateService {
                 task.id(),
                 normalizedGroupKey,
                 effective.input(),
-                effective.processing(),
+                effectiveProcessing,
                 effective.sink(),
                 sinkRuntime,
                 new PipelinePermissions(
@@ -191,7 +197,7 @@ public class PipelineStateService {
                         true,
                         config.lecturerMode(),
                         PipelineBlockLibrary.allBlocks(),
-                        effective.processing().slotCount()
+                        effectiveProcessing.slotCount()
                 ),
                 observability,
                 effectiveRevision(groupState, globalState),
@@ -209,9 +215,10 @@ public class PipelineStateService {
         String groupKey = normalizeGroupKey(request.groupKey());
         PipelineState groupState = loadOrCreate(task.id(), PipelineOwnerType.GROUP, groupKey, defaults);
         PipelineStatePayload groupCurrent = deserializeOrDefault(groupState.getStateJson(), defaults);
+        PipelineProcessingSection requestedProcessing = withoutTaskDeviceScopeFilter(request.processing());
 
         PipelineProcessingSection processing = normalizeProcessing(
-                request.processing(),
+                requestedProcessing,
                 config.slotCount(),
                 PipelineBlockLibrary.allBlocks(),
                 false
@@ -287,11 +294,12 @@ public class PipelineStateService {
                 ? loadOrCreate(task.id(), PipelineOwnerType.ADMIN_GLOBAL, GLOBAL_OWNER_KEY, defaults)
                 : null;
         PipelineStatePayload effective = effectivePayload(config, groupPayload, globalState, defaults);
+        PipelineProcessingSection effectiveProcessing = withTaskDeviceScopeFilter(config, effective.processing());
 
         CanonicalEventDto projected = pipelineObservabilityService.recordEvent(
                 task.id(),
                 groupKey,
-                effective.processing(),
+                effectiveProcessing,
                 eventDto
         );
         PipelineSinkRuntimeUpdateDto sinkRuntimeUpdate = null;
@@ -307,7 +315,7 @@ public class PipelineStateService {
         PipelineObservabilityDto observability = pipelineObservabilityService.snapshot(
                 task.id(),
                 groupKey,
-                effective.processing()
+                effectiveProcessing
         );
         return new PipelineEventProcessingResult(
                 new PipelineObservabilityUpdateDto(task.id(), groupKey, observability),
@@ -634,11 +642,9 @@ public class PipelineStateService {
         }
 
         String mode = normalizeEnum(base.mode(), INPUT_MODES, taskConfig == null ? base.mode() : taskConfig.inputMode());
-        String scope = normalizeEnum(
-                base.deviceScope(),
-                DEVICE_SCOPES,
-                taskConfig == null ? base.deviceScope() : taskConfig.deviceScope()
-        );
+        String scope = taskConfig == null
+                ? normalizeEnum(base.deviceScope(), DEVICE_SCOPES, base.deviceScope())
+                : normalizeTaskDeviceScope(taskConfig.deviceScope());
         return new PipelineInputSection(
                 mode,
                 scope,
@@ -859,6 +865,123 @@ public class PipelineStateService {
         }
 
         return new PipelineProcessingSection("CONSTRAINED", effectiveSlotCount, normalizedSlots);
+    }
+
+    private PipelineProcessingSection withTaskDeviceScopeFilter(
+            PipelineTaskConfig config,
+            PipelineProcessingSection processing
+    ) {
+        PipelineProcessingSection base = processing == null
+                ? new PipelineProcessingSection("CONSTRAINED", 1, List.of())
+                : processing;
+        String fixedScope = normalizeTaskDeviceScope(config == null ? null : config.deviceScope());
+
+        Map<Integer, PipelineSlot> shifted = new java.util.HashMap<>();
+        List<PipelineSlot> sourceSlots = base.slots() == null ? List.of() : base.slots();
+        for (PipelineSlot slot : sourceSlots) {
+            if (slot == null || slot.index() < 0) {
+                continue;
+            }
+            if (slot.index() == 0 && isTaskDeviceScopeSlot(slot)) {
+                continue;
+            }
+            int shiftedIndex = slot.index() + 1;
+            shifted.put(shiftedIndex, new PipelineSlot(
+                    shiftedIndex,
+                    canonicalBlock(slot.blockType()),
+                    stripTaskScopeMeta(slot.config())
+            ));
+        }
+
+        int highestIndex = shifted.keySet().stream().mapToInt(Integer::intValue).max().orElse(0);
+        int requestedSlots = Math.max(2, base.slotCount() + 1);
+        int effectiveSlotCount = Math.max(requestedSlots, highestIndex + 1);
+
+        List<PipelineSlot> resolved = new ArrayList<>();
+        resolved.add(new PipelineSlot(
+                0,
+                "FILTER_DEVICE",
+                Map.of(
+                        "deviceScope", fixedScope,
+                        TASK_SCOPE_LOCKED_KEY, true,
+                        TASK_SCOPE_ORIGIN_KEY, TASK_SCOPE_ORIGIN_VALUE
+                )
+        ));
+        for (int index = 1; index < effectiveSlotCount; index++) {
+            PipelineSlot existing = shifted.get(index);
+            if (existing == null) {
+                resolved.add(new PipelineSlot(index, PipelineBlockLibrary.NONE, Map.of()));
+            } else {
+                resolved.add(existing);
+            }
+        }
+        return new PipelineProcessingSection("CONSTRAINED", effectiveSlotCount, resolved);
+    }
+
+    private PipelineProcessingSection withoutTaskDeviceScopeFilter(PipelineProcessingSection processing) {
+        if (processing == null) {
+            return new PipelineProcessingSection("CONSTRAINED", 1, List.of());
+        }
+        List<PipelineSlot> stripped = new ArrayList<>();
+        List<PipelineSlot> sourceSlots = processing.slots() == null ? List.of() : processing.slots();
+        int highestIndex = -1;
+        for (PipelineSlot slot : sourceSlots) {
+            if (slot == null || slot.index() <= 0) {
+                continue;
+            }
+            int targetIndex = slot.index() - 1;
+            if (targetIndex > highestIndex) {
+                highestIndex = targetIndex;
+            }
+            stripped.add(new PipelineSlot(
+                    targetIndex,
+                    canonicalBlock(slot.blockType()),
+                    stripTaskScopeMeta(slot.config())
+            ));
+        }
+        stripped.sort((left, right) -> Integer.compare(left.index(), right.index()));
+        int requestedSlots = Math.max(1, processing.slotCount() - 1);
+        int effectiveSlots = Math.max(requestedSlots, highestIndex + 1);
+        return new PipelineProcessingSection("CONSTRAINED", effectiveSlots, stripped);
+    }
+
+    private Map<String, Object> stripTaskScopeMeta(Map<String, Object> rawConfig) {
+        if (rawConfig == null || rawConfig.isEmpty()) {
+            return Map.of();
+        }
+        java.util.HashMap<String, Object> next = new java.util.HashMap<>(rawConfig);
+        next.remove(TASK_SCOPE_LOCKED_KEY);
+        next.remove(TASK_SCOPE_ORIGIN_KEY);
+        return Map.copyOf(next);
+    }
+
+    private boolean isTaskDeviceScopeSlot(PipelineSlot slot) {
+        if (slot == null || slot.index() != 0) {
+            return false;
+        }
+        if (!"FILTER_DEVICE".equals(canonicalBlock(slot.blockType()))) {
+            return false;
+        }
+        if (slot.config() == null || slot.config().isEmpty()) {
+            return false;
+        }
+        Object locked = slot.config().get(TASK_SCOPE_LOCKED_KEY);
+        if (locked instanceof Boolean value && value) {
+            return true;
+        }
+        Object origin = slot.config().get(TASK_SCOPE_ORIGIN_KEY);
+        return origin != null && TASK_SCOPE_ORIGIN_VALUE.equalsIgnoreCase(String.valueOf(origin));
+    }
+
+    private String normalizeTaskDeviceScope(String rawScope) {
+        if (rawScope == null || rawScope.isBlank()) {
+            return "GROUP_DEVICES";
+        }
+        String normalized = rawScope.trim().toUpperCase(Locale.ROOT);
+        if (!DEVICE_SCOPES.contains(normalized)) {
+            return "GROUP_DEVICES";
+        }
+        return normalized;
     }
 
     private String canonicalBlock(String raw) {
