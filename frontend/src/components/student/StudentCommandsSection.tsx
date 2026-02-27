@@ -24,11 +24,19 @@ export function StudentCommandsSection({
   isCommandBusy,
   onSendCommand
 }: StudentCommandsSectionProps) {
+  const trimmedTarget = targetDeviceId.trim();
+  const trimmedOwn = ownDeviceId.trim();
+  const trimmedAdmin = adminDeviceId.trim();
+  const hasAdmin = trimmedAdmin.length > 0;
   const resolvedTargetId = commandTargetScope === 'OWN_DEVICE'
-    ? ownDeviceId
+    ? trimmedOwn
     : commandTargetScope === 'ADMIN_DEVICE'
-      ? adminDeviceId
-      : targetDeviceId.trim();
+      ? trimmedAdmin
+      : commandTargetScope === 'OWN_AND_ADMIN_DEVICE'
+        ? (hasAdmin
+          ? (trimmedTarget === trimmedOwn || trimmedTarget === trimmedAdmin ? trimmedTarget : trimmedOwn)
+          : trimmedOwn)
+        : trimmedTarget;
   const hasTarget = resolvedTargetId.length > 0;
 
   return (
@@ -55,6 +63,25 @@ export function StudentCommandsSection({
             placeholder={t('studentCommandTargetDevice')}
           />
         </label>
+      ) : null}
+      {commandTargetScope === 'OWN_AND_ADMIN_DEVICE' ? (
+        hasAdmin ? (
+          <label className="stack">
+            <span>{t('studentCommandScopeOwnAdmin')}</span>
+            <select
+              className="input"
+              value={resolvedTargetId}
+              onChange={(event) => onTargetDeviceIdChange(event.target.value)}
+            >
+              <option value={trimmedOwn}>{`${t('studentCommandTargetOwn')} (${trimmedOwn})`}</option>
+              <option value={trimmedAdmin}>{`${t('studentCommandTargetAdmin')} (${trimmedAdmin})`}</option>
+            </select>
+          </label>
+        ) : (
+          <p className="muted">
+            {`${t('studentCommandScopeOwn')} (${trimmedOwn}) · ${t('studentCommandAdminDeviceMissing')}`}
+          </p>
+        )
       ) : null}
       <div className="button-grid">
         {studentCommandWhitelist.includes('LED_GREEN') ? (

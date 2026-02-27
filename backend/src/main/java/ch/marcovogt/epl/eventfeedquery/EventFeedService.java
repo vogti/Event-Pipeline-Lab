@@ -159,14 +159,26 @@ public class EventFeedService {
         }
 
         if (scope == StudentDeviceScope.ADMIN_DEVICE) {
-            String adminDeviceId = appSettingsService.getAdminDeviceId();
-            return hasText(adminDeviceId) && adminDeviceId.equalsIgnoreCase(event.deviceId());
+            return isAdminDeviceEvent(event);
         }
 
+        if (scope == StudentDeviceScope.OWN_AND_ADMIN_DEVICE) {
+            return isOwnDeviceEvent(event, groupKey) || isAdminDeviceEvent(event);
+        }
+
+        return isOwnDeviceEvent(event, groupKey);
+    }
+
+    private boolean isOwnDeviceEvent(CanonicalEventDto event, String groupKey) {
         String effectiveGroup = hasText(event.groupKey())
                 ? event.groupKey().trim()
                 : DeviceIdMapping.groupKeyForDevice(event.deviceId()).orElse(event.deviceId());
         return groupKey != null && groupKey.equalsIgnoreCase(effectiveGroup);
+    }
+
+    private boolean isAdminDeviceEvent(CanonicalEventDto event) {
+        String adminDeviceId = appSettingsService.getAdminDeviceId();
+        return hasText(adminDeviceId) && adminDeviceId.equalsIgnoreCase(event.deviceId());
     }
 
     private boolean hasText(String value) {

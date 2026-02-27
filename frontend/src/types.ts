@@ -14,7 +14,11 @@ export type EventCategory =
 export type EventFeedStage = 'BEFORE_PIPELINE' | 'AFTER_PIPELINE';
 
 export type DeviceCommandType = 'LED_GREEN' | 'LED_ORANGE' | 'COUNTER_RESET';
-export type StudentDeviceScope = 'OWN_DEVICE' | 'ADMIN_DEVICE' | 'ALL_DEVICES';
+export type StudentDeviceScope =
+  | 'OWN_DEVICE'
+  | 'OWN_AND_ADMIN_DEVICE'
+  | 'ADMIN_DEVICE'
+  | 'ALL_DEVICES';
 export type TimestampValue = string | number | null;
 
 export interface AuthMe {

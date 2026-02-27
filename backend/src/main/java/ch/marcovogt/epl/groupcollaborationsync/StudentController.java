@@ -189,6 +189,12 @@ public class StudentController {
                 String adminDeviceId = appSettingsService.getAdminDeviceId();
                 yield adminDeviceId != null && adminDeviceId.equalsIgnoreCase(targetDeviceId);
             }
+            case OWN_AND_ADMIN_DEVICE -> {
+                String adminDeviceId = appSettingsService.getAdminDeviceId();
+                boolean isOwn = studentGroupKey != null && studentGroupKey.equalsIgnoreCase(targetDeviceId);
+                boolean isAdmin = adminDeviceId != null && adminDeviceId.equalsIgnoreCase(targetDeviceId);
+                yield isOwn || isAdmin;
+            }
             case OWN_DEVICE -> studentGroupKey != null && studentGroupKey.equalsIgnoreCase(targetDeviceId);
         };
     }

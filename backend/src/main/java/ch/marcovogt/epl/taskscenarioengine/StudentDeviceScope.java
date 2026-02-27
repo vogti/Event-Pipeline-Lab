@@ -4,6 +4,7 @@ import java.util.Locale;
 
 public enum StudentDeviceScope {
     OWN_DEVICE,
+    OWN_AND_ADMIN_DEVICE,
     ADMIN_DEVICE,
     ALL_DEVICES;
 

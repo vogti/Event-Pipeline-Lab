@@ -58,10 +58,14 @@ public class RealtimeSyncService {
         }
 
         if (scope == StudentDeviceScope.ADMIN_DEVICE) {
-            String adminDeviceId = appSettingsService.getAdminDeviceId();
-            if (adminDeviceId != null && adminDeviceId.equalsIgnoreCase(eventDto.deviceId())) {
+            if (isAdminDeviceEvent(eventDto)) {
                 studentBroadcaster.broadcastToAll("event.feed.append", eventDto);
             }
+            return;
+        }
+
+        if (scope == StudentDeviceScope.OWN_AND_ADMIN_DEVICE && isAdminDeviceEvent(eventDto)) {
+            studentBroadcaster.broadcastToAll("event.feed.append", eventDto);
             return;
         }
 
@@ -87,10 +91,14 @@ public class RealtimeSyncService {
         }
 
         if (scope == StudentDeviceScope.ADMIN_DEVICE) {
-            String adminDeviceId = appSettingsService.getAdminDeviceId();
-            if (adminDeviceId != null && adminDeviceId.equalsIgnoreCase(eventDto.deviceId())) {
+            if (isAdminDeviceEvent(eventDto)) {
                 studentBroadcaster.broadcastToAll("event.pipeline.append", eventDto);
             }
+            return;
+        }
+
+        if (scope == StudentDeviceScope.OWN_AND_ADMIN_DEVICE && isAdminDeviceEvent(eventDto)) {
+            studentBroadcaster.broadcastToAll("event.pipeline.append", eventDto);
             return;
         }
 
@@ -192,5 +200,10 @@ public class RealtimeSyncService {
             return eventDto.groupKey();
         }
         return DeviceIdMapping.groupKeyForDevice(eventDto.deviceId()).orElse(null);
+    }
+
+    private boolean isAdminDeviceEvent(CanonicalEventDto eventDto) {
+        String adminDeviceId = appSettingsService.getAdminDeviceId();
+        return adminDeviceId != null && adminDeviceId.equalsIgnoreCase(eventDto.deviceId());
     }
 }

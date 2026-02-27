@@ -195,7 +195,12 @@ function toggleStringInList(values: string[], value: string, enabled: boolean): 
 }
 
 function normalizeStudentDeviceScope(raw: string | null | undefined): StudentDeviceScope {
-  if (raw === 'ADMIN_DEVICE' || raw === 'ALL_DEVICES' || raw === 'OWN_DEVICE') {
+  if (
+    raw === 'ADMIN_DEVICE'
+    || raw === 'ALL_DEVICES'
+    || raw === 'OWN_DEVICE'
+    || raw === 'OWN_AND_ADMIN_DEVICE'
+  ) {
     return raw;
   }
   return 'OWN_DEVICE';
@@ -835,6 +840,13 @@ export default function App() {
       }
       if (scope === 'ADMIN_DEVICE') {
         return adminDeviceId;
+      }
+      if (scope === 'OWN_AND_ADMIN_DEVICE') {
+        const trimmed = previous.trim();
+        if (trimmed && (trimmed === ownDeviceId || trimmed === adminDeviceId)) {
+          return trimmed;
+        }
+        return ownDeviceId;
       }
       return previous.trim() ? previous : ownDeviceId;
     });
@@ -2117,6 +2129,8 @@ export default function App() {
       ? ownDeviceId
       : scope === 'ADMIN_DEVICE'
         ? adminDeviceId
+        : scope === 'OWN_AND_ADMIN_DEVICE'
+          ? studentCommandTargetDeviceId.trim()
         : studentCommandTargetDeviceId.trim();
     if (!targetDeviceId) {
       setErrorMessage(t('invalidInput'));
@@ -3813,6 +3827,8 @@ export default function App() {
                     ? ownDeviceId
                     : scope === 'ADMIN_DEVICE'
                       ? adminDeviceId
+                      : scope === 'OWN_AND_ADMIN_DEVICE'
+                        ? studentCommandTargetDeviceId.trim()
                       : studentCommandTargetDeviceId.trim();
                   return busyKey === `student-command-${command}-${String(on)}-${targetDeviceId}`;
                 }}

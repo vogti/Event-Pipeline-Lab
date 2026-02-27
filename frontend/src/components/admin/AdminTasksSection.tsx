@@ -407,6 +407,7 @@ export function AdminTasksSection({
                     }
                   >
                     <option value="OWN_DEVICE">{t('taskDeviceScopeOwn')}</option>
+                    <option value="OWN_AND_ADMIN_DEVICE">{t('taskDeviceScopeOwnAdmin')}</option>
                     <option value="ADMIN_DEVICE">{t('taskDeviceScopeAdmin')}</option>
                     <option value="ALL_DEVICES">{t('taskDeviceScopeAll')}</option>
                   </select>
@@ -422,6 +423,7 @@ export function AdminTasksSection({
                     }
                   >
                     <option value="OWN_DEVICE">{t('taskDeviceScopeOwn')}</option>
+                    <option value="OWN_AND_ADMIN_DEVICE">{t('taskDeviceScopeOwnAdmin')}</option>
                     <option value="ADMIN_DEVICE">{t('taskDeviceScopeAdmin')}</option>
                     <option value="ALL_DEVICES">{t('taskDeviceScopeAll')}</option>
                   </select>
