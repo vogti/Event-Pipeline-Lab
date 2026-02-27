@@ -1,3 +1,8 @@
+.pipeline-builder {
+  display: grid;
+  gap: 0.8rem;
+}
+
 .pipeline-builder .panel-header {
   align-items: center;
   display: flex;

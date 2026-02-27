@@ -308,28 +308,30 @@ export function PipelineBuilderSection({
   };
 
   return (
-    <section className="panel panel-animate pipeline-builder full-width">
-      <header className="panel-header">
-        <h3>{title}</h3>
-        <div className="pipeline-builder-actions">
-          <button className="button small" type="button" onClick={onSave} disabled={saveBusy || !hasEditableSection}>
-            {saveBusy ? t('loading') : t('pipelineSave')}
-          </button>
-        </div>
-      </header>
-      {contextNotice ? (
-        <div className="pipeline-context-banner">
-          <span>{contextNotice}</span>
-          {onContextAction && contextActionLabel ? (
-            <button className="button tiny secondary" type="button" onClick={onContextAction}>
-              {contextActionLabel}
+    <section className="pipeline-builder full-width">
+      <article className="panel panel-animate pipeline-builder-toolbar full-width">
+        <header className="panel-header">
+          <h3>{title}</h3>
+          <div className="pipeline-builder-actions">
+            <button className="button small" type="button" onClick={onSave} disabled={saveBusy || !hasEditableSection}>
+              {saveBusy ? t('loading') : t('pipelineSave')}
             </button>
-          ) : null}
-        </div>
-      ) : null}
+          </div>
+        </header>
+        {contextNotice ? (
+          <div className="pipeline-context-banner">
+            <span>{contextNotice}</span>
+            {onContextAction && contextActionLabel ? (
+              <button className="button tiny secondary" type="button" onClick={onContextAction}>
+                {contextActionLabel}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+      </article>
 
       <div className="pipeline-sections">
-        <article className="pipeline-panel pipeline-panel-input">
+        <article className="panel panel-animate full-width pipeline-panel pipeline-panel-input">
           <h4>{t('pipelineInput')}</h4>
           <label className="stack pipeline-field">
             <span>{t('pipelineInputMode')}</span>
@@ -448,7 +450,7 @@ export function PipelineBuilderSection({
           {!view.permissions.inputEditable ? <p className="muted">{t('pipelineReadOnlyTask')}</p> : null}
         </article>
 
-        <article className="pipeline-panel pipeline-processing-panel">
+        <article className="panel panel-animate full-width pipeline-panel pipeline-processing-panel">
           <h4>{t('pipelineProcessing')}</h4>
           <div className="pipeline-builder-workbench">
             <section className="pipeline-block-library">
@@ -474,9 +476,6 @@ export function PipelineBuilderSection({
             </section>
 
             <section className="pipeline-flow-board" onDragLeave={() => setDragOverSlotIndex(null)}>
-              <div className="pipeline-flow-node endpoint">
-                <span className="pipeline-flow-node-title">{t('pipelineInput')}</span>
-              </div>
               {processingSlots.map((slot) => {
                 const isEmpty = slot.blockType === 'NONE';
                 const isDropTarget = dragOverSlotIndex === slot.index;
@@ -484,9 +483,11 @@ export function PipelineBuilderSection({
                 const slotDeviceScope = normalizeSlotDeviceScope(slot.config.deviceScope);
                 return (
                   <Fragment key={slot.index}>
-                    <div className="pipeline-flow-connector" aria-hidden="true">
-                      <span className="pipeline-flow-arrow">→</span>
-                    </div>
+                    {slot.index > 0 ? (
+                      <div className="pipeline-flow-connector" aria-hidden="true">
+                        <span className="pipeline-flow-arrow">→</span>
+                      </div>
+                    ) : null}
                     <div
                       className={`pipeline-flow-node slot ${isEmpty ? 'empty' : 'filled'} ${
                         isDropTarget ? 'drag-over' : ''
@@ -550,18 +551,23 @@ export function PipelineBuilderSection({
                   </Fragment>
                 );
               })}
-              <div className="pipeline-flow-connector" aria-hidden="true">
-                <span className="pipeline-flow-arrow">→</span>
-              </div>
-              <div className="pipeline-flow-node endpoint">
-                <span className="pipeline-flow-node-title">{t('pipelineSink')}</span>
-              </div>
             </section>
           </div>
           {!view.permissions.processingEditable ? <p className="muted">{t('pipelineReadOnlyTask')}</p> : null}
+          <PipelineObservabilitySection
+            t={t}
+            observability={view.observability}
+            formatTs={formatTs}
+            canResetState={view.permissions.stateResetAllowed}
+            canRestartState={view.permissions.stateRestartAllowed}
+            controlsBusy={Boolean(stateControlBusy)}
+            onResetState={onResetState}
+            onRestartStateLost={onRestartStateLost}
+            onRestartStateRetained={onRestartStateRetained}
+          />
         </article>
 
-        <article className="pipeline-panel pipeline-panel-sink">
+        <article className="panel panel-animate full-width pipeline-panel pipeline-panel-sink">
           <h4>{t('pipelineSink')}</h4>
           <label className="stack pipeline-field">
             <span>{t('pipelineSinkTargets')}</span>
@@ -586,18 +592,6 @@ export function PipelineBuilderSection({
           {!view.permissions.sinkEditable ? <p className="muted">{t('pipelineReadOnlyTask')}</p> : null}
         </article>
       </div>
-
-      <PipelineObservabilitySection
-        t={t}
-        observability={view.observability}
-        formatTs={formatTs}
-        canResetState={view.permissions.stateResetAllowed}
-        canRestartState={view.permissions.stateRestartAllowed}
-        controlsBusy={Boolean(stateControlBusy)}
-        onResetState={onResetState}
-        onRestartStateLost={onRestartStateLost}
-        onRestartStateRetained={onRestartStateRetained}
-      />
     </section>
   );
 }
