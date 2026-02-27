@@ -107,13 +107,15 @@ public class PipelineSinkExecutionService {
 
     private void publishSendEventSink(PipelineSinkNode sink, CanonicalEventDto inputEvent) {
         SendEventConfig config = parseSendEventConfig(sink.config());
-        if (config.topic().isBlank() || config.payload().isBlank()) {
+        if (config.topic().isBlank()) {
             return;
         }
-        if (inputEvent != null
-                && config.topic().equals(inputEvent.topic())
-                && config.payload().equals(inputEvent.payloadJson())) {
-            log.debug("Skipped SEND_EVENT sink publish to prevent topic/payload echo loop on {}", config.topic());
+        String outgoingPayload = inputEvent != null ? inputEvent.payloadJson() : config.payload();
+        if (outgoingPayload == null || outgoingPayload.isBlank()) {
+            return;
+        }
+        if (inputEvent != null && config.topic().equals(inputEvent.topic())) {
+            log.debug("Skipped SEND_EVENT sink publish to prevent topic echo loop on {}", config.topic());
             return;
         }
         MqttCommandPublisher mqttCommandPublisher = mqttCommandPublisherProvider.getIfAvailable();
@@ -122,7 +124,7 @@ public class PipelineSinkExecutionService {
             return;
         }
         try {
-            mqttCommandPublisher.publishCustom(config.topic(), config.payload(), config.qos(), config.retained());
+            mqttCommandPublisher.publishCustom(config.topic(), outgoingPayload, config.qos(), config.retained());
         } catch (RuntimeException ex) {
             log.warn(
                     "SEND_EVENT sink publish failed sinkId={} topic={} reason={}",
