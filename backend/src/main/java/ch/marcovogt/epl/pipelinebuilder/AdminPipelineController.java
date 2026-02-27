@@ -111,6 +111,28 @@ public class AdminPipelineController {
         return updated;
     }
 
+    @PostMapping("/sink/reset")
+    public PipelineSinkRuntimeUpdateDto resetSinkRuntime(
+            HttpServletRequest request,
+            @Valid @RequestBody AdminPipelineSinkResetRequest body
+    ) {
+        SessionPrincipal principal = requestAuth.requireRole(request, AppRole.ADMIN);
+        PipelineSinkRuntimeUpdateDto update = pipelineStateService.resetAdminSinkRuntime(body.groupKey(), body.sinkId());
+        realtimeSyncService.broadcastPipelineSinkRuntime(update);
+
+        adminAuditLogger.logAction(
+                "admin.pipeline.sink.reset",
+                principal.username(),
+                Map.of(
+                        "taskId", update.taskId(),
+                        "groupKey", update.groupKey(),
+                        "sinkId", body.sinkId()
+                )
+        );
+
+        return update;
+    }
+
     @GetMapping("/log-mode/status")
     public PipelineLogModeStatusDto logModeStatus(HttpServletRequest request) {
         requestAuth.requireRole(request, AppRole.ADMIN);

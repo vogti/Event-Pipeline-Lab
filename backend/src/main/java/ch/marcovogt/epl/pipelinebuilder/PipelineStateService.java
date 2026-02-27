@@ -34,6 +34,7 @@ public class PipelineStateService {
     private final PipelineStateRepository pipelineStateRepository;
     private final TaskStateService taskStateService;
     private final PipelineObservabilityService pipelineObservabilityService;
+    private final PipelineSinkExecutionService pipelineSinkExecutionService;
     private final FeedScenarioService feedScenarioService;
     private final ObjectMapper objectMapper;
     private final Clock clock;
@@ -42,12 +43,14 @@ public class PipelineStateService {
             PipelineStateRepository pipelineStateRepository,
             TaskStateService taskStateService,
             PipelineObservabilityService pipelineObservabilityService,
+            PipelineSinkExecutionService pipelineSinkExecutionService,
             FeedScenarioService feedScenarioService,
             ObjectMapper objectMapper
     ) {
         this.pipelineStateRepository = pipelineStateRepository;
         this.taskStateService = taskStateService;
         this.pipelineObservabilityService = pipelineObservabilityService;
+        this.pipelineSinkExecutionService = pipelineSinkExecutionService;
         this.feedScenarioService = feedScenarioService;
         this.objectMapper = objectMapper;
         this.clock = Clock.systemUTC();
@@ -77,6 +80,11 @@ public class PipelineStateService {
                 normalizedGroupKey,
                 effective.processing()
         );
+        PipelineSinkRuntimeSection sinkRuntime = pipelineSinkExecutionService.snapshot(
+                task.id(),
+                normalizedGroupKey,
+                effective.sink()
+        );
 
         return new PipelineViewDto(
                 task.id(),
@@ -84,6 +92,7 @@ public class PipelineStateService {
                 effective.input(),
                 effective.processing(),
                 effective.sink(),
+                sinkRuntime,
                 new PipelinePermissions(
                         config.visibleToStudents(),
                         false,
@@ -152,6 +161,11 @@ public class PipelineStateService {
                 normalizedGroupKey,
                 effective.processing()
         );
+        PipelineSinkRuntimeSection sinkRuntime = pipelineSinkExecutionService.snapshot(
+                task.id(),
+                normalizedGroupKey,
+                effective.sink()
+        );
 
         return new PipelineViewDto(
                 task.id(),
@@ -159,6 +173,7 @@ public class PipelineStateService {
                 effective.input(),
                 effective.processing(),
                 effective.sink(),
+                sinkRuntime,
                 new PipelinePermissions(
                         true,
                         config.lecturerMode(),
@@ -231,6 +246,19 @@ public class PipelineStateService {
 
     @Transactional
     public PipelineEventProcessingResult recordObservabilityAndProjectEvent(CanonicalEventDto eventDto) {
+        return recordObservabilityAndProjectEvent(eventDto, true);
+    }
+
+    @Transactional
+    public PipelineObservabilityUpdateDto recordObservabilityEvent(CanonicalEventDto eventDto) {
+        PipelineEventProcessingResult result = recordObservabilityAndProjectEvent(eventDto, false);
+        return result == null ? null : result.observabilityUpdate();
+    }
+
+    private PipelineEventProcessingResult recordObservabilityAndProjectEvent(
+            CanonicalEventDto eventDto,
+            boolean executeSinks
+    ) {
         String resolvedGroupKey = eventDto.groupKey();
         if (resolvedGroupKey == null || resolvedGroupKey.isBlank()) {
             resolvedGroupKey = DeviceIdMapping.groupKeyForDevice(eventDto.deviceId()).orElse(null);
@@ -258,6 +286,16 @@ public class PipelineStateService {
                 effective.processing(),
                 eventDto
         );
+        PipelineSinkRuntimeUpdateDto sinkRuntimeUpdate = null;
+        if (projected != null && executeSinks) {
+            PipelineSinkRuntimeSection sinkRuntime = pipelineSinkExecutionService.processProjectedEvent(
+                    task.id(),
+                    groupKey,
+                    effective.sink(),
+                    projected
+            );
+            sinkRuntimeUpdate = new PipelineSinkRuntimeUpdateDto(task.id(), groupKey, sinkRuntime);
+        }
         PipelineObservabilityDto observability = pipelineObservabilityService.snapshot(
                 task.id(),
                 groupKey,
@@ -265,14 +303,9 @@ public class PipelineStateService {
         );
         return new PipelineEventProcessingResult(
                 new PipelineObservabilityUpdateDto(task.id(), groupKey, observability),
-                projected
+                projected,
+                sinkRuntimeUpdate
         );
-    }
-
-    @Transactional
-    public PipelineObservabilityUpdateDto recordObservabilityEvent(CanonicalEventDto eventDto) {
-        PipelineEventProcessingResult result = recordObservabilityAndProjectEvent(eventDto);
-        return result == null ? null : result.observabilityUpdate();
     }
 
     @Transactional
@@ -299,6 +332,52 @@ public class PipelineStateService {
         PipelineViewDto view = getStudentViewForGroup(groupKey);
         applyStateControl(task.id(), groupKey, view.processing(), action);
         return getStudentViewForGroup(groupKey);
+    }
+
+    @Transactional
+    public PipelineSinkRuntimeUpdateDto resetStudentSinkRuntime(SessionPrincipal principal, String sinkId) {
+        String groupKey = normalizeGroupKey(principal.groupKey());
+        TaskDefinition task = taskStateService.getActiveTask();
+        PipelineTaskConfig config = task.pipeline();
+        PipelineStatePayload defaults = defaultPayload(config);
+
+        PipelineState groupState = loadOrCreate(task.id(), PipelineOwnerType.GROUP, groupKey, defaults);
+        PipelineStatePayload groupPayload = deserializeOrDefault(groupState.getStateJson(), defaults);
+        PipelineState globalState = config.lecturerMode()
+                ? loadOrCreate(task.id(), PipelineOwnerType.ADMIN_GLOBAL, GLOBAL_OWNER_KEY, defaults)
+                : null;
+        PipelineStatePayload effective = effectivePayload(config, groupPayload, globalState, defaults);
+
+        PipelineSinkRuntimeSection sinkRuntime = pipelineSinkExecutionService.resetSinkCounter(
+                task.id(),
+                groupKey,
+                effective.sink(),
+                sinkId
+        );
+        return new PipelineSinkRuntimeUpdateDto(task.id(), groupKey, sinkRuntime);
+    }
+
+    @Transactional
+    public PipelineSinkRuntimeUpdateDto resetAdminSinkRuntime(String groupKey, String sinkId) {
+        String normalizedGroupKey = normalizeGroupKey(groupKey);
+        TaskDefinition task = taskStateService.getActiveTask();
+        PipelineTaskConfig config = task.pipeline();
+        PipelineStatePayload defaults = defaultPayload(config);
+
+        PipelineState groupState = loadOrCreate(task.id(), PipelineOwnerType.GROUP, normalizedGroupKey, defaults);
+        PipelineStatePayload groupPayload = deserializeOrDefault(groupState.getStateJson(), defaults);
+        PipelineState globalState = config.lecturerMode()
+                ? loadOrCreate(task.id(), PipelineOwnerType.ADMIN_GLOBAL, GLOBAL_OWNER_KEY, defaults)
+                : null;
+        PipelineStatePayload effective = effectivePayload(config, groupPayload, globalState, defaults);
+
+        PipelineSinkRuntimeSection sinkRuntime = pipelineSinkExecutionService.resetSinkCounter(
+                task.id(),
+                normalizedGroupKey,
+                effective.sink(),
+                sinkId
+        );
+        return new PipelineSinkRuntimeUpdateDto(task.id(), normalizedGroupKey, sinkRuntime);
     }
 
     private void applyStateControl(
@@ -366,6 +445,7 @@ public class PipelineStateService {
         pipelineStateRepository.deleteAll(states);
         for (String taskId : affectedTaskIds) {
             pipelineObservabilityService.reset(taskId, normalizedGroupKey);
+            pipelineSinkExecutionService.resetAllForGroup(taskId, normalizedGroupKey);
         }
         return states.size();
     }
@@ -489,7 +569,10 @@ public class PipelineStateService {
                 PipelineBlockLibrary.allBlocks(),
                 false
         );
-        PipelineSinkSection sink = new PipelineSinkSection(config.sinkTargets(), config.sinkGoal());
+        PipelineSinkSection sink = normalizeSink(
+                new PipelineSinkSection(defaultSinkNodesFromTargets(config.sinkTargets()), config.sinkTargets(), config.sinkGoal()),
+                null
+        );
         return new PipelineStatePayload(input, processing, sink);
     }
 
@@ -559,10 +642,135 @@ public class PipelineStateService {
     private PipelineSinkSection normalizeSink(PipelineSinkSection source, PipelineSinkSection fallback) {
         PipelineSinkSection base = source == null ? fallback : source;
         if (base == null) {
-            return new PipelineSinkSection(List.of("DEVICE_CONTROL"), "");
+            List<PipelineSinkNode> defaults = List.of(
+                    new PipelineSinkNode(PipelineSinkLibrary.EVENT_FEED_ID, PipelineSinkLibrary.EVENT_FEED, Map.of())
+            );
+            return new PipelineSinkSection(defaults, List.of(), "");
         }
         String goal = base.goal() == null ? "" : base.goal().trim();
-        return new PipelineSinkSection(sanitizeStringList(base.targets(), 10), goal);
+        List<PipelineSinkNode> nodes = sanitizeSinkNodes(base.nodes(), base.targets());
+        return new PipelineSinkSection(nodes, legacyTargetsFromNodes(nodes), goal);
+    }
+
+    private List<PipelineSinkNode> defaultSinkNodesFromTargets(List<String> targets) {
+        return sanitizeSinkNodes(List.of(), targets);
+    }
+
+    private List<PipelineSinkNode> sanitizeSinkNodes(List<PipelineSinkNode> rawNodes, List<String> legacyTargets) {
+        List<PipelineSinkNode> candidates = new ArrayList<>();
+        if (rawNodes != null) {
+            candidates.addAll(rawNodes);
+        }
+        if (candidates.isEmpty() && legacyTargets != null) {
+            for (String target : legacyTargets) {
+                String sinkType = PipelineSinkLibrary.normalizeType(target);
+                candidates.add(new PipelineSinkNode(
+                        PipelineSinkLibrary.defaultIdForType(sinkType),
+                        sinkType,
+                        Map.of()
+                ));
+            }
+        }
+
+        List<PipelineSinkNode> normalized = new ArrayList<>();
+        normalized.add(new PipelineSinkNode(
+                PipelineSinkLibrary.EVENT_FEED_ID,
+                PipelineSinkLibrary.EVENT_FEED,
+                Map.of()
+        ));
+
+        LinkedHashSet<String> addedTypes = new LinkedHashSet<>();
+        addedTypes.add(PipelineSinkLibrary.EVENT_FEED);
+
+        for (PipelineSinkNode node : candidates) {
+            if (node == null) {
+                continue;
+            }
+            String sinkType = PipelineSinkLibrary.normalizeType(node.type());
+            if (addedTypes.contains(sinkType)) {
+                continue;
+            }
+            if (PipelineSinkLibrary.SEND_EVENT.equals(sinkType)) {
+                normalized.add(new PipelineSinkNode(
+                        PipelineSinkLibrary.defaultIdForType(sinkType),
+                        sinkType,
+                        sanitizeSendEventSinkConfig(node.config())
+                ));
+                addedTypes.add(sinkType);
+                continue;
+            }
+            if (PipelineSinkLibrary.VIRTUAL_SIGNAL.equals(sinkType)) {
+                normalized.add(new PipelineSinkNode(
+                        PipelineSinkLibrary.defaultIdForType(sinkType),
+                        sinkType,
+                        Map.of()
+                ));
+                addedTypes.add(sinkType);
+            }
+        }
+
+        return List.copyOf(normalized);
+    }
+
+    private Map<String, Object> sanitizeSendEventSinkConfig(Map<String, Object> rawConfig) {
+        if (rawConfig == null || rawConfig.isEmpty()) {
+            return Map.of("topic", "", "payload", "", "qos", 1, "retained", false);
+        }
+        Object topicRaw = rawConfig.get("topic");
+        String topic = topicRaw == null ? "" : String.valueOf(topicRaw).trim();
+        Object payloadRaw = rawConfig.get("payload");
+        String payload = payloadRaw == null ? "" : String.valueOf(payloadRaw);
+
+        Object qosRaw = rawConfig.get("qos");
+        int qos = 1;
+        if (qosRaw instanceof Number number) {
+            qos = number.intValue();
+        } else if (qosRaw instanceof String text) {
+            try {
+                qos = Integer.parseInt(text.trim());
+            } catch (NumberFormatException ignored) {
+                qos = 1;
+            }
+        }
+        if (qos < 0 || qos > 2) {
+            qos = 1;
+        }
+
+        Object retainedRaw = rawConfig.get("retained");
+        boolean retained;
+        if (retainedRaw instanceof Boolean value) {
+            retained = value;
+        } else if (retainedRaw instanceof Number number) {
+            retained = number.intValue() != 0;
+        } else {
+            retained = "true".equalsIgnoreCase(String.valueOf(retainedRaw));
+        }
+
+        return Map.of(
+                "topic", topic,
+                "payload", payload,
+                "qos", qos,
+                "retained", retained
+        );
+    }
+
+    private List<String> legacyTargetsFromNodes(List<PipelineSinkNode> nodes) {
+        if (nodes == null || nodes.isEmpty()) {
+            return List.of();
+        }
+        LinkedHashSet<String> targets = new LinkedHashSet<>();
+        for (PipelineSinkNode node : nodes) {
+            if (node == null) {
+                continue;
+            }
+            String sinkType = PipelineSinkLibrary.normalizeType(node.type());
+            if (PipelineSinkLibrary.SEND_EVENT.equals(sinkType)) {
+                targets.add("DEVICE_CONTROL");
+            } else if (PipelineSinkLibrary.VIRTUAL_SIGNAL.equals(sinkType)) {
+                targets.add("VIRTUAL_SIGNAL");
+            }
+        }
+        return List.copyOf(targets);
     }
 
     private PipelineProcessingSection normalizeProcessing(

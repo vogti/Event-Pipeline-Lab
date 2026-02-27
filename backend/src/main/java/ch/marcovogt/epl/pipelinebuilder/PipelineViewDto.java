@@ -8,6 +8,7 @@ public record PipelineViewDto(
         PipelineInputSection input,
         PipelineProcessingSection processing,
         PipelineSinkSection sink,
+        PipelineSinkRuntimeSection sinkRuntime,
         PipelinePermissions permissions,
         PipelineObservabilityDto observability,
         long revision,

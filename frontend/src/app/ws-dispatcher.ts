@@ -4,6 +4,7 @@ import type {
   DeviceStatus,
   GroupConfig,
   PipelineObservabilityUpdate,
+  PipelineSinkRuntimeUpdate,
   PipelineView,
   PresenceUser,
   FeedScenarioConfig,
@@ -29,6 +30,7 @@ export type WsEventType =
   | 'admin.groups.updated'
   | 'pipeline.state.updated'
   | 'pipeline.observability.updated'
+  | 'pipeline.sink.runtime.updated'
   | 'scenarios.updated';
 
 export interface WsPayloadByType {
@@ -45,6 +47,7 @@ export interface WsPayloadByType {
   'admin.groups.updated': unknown;
   'pipeline.state.updated': PipelineView;
   'pipeline.observability.updated': PipelineObservabilityUpdate;
+  'pipeline.sink.runtime.updated': PipelineSinkRuntimeUpdate;
   'scenarios.updated': FeedScenarioConfig;
 }
 
@@ -167,6 +170,12 @@ export function dispatchWsEnvelope(
       handlers['pipeline.observability.updated']?.(
         envelope.payload as WsPayloadByType['pipeline.observability.updated'],
         toKnownEnvelope(envelope, 'pipeline.observability.updated')
+      );
+      return true;
+    case 'pipeline.sink.runtime.updated':
+      handlers['pipeline.sink.runtime.updated']?.(
+        envelope.payload as WsPayloadByType['pipeline.sink.runtime.updated'],
+        toKnownEnvelope(envelope, 'pipeline.sink.runtime.updated')
       );
       return true;
     case 'scenarios.updated':

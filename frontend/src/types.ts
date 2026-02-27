@@ -243,8 +243,26 @@ export interface PipelineProcessingSection {
 }
 
 export interface PipelineSinkSection {
+  nodes: PipelineSinkNode[];
   targets: string[];
   goal: string;
+}
+
+export interface PipelineSinkNode {
+  id: string;
+  type: 'EVENT_FEED' | 'SEND_EVENT' | 'VIRTUAL_SIGNAL' | string;
+  config: Record<string, unknown>;
+}
+
+export interface PipelineSinkRuntimeNode {
+  sinkId: string;
+  sinkType: string;
+  receivedCount: number;
+  lastReceivedAt: TimestampValue;
+}
+
+export interface PipelineSinkRuntimeSection {
+  nodes: PipelineSinkRuntimeNode[];
 }
 
 export interface PipelinePermissions {
@@ -309,11 +327,18 @@ export interface PipelineView {
   input: PipelineInputSection;
   processing: PipelineProcessingSection;
   sink: PipelineSinkSection;
+  sinkRuntime: PipelineSinkRuntimeSection;
   permissions: PipelinePermissions;
   observability: PipelineObservability;
   revision: number;
   updatedAt: TimestampValue;
   updatedBy: string;
+}
+
+export interface PipelineSinkRuntimeUpdate {
+  taskId: string;
+  groupKey: string;
+  sinkRuntime: PipelineSinkRuntimeSection;
 }
 
 export interface PipelineObservabilityUpdate {

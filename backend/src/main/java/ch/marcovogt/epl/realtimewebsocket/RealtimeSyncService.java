@@ -10,6 +10,7 @@ import ch.marcovogt.epl.eventfeedquery.FeedScenarioConfigDto;
 import ch.marcovogt.epl.eventingestionnormalization.CanonicalEventDto;
 import ch.marcovogt.epl.groupcollaborationsync.GroupConfigDto;
 import ch.marcovogt.epl.pipelinebuilder.PipelineObservabilityUpdateDto;
+import ch.marcovogt.epl.pipelinebuilder.PipelineSinkRuntimeUpdateDto;
 import ch.marcovogt.epl.pipelinebuilder.PipelineViewDto;
 import ch.marcovogt.epl.taskscenarioengine.StudentDeviceScope;
 import ch.marcovogt.epl.taskscenarioengine.TaskCapabilities;
@@ -193,6 +194,11 @@ public class RealtimeSyncService {
     public void broadcastPipelineObservability(PipelineObservabilityUpdateDto update) {
         studentBroadcaster.broadcastToGroup(update.groupKey(), "pipeline.observability.updated", update);
         adminBroadcaster.broadcast("pipeline.observability.updated", update);
+    }
+
+    public void broadcastPipelineSinkRuntime(PipelineSinkRuntimeUpdateDto update) {
+        studentBroadcaster.broadcastToGroup(update.groupKey(), "pipeline.sink.runtime.updated", update);
+        adminBroadcaster.broadcast("pipeline.sink.runtime.updated", update);
     }
 
     private String resolveGroupKey(CanonicalEventDto eventDto) {

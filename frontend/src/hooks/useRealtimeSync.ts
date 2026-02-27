@@ -38,6 +38,7 @@ import type {
   FeedScenarioConfig,
   LanguageMode,
   PipelineObservabilityUpdate,
+  PipelineSinkRuntimeUpdate,
   PipelineView,
   PresenceUser,
   TaskDefinitionPayload,
@@ -78,8 +79,13 @@ interface UseRealtimeSyncParams {
   selectedAdminPipelineGroupKeyRef: MutableRefObject<string>;
   onStudentPipelineUpdated: (view: PipelineView) => void;
   onStudentPipelineObservabilityUpdated: (update: PipelineObservabilityUpdate) => void;
+  onStudentPipelineSinkRuntimeUpdated: (update: PipelineSinkRuntimeUpdate) => void;
   onAdminPipelineUpdated: (view: PipelineView) => void;
   onAdminPipelineObservabilityUpdated: (update: PipelineObservabilityUpdate, selectedGroupKey: string) => void;
+  onAdminPipelineSinkRuntimeUpdated: (
+    update: PipelineSinkRuntimeUpdate,
+    selectedGroupKey: string
+  ) => void;
   onAdminPipelineObserved: (view: PipelineView, selectedGroupKey: string) => void;
 }
 
@@ -116,8 +122,10 @@ export function useRealtimeSync({
   selectedAdminPipelineGroupKeyRef,
   onStudentPipelineUpdated,
   onStudentPipelineObservabilityUpdated,
+  onStudentPipelineSinkRuntimeUpdated,
   onAdminPipelineUpdated,
   onAdminPipelineObservabilityUpdated,
+  onAdminPipelineSinkRuntimeUpdated,
   onAdminPipelineObserved
 }: UseRealtimeSyncParams): void {
   useEffect(() => {
@@ -481,6 +489,9 @@ export function useRealtimeSync({
       'pipeline.observability.updated': (update) => {
         onStudentPipelineObservabilityUpdated(update);
       },
+      'pipeline.sink.runtime.updated': (update) => {
+        onStudentPipelineSinkRuntimeUpdated(update);
+      },
       'scenarios.updated': (config) => {
         setFeedScenarioConfig((previous) => {
           if (
@@ -576,6 +587,10 @@ export function useRealtimeSync({
       'pipeline.observability.updated': (update) => {
         const selectedGroupKey = selectedAdminPipelineGroupKeyRef.current;
         onAdminPipelineObservabilityUpdated(update, selectedGroupKey);
+      },
+      'pipeline.sink.runtime.updated': (update) => {
+        const selectedGroupKey = selectedAdminPipelineGroupKeyRef.current;
+        onAdminPipelineSinkRuntimeUpdated(update, selectedGroupKey);
       },
       'scenarios.updated': (config) => {
         setFeedScenarioConfig((previous) => {
@@ -691,8 +706,10 @@ export function useRealtimeSync({
     markFeedEventsRecent,
     onAdminPipelineObserved,
     onAdminPipelineObservabilityUpdated,
+    onAdminPipelineSinkRuntimeUpdated,
     onAdminPipelineUpdated,
     onStudentPipelineObservabilityUpdated,
+    onStudentPipelineSinkRuntimeUpdated,
     onStudentPipelineUpdated,
     queueDeferredAdminFeedEvents,
     refreshAdminGroups,

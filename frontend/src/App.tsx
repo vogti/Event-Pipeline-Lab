@@ -13,6 +13,9 @@ import type {
   PipelineObservabilityUpdate,
   PipelineCompareRow,
   PipelineProcessingSection,
+  PipelineSinkNode,
+  PipelineSinkRuntimeUpdate,
+  PipelineSinkSection,
   StudentDeviceScope,
   TaskPipelineConfig,
   PipelineView,
@@ -124,6 +127,144 @@ function parsePipelineListInput(value: string): string[] {
     .split(/\r?\n|,/)
     .map((entry) => entry.trim())
     .filter((entry, index, array) => entry.length > 0 && array.indexOf(entry) === index);
+}
+
+function normalizePipelineSinkNodes(nodes: PipelineSinkNode[] | null | undefined): PipelineSinkNode[] {
+  const normalized = Array.isArray(nodes) ? [...nodes] : [];
+  const byType = new Map<string, PipelineSinkNode>();
+  for (const node of normalized) {
+    if (!node || typeof node.type !== 'string') {
+      continue;
+    }
+    const type = node.type.trim().toUpperCase();
+    if (!type || byType.has(type)) {
+      continue;
+    }
+    byType.set(type, {
+      id:
+        node.id?.trim() ||
+        (type === 'SEND_EVENT' ? 'send-event' : type === 'VIRTUAL_SIGNAL' ? 'virtual-signal' : 'event-feed'),
+      type,
+      config: node.config ?? {}
+    });
+  }
+
+  const result: PipelineSinkNode[] = [
+    {
+      id: 'event-feed',
+      type: 'EVENT_FEED',
+      config: {}
+    }
+  ];
+
+  const sendNode = byType.get('SEND_EVENT');
+  if (sendNode) {
+    result.push(sendNode);
+  }
+  const signalNode = byType.get('VIRTUAL_SIGNAL');
+  if (signalNode) {
+    result.push(signalNode);
+  }
+  return result;
+}
+
+function withNormalizedPipelineSinkSection(sink: PipelineSinkSection): PipelineSinkSection {
+  const nodes = normalizePipelineSinkNodes(sink.nodes);
+  const targets = nodes
+    .map((node) => node.type)
+    .filter((type) => type !== 'EVENT_FEED')
+    .map((type) => (type === 'SEND_EVENT' ? 'DEVICE_CONTROL' : type));
+  return {
+    ...sink,
+    nodes,
+    targets
+  };
+}
+
+function addPipelineSinkNode(
+  sink: PipelineSinkSection,
+  sinkType: 'SEND_EVENT' | 'VIRTUAL_SIGNAL'
+): PipelineSinkSection {
+  const current = normalizePipelineSinkNodes(sink.nodes);
+  if (current.some((node) => node.type === sinkType)) {
+    return withNormalizedPipelineSinkSection(sink);
+  }
+  const nextNode: PipelineSinkNode =
+    sinkType === 'SEND_EVENT'
+      ? {
+          id: 'send-event',
+          type: 'SEND_EVENT',
+          config: { topic: '', payload: '', qos: 1, retained: false }
+        }
+      : {
+          id: 'virtual-signal',
+          type: 'VIRTUAL_SIGNAL',
+          config: {}
+        };
+  return withNormalizedPipelineSinkSection({
+    ...sink,
+    nodes: [...current, nextNode]
+  });
+}
+
+function removePipelineSinkNode(sink: PipelineSinkSection, sinkId: string): PipelineSinkSection {
+  const current = normalizePipelineSinkNodes(sink.nodes);
+  const nextNodes = current.filter(
+    (node) => node.id !== sinkId || node.type === 'EVENT_FEED'
+  );
+  return withNormalizedPipelineSinkSection({
+    ...sink,
+    nodes: nextNodes
+  });
+}
+
+function updatePipelineSendEventSinkConfig(
+  sink: PipelineSinkSection,
+  sinkId: string,
+  config: Record<string, unknown>
+): PipelineSinkSection {
+  const current = normalizePipelineSinkNodes(sink.nodes);
+  const nextNodes = current.map((node) => {
+    if (node.id !== sinkId || node.type !== 'SEND_EVENT') {
+      return node;
+    }
+    return {
+      ...node,
+      config: {
+        topic: typeof config.topic === 'string' ? config.topic : '',
+        payload: typeof config.payload === 'string' ? config.payload : '',
+        qos:
+          typeof config.qos === 'number'
+            ? Math.max(0, Math.min(2, Math.round(config.qos)))
+            : Number.parseInt(String(config.qos ?? '1'), 10) || 1,
+        retained: Boolean(config.retained)
+      }
+    };
+  });
+  return withNormalizedPipelineSinkSection({
+    ...sink,
+    nodes: nextNodes
+  });
+}
+
+function applyPipelineSinkRuntimeUpdate(view: PipelineView, update: PipelineSinkRuntimeUpdate): PipelineView {
+  if (view.groupKey !== update.groupKey || view.taskId !== update.taskId) {
+    return view;
+  }
+  return {
+    ...view,
+    sinkRuntime: update.sinkRuntime
+  };
+}
+
+function normalizePipelineView(view: PipelineView): PipelineView {
+  return {
+    ...view,
+    sink: withNormalizedPipelineSinkSection(view.sink),
+    sinkRuntime: {
+      nodes: Array.isArray(view.sinkRuntime?.nodes) ? view.sinkRuntime.nodes : []
+    }
+  };
 }
 
 function setPipelineSlotBlock(
@@ -607,7 +748,7 @@ export default function App() {
       setBusyKey('admin-pipeline-load');
       setErrorMessage(null);
       try {
-        const view = await api.adminPipeline(token, groupKey);
+        const view = normalizePipelineView(await api.adminPipeline(token, groupKey));
         setAdminPipeline(view);
         setAdminPipelineDraft(view);
       } catch (error) {
@@ -676,12 +817,13 @@ export default function App() {
 
   const loadDashboards = useCallback(async (auth: AuthMe, activeToken: string) => {
     if (auth.role === 'STUDENT') {
-      const [bootstrap, pipeline, scenarios, pipelineEvents] = await Promise.all([
+      const [bootstrap, pipelineRaw, scenarios, pipelineEvents] = await Promise.all([
         api.studentBootstrap(activeToken),
         api.studentPipeline(activeToken),
         api.scenarios(activeToken),
         api.eventsFeed(activeToken, { limit: MAX_FEED_EVENTS, includeInternal: true, stage: 'AFTER_PIPELINE' })
       ]);
+      const pipeline = normalizePipelineView(pipelineRaw);
       setStudentData({
         activeTask: bootstrap.activeTask,
         capabilities: bootstrap.capabilities,
@@ -757,11 +899,12 @@ export default function App() {
       : Promise.resolve<TaskPipelineConfig | null>(null);
     const comparePromise = api.adminPipelineCompare(activeToken);
 
-    const [pipeline, taskConfig, compareRows] = await Promise.all([
+    const [pipelineRaw, taskConfig, compareRows] = await Promise.all([
       pipelinePromise,
       taskConfigPromise,
       comparePromise
     ]);
+    const pipeline = pipelineRaw ? normalizePipelineView(pipelineRaw) : null;
 
     setAdminPipeline(pipeline);
     setAdminPipelineDraft(pipeline);
@@ -871,8 +1014,9 @@ export default function App() {
         if (cancelled) {
           return;
         }
-        setStudentPipeline(view);
-        setStudentPipelineDraft(view.processing);
+        const normalized = normalizePipelineView(view);
+        setStudentPipeline(normalized);
+        setStudentPipelineDraft(normalized.processing);
       })
       .catch((error) => reportBackgroundError('studentPipeline', error));
 
@@ -1217,18 +1361,19 @@ export default function App() {
   });
 
   const applyStudentPipelineFromWs = useCallback((view: PipelineView) => {
+    const normalizedView = normalizePipelineView(view);
     setStudentPipeline((previous) => {
       if (
         previous &&
-        previous.taskId === view.taskId &&
-        previous.groupKey === view.groupKey &&
-        previous.revision === view.revision
+        previous.taskId === normalizedView.taskId &&
+        previous.groupKey === normalizedView.groupKey &&
+        previous.revision === normalizedView.revision
       ) {
         return previous;
       }
-      return view;
+      return normalizedView;
     });
-    setStudentPipelineDraft(view.processing);
+    setStudentPipelineDraft(normalizedView.processing);
   }, []);
 
   const applyStudentPipelineObservabilityFromWs = useCallback((update: PipelineObservabilityUpdate) => {
@@ -1246,19 +1391,29 @@ export default function App() {
     });
   }, []);
 
+  const applyStudentPipelineSinkRuntimeFromWs = useCallback((update: PipelineSinkRuntimeUpdate) => {
+    setStudentPipeline((previous) => {
+      if (!previous) {
+        return previous;
+      }
+      return applyPipelineSinkRuntimeUpdate(previous, update);
+    });
+  }, []);
+
   const applyAdminPipelineFromWs = useCallback((view: PipelineView) => {
+    const normalizedView = normalizePipelineView(view);
     setAdminPipeline((previous) => {
       if (
         previous &&
-        previous.taskId === view.taskId &&
-        previous.groupKey === view.groupKey &&
-        previous.revision === view.revision
+        previous.taskId === normalizedView.taskId &&
+        previous.groupKey === normalizedView.groupKey &&
+        previous.revision === normalizedView.revision
       ) {
         return previous;
       }
-      return view;
+      return normalizedView;
     });
-    setAdminPipelineDraft(view);
+    setAdminPipelineDraft(normalizedView);
   }, []);
 
   const applyAdminPipelineObservabilityFromWs = useCallback(
@@ -1294,21 +1449,43 @@ export default function App() {
     []
   );
 
+  const applyAdminPipelineSinkRuntimeFromWs = useCallback(
+    (update: PipelineSinkRuntimeUpdate, selectedGroupKey: string) => {
+      if (update.groupKey !== selectedGroupKey) {
+        return;
+      }
+      setAdminPipeline((previous) => {
+        if (!previous) {
+          return previous;
+        }
+        return applyPipelineSinkRuntimeUpdate(previous, update);
+      });
+      setAdminPipelineDraft((previous) => {
+        if (!previous) {
+          return previous;
+        }
+        return applyPipelineSinkRuntimeUpdate(previous, update);
+      });
+    },
+    []
+  );
+
   const applyAdminPipelineObservedFromWs = useCallback((view: PipelineView, selectedGroupKey: string) => {
+    const normalizedView = normalizePipelineView(view);
     setAdminPipelineCompareRows((previous) => {
       const nextRow: PipelineCompareRow = {
-        taskId: view.taskId,
-        groupKey: view.groupKey,
-        revision: view.revision,
-        updatedAt: view.updatedAt,
-        updatedBy: view.updatedBy,
-        slotBlocks: Array.from({ length: view.processing.slotCount }).map((_, index) => {
-          const slot = view.processing.slots.find((entry) => entry.index === index);
+        taskId: normalizedView.taskId,
+        groupKey: normalizedView.groupKey,
+        revision: normalizedView.revision,
+        updatedAt: normalizedView.updatedAt,
+        updatedBy: normalizedView.updatedBy,
+        slotBlocks: Array.from({ length: normalizedView.processing.slotCount }).map((_, index) => {
+          const slot = normalizedView.processing.slots.find((entry) => entry.index === index);
           return slot?.blockType ?? 'NONE';
         })
       };
 
-      const existingIndex = previous.findIndex((row) => row.groupKey === view.groupKey);
+      const existingIndex = previous.findIndex((row) => row.groupKey === normalizedView.groupKey);
       const next = existingIndex >= 0
         ? previous.map((row, index) => (index === existingIndex ? nextRow : row))
         : [...previous, nextRow];
@@ -1316,9 +1493,9 @@ export default function App() {
       return [...next].sort((left, right) => left.groupKey.localeCompare(right.groupKey));
     });
 
-    if (view.groupKey === selectedGroupKey) {
-      setAdminPipeline(view);
-      setAdminPipelineDraft(view);
+    if (normalizedView.groupKey === selectedGroupKey) {
+      setAdminPipeline(normalizedView);
+      setAdminPipelineDraft(normalizedView);
     }
   }, []);
 
@@ -1355,8 +1532,10 @@ export default function App() {
     selectedAdminPipelineGroupKeyRef: adminPipelineGroupKeyRef,
     onStudentPipelineUpdated: applyStudentPipelineFromWs,
     onStudentPipelineObservabilityUpdated: applyStudentPipelineObservabilityFromWs,
+    onStudentPipelineSinkRuntimeUpdated: applyStudentPipelineSinkRuntimeFromWs,
     onAdminPipelineUpdated: applyAdminPipelineFromWs,
     onAdminPipelineObservabilityUpdated: applyAdminPipelineObservabilityFromWs,
+    onAdminPipelineSinkRuntimeUpdated: applyAdminPipelineSinkRuntimeFromWs,
     onAdminPipelineObserved: applyAdminPipelineObservedFromWs
   });
 
@@ -1524,7 +1703,7 @@ export default function App() {
     setErrorMessage(null);
 
     try {
-      const updated = await api.updateStudentPipeline(token, studentPipelineDraft);
+      const updated = normalizePipelineView(await api.updateStudentPipeline(token, studentPipelineDraft));
       setStudentPipeline(updated);
       setStudentPipelineDraft(updated.processing);
       pushToast(t('pipelineUpdated'));
@@ -1542,10 +1721,31 @@ export default function App() {
     setBusyKey('student-pipeline-state');
     setErrorMessage(null);
     try {
-      const updated = await api.resetStudentPipelineState(token);
+      const updated = normalizePipelineView(await api.resetStudentPipelineState(token));
       setStudentPipeline(updated);
       setStudentPipelineDraft(updated.processing);
       pushToast(t('pipelineStateResetDone'));
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const resetStudentPipelineSinkCounter = async (sinkId: string) => {
+    if (!token || !studentPipeline || !sinkId.trim()) {
+      return;
+    }
+    setBusyKey('student-pipeline-sink');
+    setErrorMessage(null);
+    try {
+      const update = await api.resetStudentPipelineSinkCounter(token, sinkId.trim());
+      setStudentPipeline((previous) => {
+        if (!previous) {
+          return previous;
+        }
+        return applyPipelineSinkRuntimeUpdate(previous, update);
+      });
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
@@ -1632,13 +1832,13 @@ export default function App() {
     setBusyKey('admin-pipeline');
     setErrorMessage(null);
     try {
-      const updated = await api.updateAdminPipeline(
+      const updated = normalizePipelineView(await api.updateAdminPipeline(
         token,
         adminPipelineGroupKey,
         adminPipelineDraft.input,
         adminPipelineDraft.processing,
         adminPipelineDraft.sink
-      );
+      ));
       setAdminPipeline(updated);
       setAdminPipelineDraft(updated);
       pushToast(t('pipelineUpdated'));
@@ -1658,7 +1858,9 @@ export default function App() {
     setBusyKey('admin-pipeline-state');
     setErrorMessage(null);
     try {
-      const updated = await api.controlAdminPipelineState(token, adminPipelineGroupKey, action);
+      const updated = normalizePipelineView(
+        await api.controlAdminPipelineState(token, adminPipelineGroupKey, action)
+      );
       setAdminPipeline(updated);
       setAdminPipelineDraft(updated);
       if (action === 'RESET_STATE') {
@@ -1666,6 +1868,33 @@ export default function App() {
       } else {
         pushToast(t('pipelineRestartDone'));
       }
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const resetAdminPipelineSinkCounter = async (sinkId: string) => {
+    if (!token || !adminPipelineGroupKey || !sinkId.trim()) {
+      return;
+    }
+    setBusyKey('admin-pipeline-sink');
+    setErrorMessage(null);
+    try {
+      const update = await api.resetAdminPipelineSinkCounter(token, adminPipelineGroupKey, sinkId.trim());
+      setAdminPipeline((previous) => {
+        if (!previous) {
+          return previous;
+        }
+        return applyPipelineSinkRuntimeUpdate(previous, update);
+      });
+      setAdminPipelineDraft((previous) => {
+        if (!previous) {
+          return previous;
+        }
+        return applyPipelineSinkRuntimeUpdate(previous, update);
+      });
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
@@ -1803,32 +2032,38 @@ export default function App() {
     });
   }, []);
 
-  const changeAdminPipelineSinkTargets = useCallback((raw: string) => {
+  const addAdminPipelineSink = useCallback((sinkType: 'SEND_EVENT' | 'VIRTUAL_SIGNAL') => {
     setAdminPipelineDraft((previous) => {
       if (!previous) {
         return previous;
       }
       return {
         ...previous,
-        sink: {
-          ...previous.sink,
-          targets: parsePipelineListInput(raw)
-        }
+        sink: addPipelineSinkNode(previous.sink, sinkType)
       };
     });
   }, []);
 
-  const changeAdminPipelineSinkGoal = useCallback((goal: string) => {
+  const removeAdminPipelineSink = useCallback((sinkId: string) => {
     setAdminPipelineDraft((previous) => {
       if (!previous) {
         return previous;
       }
       return {
         ...previous,
-        sink: {
-          ...previous.sink,
-          goal
-        }
+        sink: removePipelineSinkNode(previous.sink, sinkId)
+      };
+    });
+  }, []);
+
+  const configureAdminPipelineSendSink = useCallback((sinkId: string, config: Record<string, unknown>) => {
+    setAdminPipelineDraft((previous) => {
+      if (!previous) {
+        return previous;
+      }
+      return {
+        ...previous,
+        sink: updatePipelineSendEventSinkConfig(previous.sink, sinkId, config)
       };
     });
   }, []);
@@ -3793,7 +4028,9 @@ export default function App() {
               onSave={saveStudentPipeline}
               saveBusy={busyKey === 'student-pipeline'}
               onResetState={resetStudentPipelineState}
+              onResetSinkCounter={resetStudentPipelineSinkCounter}
               stateControlBusy={busyKey === 'student-pipeline-state'}
+              sinkRuntimeBusy={busyKey === 'student-pipeline-sink'}
               formatTs={formatTs}
             />
 
@@ -4020,8 +4257,13 @@ export default function App() {
                   onInputModeChange={changeAdminPipelineInputMode}
                   onDeviceScopeChange={changeAdminPipelineDeviceScope}
                   onIngestFiltersChange={changeAdminPipelineIngestFilters}
-                  onSinkTargetsChange={changeAdminPipelineSinkTargets}
-                  onSinkGoalChange={changeAdminPipelineSinkGoal}
+                  onAddSink={addAdminPipelineSink}
+                  onRemoveSink={removeAdminPipelineSink}
+                  onConfigureSendEventSink={configureAdminPipelineSendSink}
+                  onResetSinkCounter={resetAdminPipelineSinkCounter}
+                  sinkRuntimeBusy={busyKey === 'admin-pipeline-sink'}
+                  physicalDeviceIds={adminPhysicalDeviceIds}
+                  virtualDeviceIds={adminVirtualDeviceIds}
                   lecturerDeviceAvailable={Boolean(adminConfiguredPipelineDevice)}
                   logModeStatus={adminPipelineLogModeStatus}
                   logModeStatusBusy={busyKey === 'admin-pipeline-log-status'}

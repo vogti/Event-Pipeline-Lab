@@ -1,11 +1,25 @@
-import { Fragment, useState, type DragEvent } from 'react';
+import { Fragment, useMemo, useState, type DragEvent } from 'react';
 import type { I18nKey } from '../../i18n';
+import {
+  buildGuidedMqttMessage,
+  createMqttEventDraft,
+  normalizeMqttTemplateForTarget,
+  resolveMqttDeviceId
+} from '../../app/mqtt-composer';
+import type {
+  MqttComposerMode,
+  MqttComposerTargetType,
+  MqttComposerTemplate,
+  MqttEventDraft
+} from '../../app/shared-types';
+import { AdminMqttEventModal } from '../admin/AdminMqttEventModal';
 import type {
   PipelineBlockObservability,
   PipelineLogModeStatus,
   PipelineLogReplayResponse,
   PipelineProcessingSection,
   PipelineSampleEvent,
+  PipelineSinkNode,
   PipelineView,
   TimestampValue
 } from '../../types';
@@ -26,8 +40,13 @@ interface PipelineBuilderSectionProps {
   onInputModeChange?: (nextMode: string) => void;
   onDeviceScopeChange?: (nextScope: string) => void;
   onIngestFiltersChange?: (nextValue: string) => void;
-  onSinkTargetsChange?: (nextValue: string) => void;
-  onSinkGoalChange?: (nextValue: string) => void;
+  onAddSink?: (sinkType: 'SEND_EVENT' | 'VIRTUAL_SIGNAL') => void;
+  onRemoveSink?: (sinkId: string) => void;
+  onConfigureSendEventSink?: (sinkId: string, config: Record<string, unknown>) => void;
+  onResetSinkCounter?: (sinkId: string) => void;
+  sinkRuntimeBusy?: boolean;
+  physicalDeviceIds?: string[];
+  virtualDeviceIds?: string[];
   lecturerDeviceAvailable?: boolean;
   logModeStatus?: PipelineLogModeStatus | null;
   logModeStatusBusy?: boolean;
@@ -132,6 +151,97 @@ function buildDisplaySlots(processing: PipelineProcessingSection): PipelineProce
   });
 }
 
+type PipelineSinkType = 'EVENT_FEED' | 'SEND_EVENT' | 'VIRTUAL_SIGNAL';
+
+function normalizeSinkType(raw: string): PipelineSinkType {
+  const normalized = raw.trim().toUpperCase();
+  if (normalized === 'SEND_EVENT' || normalized === 'DEVICE_CONTROL') {
+    return 'SEND_EVENT';
+  }
+  if (normalized === 'VIRTUAL_SIGNAL') {
+    return 'VIRTUAL_SIGNAL';
+  }
+  return 'EVENT_FEED';
+}
+
+function normalizeSinkNodes(nodes: PipelineSinkNode[] | null | undefined): PipelineSinkNode[] {
+  const result: PipelineSinkNode[] = [
+    {
+      id: 'event-feed',
+      type: 'EVENT_FEED',
+      config: {}
+    }
+  ];
+  const seen = new Set<string>(['EVENT_FEED']);
+  for (const node of nodes ?? []) {
+    if (!node || typeof node.type !== 'string') {
+      continue;
+    }
+    const type = normalizeSinkType(node.type);
+    if (seen.has(type)) {
+      continue;
+    }
+    result.push({
+      id:
+        node.id?.trim() ||
+        (type === 'SEND_EVENT' ? 'send-event' : type === 'VIRTUAL_SIGNAL' ? 'virtual-signal' : 'event-feed'),
+      type,
+      config: node.config ?? {}
+    });
+    seen.add(type);
+  }
+  return result;
+}
+
+function readSinkString(config: Record<string, unknown>, key: string, fallback = ''): string {
+  const value = config[key];
+  if (typeof value === 'string') {
+    return value;
+  }
+  return fallback;
+}
+
+function readSinkQos(config: Record<string, unknown>): 0 | 1 | 2 {
+  const value = config.qos;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const rounded = Math.round(value);
+    if (rounded === 0 || rounded === 1 || rounded === 2) {
+      return rounded;
+    }
+  }
+  if (typeof value === 'string') {
+    const parsed = Number.parseInt(value, 10);
+    if (parsed === 0 || parsed === 1 || parsed === 2) {
+      return parsed;
+    }
+  }
+  return 1;
+}
+
+function readSinkRetained(config: Record<string, unknown>): boolean {
+  const value = config.retained;
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'number') {
+    return value !== 0;
+  }
+  if (typeof value === 'string') {
+    return value.trim().toLowerCase() === 'true';
+  }
+  return false;
+}
+
+function sinkDisplayNameKey(type: PipelineSinkType): I18nKey {
+  if (type === 'SEND_EVENT') {
+    return 'pipelineSinkSendEvent';
+  }
+  if (type === 'VIRTUAL_SIGNAL') {
+    return 'pipelineSinkVirtualSignal';
+  }
+  return 'pipelineSinkEventFeed';
+}
+
 type SampleViewMode = 'rendered' | 'raw';
 
 function parseJson(value: string | null | undefined): unknown {
@@ -226,8 +336,13 @@ export function PipelineBuilderSection({
   onInputModeChange,
   onDeviceScopeChange,
   onIngestFiltersChange,
-  onSinkTargetsChange,
-  onSinkGoalChange,
+  onAddSink,
+  onRemoveSink,
+  onConfigureSendEventSink,
+  onResetSinkCounter,
+  sinkRuntimeBusy,
+  physicalDeviceIds = [],
+  virtualDeviceIds = [],
   lecturerDeviceAvailable = true,
   logModeStatus,
   logModeStatusBusy,
@@ -251,6 +366,11 @@ export function PipelineBuilderSection({
   const [expandedObservabilitySlot, setExpandedObservabilitySlot] = useState<number | null>(null);
   const [sampleViewMode, setSampleViewMode] = useState<SampleViewMode>('rendered');
   const [selectedTraceBySlot, setSelectedTraceBySlot] = useState<Record<number, string>>({});
+  const [sinkEditorSinkId, setSinkEditorSinkId] = useState<string | null>(null);
+  const [sinkComposerMode, setSinkComposerMode] = useState<MqttComposerMode>('guided');
+  const [sinkDraft, setSinkDraft] = useState<MqttEventDraft>(() => createMqttEventDraft());
+
+  const guidedSinkMqttMessage = useMemo(() => buildGuidedMqttMessage(sinkDraft), [sinkDraft]);
 
   if (!view) {
     return (
@@ -395,6 +515,101 @@ export function PipelineBuilderSection({
     const targetBlockType = processingSlots[slotIndex]?.blockType ?? 'NONE';
     setSlotBlockType(slotIndex, sourceBlockType);
     setSlotBlockType(sourceSlotIndex, targetBlockType);
+  };
+
+  const sinkNodes = normalizeSinkNodes(view.sink.nodes);
+  const sinkRuntimeById = new Map(
+    (view.sinkRuntime?.nodes ?? []).map((node) => [node.sinkId, node])
+  );
+  const availableSinkTypes: Array<'SEND_EVENT' | 'VIRTUAL_SIGNAL'> = (
+    ['SEND_EVENT', 'VIRTUAL_SIGNAL'] as const
+  ).filter((type) => !sinkNodes.some((node) => normalizeSinkType(String(node.type)) === type));
+
+  const setSinkDraftField = <K extends keyof MqttEventDraft>(key: K, value: MqttEventDraft[K]) => {
+    setSinkDraft((previous) => ({
+      ...previous,
+      [key]: value
+    }));
+  };
+
+  const setSinkTargetType = (targetType: MqttComposerTargetType) => {
+    setSinkDraft((previous) => {
+      const normalizedTemplate = normalizeMqttTemplateForTarget(targetType, previous.template);
+      const resolvedDeviceId = resolveMqttDeviceId(
+        targetType,
+        previous.deviceId,
+        physicalDeviceIds,
+        virtualDeviceIds
+      );
+      return {
+        ...previous,
+        targetType,
+        template: normalizedTemplate,
+        deviceId: resolvedDeviceId
+      };
+    });
+  };
+
+  const setSinkTemplate = (template: MqttComposerTemplate) => {
+    setSinkDraft((previous) => ({
+      ...previous,
+      template: normalizeMqttTemplateForTarget(previous.targetType, template)
+    }));
+  };
+
+  const setSinkDeviceId = (deviceId: string) => {
+    setSinkDraft((previous) => ({
+      ...previous,
+      deviceId
+    }));
+  };
+
+  const openSendEventSinkEditor = (node: PipelineSinkNode) => {
+    const config = node.config ?? {};
+    const topic = readSinkString(config, 'topic');
+    const payload = readSinkString(config, 'payload');
+    const qos = readSinkQos(config);
+    const retained = readSinkRetained(config);
+    const base = createMqttEventDraft();
+    const initialDeviceId = resolveMqttDeviceId('physical', base.deviceId, physicalDeviceIds, virtualDeviceIds);
+    setSinkComposerMode('raw');
+    setSinkDraft({
+      ...base,
+      targetType: 'custom',
+      template: 'custom',
+      deviceId: initialDeviceId,
+      customTopic: topic,
+      customPayload: payload,
+      rawTopic: topic,
+      rawPayload: payload,
+      qos,
+      retained
+    });
+    setSinkEditorSinkId(node.id);
+  };
+
+  const saveSendEventSinkEditor = () => {
+    if (!sinkEditorSinkId || !onConfigureSendEventSink) {
+      return;
+    }
+    const topic = (sinkComposerMode === 'raw' ? sinkDraft.rawTopic : guidedSinkMqttMessage.topic).trim();
+    const payload = (sinkComposerMode === 'raw' ? sinkDraft.rawPayload : guidedSinkMqttMessage.payload).trim();
+    onConfigureSendEventSink(sinkEditorSinkId, {
+      topic,
+      payload,
+      qos: sinkDraft.qos,
+      retained: sinkDraft.retained
+    });
+    setSinkEditorSinkId(null);
+  };
+
+  const setSinkComposerModeWithSync = (mode: MqttComposerMode) => {
+    setSinkComposerMode(mode);
+    setSinkDraft((previous) => ({
+      ...previous,
+      rawTopic: guidedSinkMqttMessage.topic,
+      rawPayload: guidedSinkMqttMessage.payload
+    }));
   };
 
   return (
@@ -795,28 +1010,123 @@ export function PipelineBuilderSection({
 
       <article className="panel panel-animate full-width pipeline-panel pipeline-panel-sink">
         <h4>{t('pipelineSink')}</h4>
-        <label className="stack pipeline-field">
-          <span>{t('pipelineSinkTargets')}</span>
-          <textarea
-            className="input"
-            value={listToMultiline(view.sink.targets)}
-            onChange={(event) => onSinkTargetsChange?.(event.target.value)}
-            disabled={!view.permissions.sinkEditable}
-            rows={3}
-          />
-        </label>
-        <label className="stack pipeline-field">
-          <span>{t('pipelineSinkGoal')}</span>
-          <textarea
-            className="input"
-            value={view.sink.goal}
-            onChange={(event) => onSinkGoalChange?.(event.target.value)}
-            disabled={!view.permissions.sinkEditable}
-            rows={5}
-          />
-        </label>
+        <div className="pipeline-sink-board">
+          {sinkNodes.map((sinkNode) => {
+            const sinkType = normalizeSinkType(String(sinkNode.type));
+            const runtimeNode = sinkRuntimeById.get(sinkNode.id);
+            const receivedCount = runtimeNode?.receivedCount ?? 0;
+            const lastReceivedAt = runtimeNode?.lastReceivedAt ?? null;
+            const sendTopic = readSinkString(sinkNode.config ?? {}, 'topic');
+            const sinkLabel = t(sinkDisplayNameKey(sinkType));
+            return (
+              <article className="pipeline-sink-node" key={sinkNode.id}>
+                <header className="pipeline-sink-node-header">
+                  <strong>{sinkLabel}</strong>
+                  {view.permissions.sinkEditable && sinkType !== 'EVENT_FEED' ? (
+                    <button
+                      className="button tiny ghost"
+                      type="button"
+                      onClick={() => onRemoveSink?.(sinkNode.id)}
+                    >
+                      {t('pipelineSinkRemove')}
+                    </button>
+                  ) : null}
+                </header>
+
+                {sinkType === 'EVENT_FEED' ? (
+                  <p className="muted">{t('pipelineSinkEventFeedHint')}</p>
+                ) : null}
+
+                {sinkType === 'SEND_EVENT' ? (
+                  <div className="pipeline-sink-details">
+                    <p className="muted mono">
+                      {sendTopic.length > 0 ? sendTopic : t('pipelineSinkNoTopic')}
+                    </p>
+                    <p className="muted">
+                      {t('pipelineSinkCounterLabel')}: {receivedCount}
+                      {lastReceivedAt ? ` | ${formatTs(lastReceivedAt)}` : ''}
+                    </p>
+                    <div className="pipeline-sink-actions">
+                      <button
+                        className="button tiny secondary"
+                        type="button"
+                        onClick={() => openSendEventSinkEditor(sinkNode)}
+                        disabled={!view.permissions.sinkEditable}
+                      >
+                        {t('pipelineSinkConfigure')}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+                {sinkType === 'VIRTUAL_SIGNAL' ? (
+                  <div className="pipeline-sink-details">
+                    <div className="pipeline-virtual-signal-line">
+                      <span
+                        key={String(lastReceivedAt ?? 'idle')}
+                        className={`pipeline-virtual-signal-lamp ${lastReceivedAt ? 'blink' : ''}`}
+                        aria-hidden="true"
+                      />
+                      <span className="muted">{t('pipelineSinkVirtualSignalHint')}</span>
+                    </div>
+                    <p className="muted">
+                      {t('pipelineSinkCounterLabel')}: {receivedCount}
+                      {lastReceivedAt ? ` | ${formatTs(lastReceivedAt)}` : ''}
+                    </p>
+                    {onResetSinkCounter ? (
+                      <button
+                        className="button tiny secondary"
+                        type="button"
+                        onClick={() => onResetSinkCounter(sinkNode.id)}
+                        disabled={Boolean(sinkRuntimeBusy)}
+                      >
+                        {t('pipelineSinkResetCounter')}
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </article>
+            );
+          })}
+        </div>
+        {view.permissions.sinkEditable ? (
+          <div className="pipeline-sink-add-row">
+            <span className="muted">{t('pipelineSinkAdd')}</span>
+            {availableSinkTypes.map((sinkType) => (
+              <button
+                key={sinkType}
+                type="button"
+                className="button tiny secondary"
+                onClick={() => onAddSink?.(sinkType)}
+              >
+                {t(sinkDisplayNameKey(sinkType))}
+              </button>
+            ))}
+          </div>
+        ) : null}
         {!view.permissions.sinkEditable ? <p className="muted">{t('pipelineReadOnlyTask')}</p> : null}
       </article>
+
+      <AdminMqttEventModal
+        t={t}
+        open={sinkEditorSinkId !== null}
+        busy={false}
+        mode={sinkComposerMode}
+        draft={sinkDraft}
+        physicalDeviceIds={physicalDeviceIds}
+        virtualDeviceIds={virtualDeviceIds}
+        guidedTopic={guidedSinkMqttMessage.topic}
+        guidedPayload={guidedSinkMqttMessage.payload}
+        onClose={() => setSinkEditorSinkId(null)}
+        onSubmit={saveSendEventSinkEditor}
+        onModeChange={setSinkComposerModeWithSync}
+        onTargetTypeChange={setSinkTargetType}
+        onTemplateChange={setSinkTemplate}
+        onDeviceIdChange={setSinkDeviceId}
+        onDraftChange={setSinkDraftField}
+        titleKey="pipelineSinkSendEventConfigTitle"
+        submitLabelKey="save"
+      />
     </section>
   );
 }

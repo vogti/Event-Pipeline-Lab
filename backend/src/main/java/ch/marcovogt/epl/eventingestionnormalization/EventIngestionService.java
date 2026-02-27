@@ -7,6 +7,7 @@ import ch.marcovogt.epl.eventfeedquery.EventFeedService;
 import ch.marcovogt.epl.pipelinebuilder.PipelineEventProcessingResult;
 import ch.marcovogt.epl.pipelinebuilder.PipelineLogModeService;
 import ch.marcovogt.epl.pipelinebuilder.PipelineObservabilityUpdateDto;
+import ch.marcovogt.epl.pipelinebuilder.PipelineSinkRuntimeUpdateDto;
 import ch.marcovogt.epl.pipelinebuilder.PipelineStateService;
 import ch.marcovogt.epl.realtimewebsocket.AdminWebSocketBroadcaster;
 import ch.marcovogt.epl.realtimewebsocket.RealtimeSyncService;
@@ -79,6 +80,10 @@ public class EventIngestionService {
                     eventFeedService.appendToPipelineLiveBuffer(projectedEvent);
                     adminWebSocketBroadcaster.broadcast("event.pipeline.append", projectedEvent);
                     realtimeSyncService.broadcastPipelineEventToStudents(projectedEvent);
+                }
+                PipelineSinkRuntimeUpdateDto sinkRuntimeUpdate = processingResult.sinkRuntimeUpdate();
+                if (sinkRuntimeUpdate != null) {
+                    realtimeSyncService.broadcastPipelineSinkRuntime(sinkRuntimeUpdate);
                 }
             }
         } catch (Exception ex) {

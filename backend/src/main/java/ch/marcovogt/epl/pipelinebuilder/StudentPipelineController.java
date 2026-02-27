@@ -57,4 +57,15 @@ public class StudentPipelineController {
         realtimeSyncService.broadcastPipelineState(updated);
         return updated;
     }
+
+    @PostMapping("/sink/reset")
+    public PipelineSinkRuntimeUpdateDto resetSinkRuntime(
+            HttpServletRequest request,
+            @Valid @RequestBody StudentPipelineSinkResetRequest body
+    ) {
+        SessionPrincipal principal = requestAuth.requireRole(request, AppRole.STUDENT);
+        PipelineSinkRuntimeUpdateDto update = pipelineStateService.resetStudentSinkRuntime(principal, body.sinkId());
+        realtimeSyncService.broadcastPipelineSinkRuntime(update);
+        return update;
+    }
 }

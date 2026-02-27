@@ -28,6 +28,8 @@ interface AdminMqttEventModalProps {
   onTemplateChange: (template: MqttComposerTemplate) => void;
   onDeviceIdChange: (deviceId: string) => void;
   onDraftChange: <K extends keyof MqttEventDraft>(key: K, value: MqttEventDraft[K]) => void;
+  titleKey?: I18nKey;
+  submitLabelKey?: I18nKey;
 }
 
 function templateLabelKey(template: MqttComposerTemplate): I18nKey {
@@ -69,7 +71,9 @@ export function AdminMqttEventModal({
   onTargetTypeChange,
   onTemplateChange,
   onDeviceIdChange,
-  onDraftChange
+  onDraftChange,
+  titleKey = 'sendMqttEvent',
+  submitLabelKey = 'sendMqttEvent'
 }: AdminMqttEventModalProps) {
   if (!open) {
     return null;
@@ -89,7 +93,7 @@ export function AdminMqttEventModal({
     <div className="event-modal-backdrop" onClick={onClose}>
       <div className="event-modal mqtt-compose-modal" onClick={(event) => event.stopPropagation()}>
         <div className="panel-header">
-          <h2>{t('sendMqttEvent')}</h2>
+          <h2>{t(titleKey)}</h2>
           <button
             className="modal-close-button"
             type="button"
@@ -413,7 +417,7 @@ export function AdminMqttEventModal({
 
         <div className="event-modal-actions">
           <button className="button" type="button" onClick={onSubmit} disabled={busy}>
-            {t('sendMqttEvent')}
+            {t(submitLabelKey)}
           </button>
           <button className="button secondary" type="button" onClick={onClose}>
             {t('close')}

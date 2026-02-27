@@ -40,8 +40,18 @@ function createPipelineView(): PipelineView {
       ]
     },
     sink: {
+      nodes: [
+        { id: 'event-feed', type: 'EVENT_FEED', config: {} },
+        { id: 'virtual-signal', type: 'VIRTUAL_SIGNAL', config: {} }
+      ],
       targets: ['DEVICE_CONTROL'],
       goal: 'goal'
+    },
+    sinkRuntime: {
+      nodes: [
+        { sinkId: 'event-feed', sinkType: 'EVENT_FEED', receivedCount: 8, lastReceivedAt: '2026-01-01T10:00:00Z' },
+        { sinkId: 'virtual-signal', sinkType: 'VIRTUAL_SIGNAL', receivedCount: 8, lastReceivedAt: '2026-01-01T10:00:00Z' }
+      ]
     },
     permissions: {
       visible: true,
@@ -213,6 +223,42 @@ describe('ws dispatcher', () => {
     expect(onObservability).toHaveBeenCalledTimes(1);
     expect(onObservability).toHaveBeenCalledWith(update, {
       type: 'pipeline.observability.updated',
+      payload: update,
+      ts: null
+    });
+  });
+
+  it('dispatches pipeline.sink.runtime.updated to matching handler', () => {
+    const update = {
+      taskId: 'task_intro',
+      groupKey: 'epld01',
+      sinkRuntime: {
+        nodes: [
+          {
+            sinkId: 'virtual-signal',
+            sinkType: 'VIRTUAL_SIGNAL',
+            receivedCount: 42,
+            lastReceivedAt: '2026-01-01T10:00:00Z'
+          }
+        ]
+      }
+    };
+    const onSinkRuntime = vi.fn();
+    const handled = dispatchWsEnvelope(
+      {
+        type: 'pipeline.sink.runtime.updated',
+        payload: update,
+        ts: null
+      },
+      {
+        'pipeline.sink.runtime.updated': onSinkRuntime
+      }
+    );
+
+    expect(handled).toBe(true);
+    expect(onSinkRuntime).toHaveBeenCalledTimes(1);
+    expect(onSinkRuntime).toHaveBeenCalledWith(update, {
+      type: 'pipeline.sink.runtime.updated',
       payload: update,
       ts: null
     });

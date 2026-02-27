@@ -23,6 +23,7 @@ import type {
   PipelineCompareRow,
   PipelineProcessingSection,
   PipelineSinkSection,
+  PipelineSinkRuntimeUpdate,
   TaskPipelineConfig,
   PipelineView,
   StudentBootstrap,
@@ -600,6 +601,17 @@ export const api = {
     );
   },
 
+  resetStudentPipelineSinkCounter(token: string, sinkId: string): Promise<PipelineSinkRuntimeUpdate> {
+    return request<PipelineSinkRuntimeUpdate>(
+      '/api/student/pipeline/sink/reset',
+      {
+        method: 'POST',
+        body: JSON.stringify({ sinkId })
+      },
+      token
+    );
+  },
+
   adminPipeline(token: string, groupKey: string): Promise<PipelineView> {
     return request<PipelineView>(
       withQuery('/api/admin/pipeline', { groupKey }),
@@ -643,6 +655,21 @@ export const api = {
       {
         method: 'POST',
         body: JSON.stringify({ groupKey, action })
+      },
+      token
+    );
+  },
+
+  resetAdminPipelineSinkCounter(
+    token: string,
+    groupKey: string,
+    sinkId: string
+  ): Promise<PipelineSinkRuntimeUpdate> {
+    return request<PipelineSinkRuntimeUpdate>(
+      '/api/admin/pipeline/sink/reset',
+      {
+        method: 'POST',
+        body: JSON.stringify({ groupKey, sinkId })
       },
       token
     );
