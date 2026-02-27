@@ -309,26 +309,24 @@ export function PipelineBuilderSection({
 
   return (
     <section className="pipeline-builder full-width">
-      <article className="panel panel-animate pipeline-builder-toolbar full-width">
-        <header className="panel-header">
-          <h3>{title}</h3>
-          <div className="pipeline-builder-actions">
-            <button className="button small" type="button" onClick={onSave} disabled={saveBusy || !hasEditableSection}>
-              {saveBusy ? t('loading') : t('pipelineSave')}
+      <header className="panel-header">
+        <h3>{title}</h3>
+        <div className="pipeline-builder-actions">
+          <button className="button small" type="button" onClick={onSave} disabled={saveBusy || !hasEditableSection}>
+            {saveBusy ? t('loading') : t('pipelineSave')}
+          </button>
+        </div>
+      </header>
+      {contextNotice ? (
+        <div className="pipeline-context-banner">
+          <span>{contextNotice}</span>
+          {onContextAction && contextActionLabel ? (
+            <button className="button tiny secondary" type="button" onClick={onContextAction}>
+              {contextActionLabel}
             </button>
-          </div>
-        </header>
-        {contextNotice ? (
-          <div className="pipeline-context-banner">
-            <span>{contextNotice}</span>
-            {onContextAction && contextActionLabel ? (
-              <button className="button tiny secondary" type="button" onClick={onContextAction}>
-                {contextActionLabel}
-              </button>
-            ) : null}
-          </div>
-        ) : null}
-      </article>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="pipeline-sections">
         <article className="panel panel-animate full-width pipeline-panel pipeline-panel-input">
