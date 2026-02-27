@@ -1956,7 +1956,6 @@ export default function App() {
   };
 
   const createAdminTask = async (draft: {
-    taskId: string;
     titleDe: string;
     titleEn: string;
     descriptionDe: string;
@@ -1968,7 +1967,6 @@ export default function App() {
     }
 
     const payload = {
-      taskId: draft.taskId.trim(),
       titleDe: draft.titleDe.trim(),
       titleEn: draft.titleEn.trim(),
       descriptionDe: draft.descriptionDe.trim(),
@@ -1976,7 +1974,6 @@ export default function App() {
       templateTaskId: draft.templateTaskId.trim() || null
     };
     if (
-      !payload.taskId ||
       !payload.titleDe ||
       !payload.titleEn ||
       !payload.descriptionDe ||

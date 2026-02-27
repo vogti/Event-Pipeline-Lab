@@ -4,6 +4,7 @@ import ch.marcovogt.epl.authsession.AppRole;
 import ch.marcovogt.epl.authsession.SessionPrincipal;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.text.Normalizer;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -12,6 +13,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.UUID;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -274,8 +276,11 @@ public class TaskStateService {
             String templateTaskId,
             String actor
     ) {
-        String normalizedTaskId = normalizeTaskId(taskId);
-        if (resolveTaskDefinitions().containsKey(normalizedTaskId)) {
+        LinkedHashMap<String, TaskDefinition> resolved = resolveTaskDefinitions();
+        String normalizedTaskId = hasText(taskId)
+                ? normalizeTaskId(taskId)
+                : generateTaskId(titleEn, titleDe, resolved.keySet());
+        if (resolved.containsKey(normalizedTaskId)) {
             throw new ResponseStatusException(BAD_REQUEST, "Task id already exists: " + normalizedTaskId);
         }
 
@@ -298,7 +303,7 @@ public class TaskStateService {
 
         TaskState taskState = loadOrCreateState();
         LinkedHashSet<String> nextOrder = new LinkedHashSet<>(readTaskOrder(taskState.getTaskOrderJson()));
-        for (String taskKey : resolveTaskDefinitions().keySet()) {
+        for (String taskKey : resolved.keySet()) {
             nextOrder.add(taskKey);
         }
         nextOrder.add(normalizedTaskId);
@@ -524,6 +529,52 @@ public class TaskStateService {
             throw new ResponseStatusException(BAD_REQUEST, "taskId contains invalid characters");
         }
         return normalized;
+    }
+
+    private String generateTaskId(String titleEn, String titleDe, Set<String> existingTaskIds) {
+        String sourceTitle = hasText(titleEn) ? titleEn : titleDe;
+        String slug = slugifyTaskId(sourceTitle);
+        if (!hasText(slug)) {
+            slug = "task";
+        }
+
+        String base = "task_" + slug;
+        if (base.length() > 64) {
+            base = base.substring(0, 64);
+        }
+
+        if (!existingTaskIds.contains(base)) {
+            return base;
+        }
+
+        int maxBaseLength = 57; // 57 + '-' + 6 = 64
+        String trimmedBase = base.length() > maxBaseLength ? base.substring(0, maxBaseLength) : base;
+        for (int attempt = 0; attempt < 20; attempt++) {
+            String suffix = UUID.randomUUID().toString().substring(0, 6).toLowerCase(Locale.ROOT);
+            String candidate = trimmedBase + "-" + suffix;
+            if (!existingTaskIds.contains(candidate)) {
+                return candidate;
+            }
+        }
+
+        throw new ResponseStatusException(BAD_REQUEST, "Failed to generate unique taskId");
+    }
+
+    private String slugifyTaskId(String value) {
+        if (!hasText(value)) {
+            return "";
+        }
+        String normalized = Normalizer.normalize(value, Normalizer.Form.NFD);
+        String withoutDiacritics = normalized.replaceAll("\\p{M}+", "");
+        String slug = withoutDiacritics
+                .toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9_-]+", "-")
+                .replaceAll("-{2,}", "-")
+                .replaceAll("^-+|-+$", "");
+        if (slug.length() > 59) {
+            slug = slug.substring(0, 59).replaceAll("-+$", "");
+        }
+        return slug;
     }
 
     private boolean isValidTaskId(String taskId) {

@@ -14,6 +14,7 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -206,5 +207,49 @@ class TaskStateServiceTest {
                 .singleElement()
                 .extracting(TaskInfoDto::id)
                 .isEqualTo("task_intro");
+    }
+
+    @Test
+    void createTaskShouldAutoGenerateTaskIdWhenMissing() {
+        TaskState state = new TaskState();
+        state.setId((short) 1);
+        state.setActiveTaskId("task_intro");
+        AtomicReference<TaskDefinitionState> savedCustomTask = new AtomicReference<>();
+        when(taskStateRepository.findById((short) 1)).thenReturn(Optional.of(state));
+        when(taskStateRepository.save(any(TaskState.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(taskPipelineConfigService.applyOverrides(any(TaskDefinition.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(taskDefinitionStateRepository.findAll(any(org.springframework.data.domain.Sort.class)))
+                .thenAnswer(invocation -> {
+                    TaskDefinitionState customTask = savedCustomTask.get();
+                    if (customTask == null) {
+                        return List.of();
+                    }
+                    return List.of(customTask);
+                });
+        when(taskDefinitionStateRepository.save(any(TaskDefinitionState.class)))
+                .thenAnswer(invocation -> {
+                    TaskDefinitionState customTask = invocation.getArgument(0);
+                    savedCustomTask.set(customTask);
+                    return customTask;
+                });
+
+        TaskInfoDto created = service.createTask(
+                null,
+                "Neue Aufgabe",
+                "New Task",
+                "Beschreibung",
+                "Description",
+                "task_intro",
+                "admin"
+        );
+
+        assertThat(created.id()).startsWith("task_new-task");
+        assertThat(created.id()).matches("[a-zA-Z0-9_-]{1,64}");
+
+        ArgumentCaptor<TaskDefinitionState> stateCaptor = ArgumentCaptor.forClass(TaskDefinitionState.class);
+        verify(taskDefinitionStateRepository, atLeastOnce()).save(stateCaptor.capture());
+        assertThat(stateCaptor.getValue().getTaskId()).isEqualTo(created.id());
     }
 }

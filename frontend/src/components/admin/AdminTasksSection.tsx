@@ -13,7 +13,6 @@ interface TaskDetailsDraft {
 }
 
 interface CreateTaskDraft extends TaskDetailsDraft {
-  taskId: string;
   templateTaskId: string;
 }
 
@@ -55,7 +54,6 @@ function emptyTaskDetailsDraft(): TaskDetailsDraft {
 
 function emptyCreateTaskDraft(templateTaskId: string): CreateTaskDraft {
   return {
-    taskId: '',
     titleDe: '',
     titleEn: '',
     descriptionDe: '',
@@ -397,18 +395,6 @@ export function AdminTasksSection({
         </div>
 
         <div className="pipeline-task-inline-editor">
-          <label className="stack pipeline-field">
-            <span>{t('taskId')}</span>
-            <input
-              className="input mono"
-              type="text"
-              value={createTaskDraft.taskId}
-              onChange={(event) =>
-                setCreateTaskDraft((previous) => ({ ...previous, taskId: event.target.value }))
-              }
-            />
-          </label>
-
           <label className="stack pipeline-field">
             <span>{t('taskTemplate')}</span>
             <select

@@ -320,7 +320,7 @@ export const api = {
   createAdminTask(
     token: string,
     args: {
-      taskId: string;
+      taskId?: string | null;
       titleDe: string;
       titleEn: string;
       descriptionDe: string;
