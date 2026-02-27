@@ -11,6 +11,7 @@ public final class PipelineBlockLibrary {
             NONE,
             "FILTER_DEVICE",
             "FILTER_TOPIC",
+            "EXTRACT_VALUE",
             "FILTER_RATE_LIMIT",
             "PARSE_VALIDATE",
             "DEDUP",

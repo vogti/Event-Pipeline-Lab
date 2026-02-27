@@ -112,13 +112,51 @@ class PipelineObservabilityServiceTest {
         assertThat(lost.blocks().get(0).stateEntryCount()).isEqualTo(0);
     }
 
+    @Test
+    void extractValueBlockShouldReplacePayloadWithExtractedValue() {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(0, "EXTRACT_VALUE", java.util.Map.of()))
+        );
+
+        CanonicalEventDto input = event(
+                "extract",
+                "epld/epld01/event/led/green",
+                "led.green.state_changed",
+                EventCategory.STATUS,
+                "{\"output\":true}"
+        );
+
+        CanonicalEventDto output = service.recordEvent("task_intro", "epld01", processing, input);
+
+        assertThat(output).isNotNull();
+        assertThat(output.payloadJson()).isEqualTo("\"on\"");
+    }
+
     private CanonicalEventDto event(String suffix, String payloadJson) {
-        return new CanonicalEventDto(
-                UUID.nameUUIDFromBytes(("event-" + suffix).getBytes(java.nio.charset.StandardCharsets.UTF_8)),
-                "epld01",
+        return event(
+                suffix,
                 "epld/epld01/event/button",
                 "button.black.press",
                 EventCategory.BUTTON,
+                payloadJson
+        );
+    }
+
+    private CanonicalEventDto event(
+            String suffix,
+            String topic,
+            String eventType,
+            EventCategory category,
+            String payloadJson
+    ) {
+        return new CanonicalEventDto(
+                UUID.nameUUIDFromBytes(("event-" + suffix).getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                "epld01",
+                topic,
+                eventType,
+                category,
                 payloadJson,
                 null,
                 Instant.parse("2026-02-26T15:00:00Z"),

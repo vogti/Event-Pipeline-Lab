@@ -370,6 +370,17 @@ public class PipelineObservabilityService {
                 }
                 yield BlockResult.drop("topic_filtered", state.backlogDepth);
             }
+            case "EXTRACT_VALUE" -> {
+                String extractedValue = EventValueExtractor.extractValue(
+                        event.category,
+                        event.eventType,
+                        event.topic,
+                        event.payload,
+                        objectMapper
+                );
+                next.payload = objectMapper.getNodeFactory().textNode(extractedValue);
+                yield BlockResult.pass(next, state.backlogDepth);
+            }
             case "FILTER_RATE_LIMIT" -> {
                 state.rateLimiterCursor = (state.rateLimiterCursor + 1) % 5;
                 if (state.rateLimiterCursor != 0) {
@@ -381,7 +392,7 @@ public class PipelineObservabilityService {
                 if (!event.valid) {
                     yield BlockResult.drop("invalid", state.backlogDepth);
                 }
-                next.payload.put("validated", true);
+                mutablePayloadObject(next).put("validated", true);
                 yield BlockResult.pass(next, state.backlogDepth);
             }
             case "DEDUP" -> {
@@ -398,19 +409,19 @@ public class PipelineObservabilityService {
                 state.windowCount += 1;
                 state.backlogDepth = state.windowCount % 10;
                 next.eventType = event.eventType + ".windowed";
-                next.payload.put("windowCount", state.windowCount);
+                mutablePayloadObject(next).put("windowCount", state.windowCount);
                 yield BlockResult.pass(next, state.backlogDepth);
             }
             case "MICRO_BATCH" -> {
                 state.microBatchCount += 1;
                 state.backlogDepth = state.microBatchCount % 5;
                 next.eventType = event.eventType + ".batched";
-                next.payload.put("microBatchPending", state.backlogDepth);
+                mutablePayloadObject(next).put("microBatchPending", state.backlogDepth);
                 yield BlockResult.pass(next, state.backlogDepth);
             }
             case "ROUTE" -> {
                 next.eventType = event.eventType + ".routed";
-                next.payload.put("route", routeForCategory(event.category));
+                mutablePayloadObject(next).put("route", routeForCategory(event.category));
                 yield BlockResult.pass(next, state.backlogDepth);
             }
             case "RETRY_DLQ" -> {
@@ -422,9 +433,10 @@ public class PipelineObservabilityService {
                 yield BlockResult.pass(next, state.backlogDepth);
             }
             case "ENRICH_METADATA" -> {
-                next.payload.put("groupKey", groupKey);
-                next.payload.put("taskId", taskId);
-                next.payload.put("traceId", event.traceId);
+                ObjectNode payloadObject = mutablePayloadObject(next);
+                payloadObject.put("groupKey", groupKey);
+                payloadObject.put("taskId", taskId);
+                payloadObject.put("traceId", event.traceId);
                 yield BlockResult.pass(next, state.backlogDepth);
             }
             default -> BlockResult.pass(next, state.backlogDepth);
@@ -564,6 +576,18 @@ public class PipelineObservabilityService {
         return "";
     }
 
+    private ObjectNode mutablePayloadObject(RuntimeEvent event) {
+        if (event.payload instanceof ObjectNode payloadObject) {
+            return payloadObject;
+        }
+        ObjectNode wrapped = objectMapper.createObjectNode();
+        if (event.payload != null && !event.payload.isNull()) {
+            wrapped.set("value", event.payload);
+        }
+        event.payload = wrapped;
+        return wrapped;
+    }
+
     private boolean mqttTopicMatches(String topicFilter, String topic) {
         if (topicFilter == null || topicFilter.isBlank()) {
             return true;
@@ -660,7 +684,8 @@ public class PipelineObservabilityService {
     private double latencyMs(long startedNs, String blockType) {
         long elapsedNs = System.nanoTime() - startedNs;
         double baseline = switch (blockType == null ? "" : blockType.toUpperCase(Locale.ROOT)) {
-            case "FILTER_DEVICE", "FILTER_DEVICE_TOPIC", "FILTER_TOPIC", "FILTER_RATE_LIMIT", "PARSE_VALIDATE" -> 0.20;
+            case "FILTER_DEVICE", "FILTER_DEVICE_TOPIC", "FILTER_TOPIC", "EXTRACT_VALUE",
+                    "FILTER_RATE_LIMIT", "PARSE_VALIDATE" -> 0.20;
             case "DEDUP" -> 0.35;
             case "WINDOW_AGGREGATE", "MICRO_BATCH" -> 0.45;
             case "RETRY_DLQ" -> 0.30;
@@ -755,7 +780,7 @@ public class PipelineObservabilityService {
         private final Instant deviceTs;
         private final boolean valid;
         private final boolean isInternal;
-        private final ObjectNode payload;
+        private JsonNode payload;
 
         private RuntimeEvent(
                 String traceId,
@@ -767,7 +792,7 @@ public class PipelineObservabilityService {
                 Instant deviceTs,
                 boolean valid,
                 boolean isInternal,
-                ObjectNode payload
+                JsonNode payload
         ) {
             this.traceId = traceId;
             this.deviceId = deviceId;
@@ -797,10 +822,7 @@ public class PipelineObservabilityService {
         }
 
         RuntimeEvent copy(ObjectMapper objectMapper) {
-            JsonNode cloned = payload.deepCopy();
-            ObjectNode payloadCopy = cloned instanceof ObjectNode objectNode
-                    ? objectNode
-                    : objectMapper.createObjectNode().set("payload", cloned);
+            JsonNode payloadCopy = payload == null ? objectMapper.getNodeFactory().nullNode() : payload.deepCopy();
             return new RuntimeEvent(
                     traceId,
                     deviceId,
@@ -815,22 +837,14 @@ public class PipelineObservabilityService {
             );
         }
 
-        private static ObjectNode parsePayload(String payloadJson, ObjectMapper objectMapper) {
+        private static JsonNode parsePayload(String payloadJson, ObjectMapper objectMapper) {
             if (payloadJson == null || payloadJson.isBlank()) {
                 return objectMapper.createObjectNode();
             }
             try {
-                JsonNode node = objectMapper.readTree(payloadJson);
-                if (node instanceof ObjectNode objectNode) {
-                    return objectNode;
-                }
-                ObjectNode wrapped = objectMapper.createObjectNode();
-                wrapped.set("value", node);
-                return wrapped;
+                return objectMapper.readTree(payloadJson);
             } catch (Exception ex) {
-                ObjectNode fallback = objectMapper.createObjectNode();
-                fallback.put("raw", payloadJson);
-                return fallback;
+                return objectMapper.getNodeFactory().textNode(payloadJson);
             }
         }
     }
