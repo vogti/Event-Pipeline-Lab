@@ -83,4 +83,41 @@ class DeviceDiscoveryProvisioningServiceTest {
         verify(virtualDeviceStateRepository, never()).findById(anyString());
         verify(virtualDeviceStateRepository, never()).save(any());
     }
+
+    @Test
+    void shouldKeepVirtualDeviceProvisionedForAdminDeviceAndDisableStudentAccess() {
+        AuthAccount existing = new AuthAccount();
+        existing.setUsername("epld01");
+        existing.setPinCode("1234");
+        existing.setRole(AppRole.STUDENT);
+        existing.setGroupKey("epld01");
+        existing.setEnabled(true);
+
+        when(appSettingsService.isAdminDevice("epld01")).thenReturn(true);
+        when(authAccountRepository.findById("epld01")).thenReturn(Optional.of(existing));
+        when(virtualDeviceStateRepository.findById("eplvd01")).thenReturn(Optional.empty());
+        when(authAccountRepository.save(any(AuthAccount.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(virtualDeviceStateRepository.save(any(VirtualDeviceState.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.ensureProvisionedForPhysicalDevice("epld01");
+
+        ArgumentCaptor<AuthAccount> accountCaptor = ArgumentCaptor.forClass(AuthAccount.class);
+        verify(authAccountRepository).save(accountCaptor.capture());
+        AuthAccount savedAccount = accountCaptor.getValue();
+        assertThat(savedAccount.getUsername()).isEqualTo("epld01");
+        assertThat(savedAccount.getRole()).isEqualTo(AppRole.STUDENT);
+        assertThat(savedAccount.isEnabled()).isFalse();
+        assertThat(savedAccount.getGroupKey()).isNull();
+
+        ArgumentCaptor<VirtualDeviceState> virtualCaptor = ArgumentCaptor.forClass(VirtualDeviceState.class);
+        verify(virtualDeviceStateRepository).save(virtualCaptor.capture());
+        VirtualDeviceState virtualState = virtualCaptor.getValue();
+        assertThat(virtualState.getDeviceId()).isEqualTo("eplvd01");
+        assertThat(virtualState.getGroupKey()).isEqualTo("epld01");
+        assertThat(virtualState.isOnline()).isTrue();
+
+        verify(authSessionRepository).deactivateByUsername("epld01");
+        verify(groupStateRepository).deleteById("epld01");
+        verify(virtualDeviceStateRepository, never()).deleteById(anyString());
+    }
 }

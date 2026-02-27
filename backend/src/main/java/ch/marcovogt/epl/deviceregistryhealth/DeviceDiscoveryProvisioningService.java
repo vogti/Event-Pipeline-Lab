@@ -55,6 +55,7 @@ public class DeviceDiscoveryProvisioningService {
 
         if (appSettingsService.isAdminDevice(physicalDeviceId)) {
             ensureAdminDeviceIsolation(physicalDeviceId);
+            ensureVirtualDevice(physicalDeviceId);
             return;
         }
 
@@ -148,12 +149,6 @@ public class DeviceDiscoveryProvisioningService {
 
         authSessionRepository.deactivateByUsername(deviceId);
         groupStateRepository.deleteById(deviceId);
-
-        String virtualDeviceId = DeviceIdMapping.virtualDeviceIdForGroup(deviceId).orElse(null);
-        if (virtualDeviceId != null && virtualDeviceStateRepository.existsById(virtualDeviceId)) {
-            virtualDeviceStateRepository.deleteById(virtualDeviceId);
-            log.info("Removed virtual device={} for designated admin device={}", virtualDeviceId, deviceId);
-        }
     }
 
     private void ensureVirtualDevice(String groupKey) {
