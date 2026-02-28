@@ -123,6 +123,7 @@ import {
 } from './app/mqtt-composer';
 
 const PIPELINE_AUTOSAVE_DEBOUNCE_MS = 650;
+const VIRTUAL_DEVICE_AUTOSAVE_DEBOUNCE_MS = 160;
 
 function processingSectionSignature(value: PipelineProcessingSection | null | undefined): string {
   return JSON.stringify(value ?? null);
@@ -476,6 +477,10 @@ export default function App() {
   const adminPipelineAutosaveTimerRef = useRef<number | null>(null);
   const studentPipelineSaveInFlightRef = useRef(false);
   const adminPipelineSaveInFlightRef = useRef(false);
+  const studentVirtualSaveInFlightRef = useRef(false);
+  const adminVirtualSaveInFlightRef = useRef(false);
+  const studentVirtualAutosaveTimerRef = useRef<number | null>(null);
+  const adminVirtualAutosaveTimerRef = useRef<number | null>(null);
 
   const reportBackgroundError = useCallback((context: string, error: unknown) => {
     const message = toErrorMessage(error);
@@ -2690,10 +2695,14 @@ export default function App() {
     });
   }, []);
 
-  const saveStudentVirtualDevice = async () => {
+  const saveStudentVirtualDevice = useCallback(async () => {
     if (!token || !studentVirtualPatch || !studentData?.virtualDevice) {
       return;
     }
+    if (studentVirtualSaveInFlightRef.current) {
+      return;
+    }
+    studentVirtualSaveInFlightRef.current = true;
 
     setBusyKey('student-virtual-control');
     setErrorMessage(null);
@@ -2717,9 +2726,41 @@ export default function App() {
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
+      studentVirtualSaveInFlightRef.current = false;
       setBusyKey(null);
     }
-  };
+  }, [token, studentVirtualPatch, studentData?.virtualDevice]);
+
+  useEffect(() => {
+    if (studentVirtualAutosaveTimerRef.current !== null) {
+      window.clearTimeout(studentVirtualAutosaveTimerRef.current);
+      studentVirtualAutosaveTimerRef.current = null;
+    }
+    if (
+      !token
+      || session?.role !== 'STUDENT'
+      || !studentData?.virtualDevice
+      || !studentVirtualPatch
+    ) {
+      return;
+    }
+    const baseline = patchFromVirtualDevice(studentData.virtualDevice);
+    if (sameVirtualDevicePatch(studentVirtualPatch, baseline)) {
+      return;
+    }
+
+    studentVirtualAutosaveTimerRef.current = window.setTimeout(() => {
+      studentVirtualAutosaveTimerRef.current = null;
+      void saveStudentVirtualDevice();
+    }, VIRTUAL_DEVICE_AUTOSAVE_DEBOUNCE_MS);
+
+    return () => {
+      if (studentVirtualAutosaveTimerRef.current !== null) {
+        window.clearTimeout(studentVirtualAutosaveTimerRef.current);
+        studentVirtualAutosaveTimerRef.current = null;
+      }
+    };
+  }, [token, session?.role, studentData?.virtualDevice, studentVirtualPatch, saveStudentVirtualDevice]);
 
   const openVirtualControlModal = useCallback((deviceId: string) => {
     setVirtualControlDeviceId(deviceId);
@@ -2754,10 +2795,14 @@ export default function App() {
     });
   }, []);
 
-  const saveAdminVirtualDevice = async () => {
+  const saveAdminVirtualDevice = useCallback(async () => {
     if (!token || !virtualControlDeviceId || !virtualControlPatch) {
       return;
     }
+    if (adminVirtualSaveInFlightRef.current) {
+      return;
+    }
+    adminVirtualSaveInFlightRef.current = true;
 
     const busyId = `admin-virtual-control-${virtualControlDeviceId}`;
     setBusyKey(busyId);
@@ -2771,9 +2816,40 @@ export default function App() {
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
+      adminVirtualSaveInFlightRef.current = false;
       setBusyKey(null);
     }
-  };
+  }, [token, virtualControlDeviceId, virtualControlPatch, applyUpdatedVirtualDevice]);
+
+  useEffect(() => {
+    if (adminVirtualAutosaveTimerRef.current !== null) {
+      window.clearTimeout(adminVirtualAutosaveTimerRef.current);
+      adminVirtualAutosaveTimerRef.current = null;
+    }
+    if (!token || !virtualControlDeviceId || !virtualControlPatch) {
+      return;
+    }
+    const baselineState = adminData?.virtualDevices.find((entry) => entry.deviceId === virtualControlDeviceId) ?? null;
+    if (!baselineState) {
+      return;
+    }
+    const baseline = patchFromVirtualDevice(baselineState);
+    if (sameVirtualDevicePatch(virtualControlPatch, baseline)) {
+      return;
+    }
+
+    adminVirtualAutosaveTimerRef.current = window.setTimeout(() => {
+      adminVirtualAutosaveTimerRef.current = null;
+      void saveAdminVirtualDevice();
+    }, VIRTUAL_DEVICE_AUTOSAVE_DEBOUNCE_MS);
+
+    return () => {
+      if (adminVirtualAutosaveTimerRef.current !== null) {
+        window.clearTimeout(adminVirtualAutosaveTimerRef.current);
+        adminVirtualAutosaveTimerRef.current = null;
+      }
+    };
+  }, [token, adminData?.virtualDevices, virtualControlDeviceId, virtualControlPatch, saveAdminVirtualDevice]);
 
   const closeCounterResetModal = useCallback(() => {
     setCounterResetTarget(null);
@@ -3556,10 +3632,6 @@ export default function App() {
       ? busyKey === `admin-virtual-counter-reset-${counterResetTarget.deviceId}`
       : busyKey === `admin-command-${counterResetTarget.deviceId}-COUNTER_RESET-undefined`
     : false;
-  const studentVirtualBusy = busyKey === 'student-virtual-control';
-  const virtualControlBusy = virtualControlDeviceId
-    ? busyKey === `admin-virtual-control-${virtualControlDeviceId}`
-    : false;
   const selectedAdminVirtualDevice = useMemo(() => {
     if (!adminData || !virtualControlDeviceId) {
       return null;
@@ -4260,9 +4332,7 @@ export default function App() {
                 t={t}
                 deviceId={studentData.virtualDevice.deviceId}
                 patch={studentVirtualPatch}
-                busy={studentVirtualBusy}
                 onSetField={setStudentVirtualField}
-                onSave={saveStudentVirtualDevice}
               />
             ) : null}
 
@@ -4566,8 +4636,6 @@ export default function App() {
         virtualControlPatch={virtualControlPatch}
         onCloseVirtualControlModal={closeVirtualControlModal}
         onSetModalVirtualField={setModalVirtualField}
-        onSaveAdminVirtualDevice={saveAdminVirtualDevice}
-        virtualControlBusy={virtualControlBusy}
         resetEventsModalOpen={resetEventsModalOpen}
         onCloseResetEventsModal={() => setResetEventsModalOpen(false)}
         onResetStoredEvents={resetStoredEvents}

@@ -114,6 +114,21 @@
   width: min(680px, 100%);
 }
 
+.virtual-device-panel-header {
+  margin-bottom: 0.35rem;
+}
+
+.virtual-modal-header-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.virtual-device-id-label {
+  background: rgba(25, 82, 115, 0.14);
+  color: #215a7e;
+}
+
 .virtual-controls-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -125,6 +140,112 @@
   gap: 0.3rem;
   color: #385367;
   font-size: 0.86rem;
+}
+
+.virtual-button-row {
+  margin: 0.55rem 0 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.virtual-push-button {
+  min-width: 7.2rem;
+}
+
+.virtual-push-button.virtual-red {
+  border-color: rgba(130, 34, 34, 0.48);
+  background: linear-gradient(145deg, #b64343, #8f2f2f);
+}
+
+.virtual-push-button.virtual-black {
+  border-color: rgba(31, 42, 54, 0.55);
+  background: linear-gradient(145deg, #38495a, #24303d);
+}
+
+.virtual-push-button.active {
+  box-shadow: inset 0 0 0 2px rgba(250, 252, 255, 0.34);
+}
+
+.virtual-counter-button {
+  border-color: rgba(23, 78, 136, 0.5);
+  background: linear-gradient(145deg, #2f85d5, #2569ad);
+}
+
+.virtual-led-controls {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.virtual-led-toggle {
+  border: 1px solid rgba(40, 71, 92, 0.2);
+  background: rgba(245, 250, 253, 0.92);
+  color: #335164;
+  border-radius: 10px;
+  padding: 0.5rem 0.58rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.virtual-led-toggle:hover {
+  border-color: rgba(27, 88, 121, 0.35);
+  background: rgba(240, 248, 252, 0.98);
+}
+
+.virtual-led-lamp {
+  width: 1.02rem;
+  height: 1.02rem;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 30%, rgba(235, 245, 252, 0.94), rgba(88, 107, 123, 0.68));
+  box-shadow:
+    inset 0 0 0 1px rgba(240, 247, 252, 0.35),
+    0 0 0 1px rgba(38, 58, 76, 0.24);
+}
+
+.virtual-led-toggle.green.lit .virtual-led-lamp {
+  background: radial-gradient(circle at 40% 30%, #e8ffe5 0%, #49d57f 55%, #1f8f4f 100%);
+  box-shadow:
+    0 0 0 1px rgba(28, 114, 66, 0.4),
+    0 0 12px rgba(50, 201, 107, 0.6);
+}
+
+.virtual-led-toggle.orange.lit .virtual-led-lamp {
+  background: radial-gradient(circle at 40% 30%, #fff1dc 0%, #ffb24d 55%, #c17213 100%);
+  box-shadow:
+    0 0 0 1px rgba(160, 97, 24, 0.4),
+    0 0 12px rgba(250, 160, 54, 0.58);
+}
+
+.virtual-led-toggle.lit.green {
+  border-color: rgba(30, 122, 72, 0.38);
+}
+
+.virtual-led-toggle.lit.orange {
+  border-color: rgba(163, 102, 27, 0.4);
+}
+
+.virtual-slider-field {
+  border: 1px solid rgba(40, 71, 92, 0.16);
+  background: rgba(245, 250, 253, 0.82);
+  border-radius: 10px;
+  padding: 0.5rem 0.58rem 0.45rem;
+}
+
+.virtual-slider-field > span {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.virtual-slider {
+  width: 100%;
+  accent-color: #0f7a8f;
 }
 
 .mqtt-compose-modal {

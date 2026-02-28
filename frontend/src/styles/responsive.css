@@ -33,6 +33,14 @@
     grid-template-columns: 1fr;
   }
 
+  .virtual-button-row {
+    flex-direction: column;
+  }
+
+  .virtual-led-controls {
+    grid-template-columns: 1fr;
+  }
+
   .mqtt-compose-grid {
     grid-template-columns: 1fr;
   }

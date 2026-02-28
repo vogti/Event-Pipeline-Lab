@@ -5,130 +5,119 @@ interface StudentVirtualDeviceSectionProps {
   t: (key: I18nKey) => string;
   deviceId: string;
   patch: VirtualDevicePatch;
-  busy: boolean;
   onSetField: <K extends keyof VirtualDevicePatch>(field: K, value: VirtualDevicePatch[K]) => void;
-  onSave: () => void;
 }
 
 export function StudentVirtualDeviceSection({
   t,
   deviceId,
   patch,
-  busy,
-  onSetField,
-  onSave
+  onSetField
 }: StudentVirtualDeviceSectionProps) {
+  const temperature = Number.isFinite(patch.temperatureC) ? patch.temperatureC ?? 0 : 0;
+  const humidity = Number.isFinite(patch.humidityPct) ? patch.humidityPct ?? 0 : 0;
+  const brightness = Number.isFinite(patch.brightness) ? patch.brightness ?? 0 : 0;
+  const counter = Number.isFinite(patch.counterValue) ? patch.counterValue ?? 0 : 0;
+
   return (
     <section className="panel panel-animate">
-      <h2>{t('virtualDevice')}</h2>
-      <p className="muted">{deviceId}</p>
+      <div className="panel-header virtual-device-panel-header">
+        <h2>{t('virtualDevice')}</h2>
+        <span className="chip virtual-device-id-label mono">{deviceId}</span>
+      </div>
+
+      <div className="virtual-button-row">
+        <button
+          type="button"
+          className={`button virtual-push-button virtual-red ${patch.buttonRedPressed ? 'active' : ''}`}
+          onClick={() => onSetField('buttonRedPressed', !Boolean(patch.buttonRedPressed))}
+        >
+          {t('colorRed')}
+        </button>
+        <button
+          type="button"
+          className={`button virtual-push-button virtual-black ${patch.buttonBlackPressed ? 'active' : ''}`}
+          onClick={() => onSetField('buttonBlackPressed', !Boolean(patch.buttonBlackPressed))}
+        >
+          {t('colorBlack')}
+        </button>
+        <button
+          type="button"
+          className="button virtual-counter-button"
+          onClick={() => onSetField('counterValue', Math.max(0, Math.round(counter) + 1))}
+        >
+          {t('metricCounter')}: {Math.max(0, Math.round(counter))}
+        </button>
+      </div>
+
       <div className="virtual-controls-grid">
-        <label className="checkbox-inline">
+        <div className="virtual-led-controls">
+          <button
+            type="button"
+            className={`virtual-led-toggle green ${patch.ledGreenOn ? 'lit' : ''}`}
+            onClick={() => onSetField('ledGreenOn', !Boolean(patch.ledGreenOn))}
+            aria-pressed={Boolean(patch.ledGreenOn)}
+          >
+            <span className="virtual-led-lamp" aria-hidden="true" />
+            <span>{t('commandGreenLed')}</span>
+          </button>
+          <button
+            type="button"
+            className={`virtual-led-toggle orange ${patch.ledOrangeOn ? 'lit' : ''}`}
+            onClick={() => onSetField('ledOrangeOn', !Boolean(patch.ledOrangeOn))}
+            aria-pressed={Boolean(patch.ledOrangeOn)}
+          >
+            <span className="virtual-led-lamp" aria-hidden="true" />
+            <span>{t('commandOrangeLed')}</span>
+          </button>
+        </div>
+
+        <label className="virtual-slider-field">
+          <span>
+            {t('metricTemp')} <strong>{temperature.toFixed(1)} °C</strong>
+          </span>
           <input
-            type="checkbox"
-            checked={Boolean(patch.buttonRedPressed)}
-            onChange={(event) => onSetField('buttonRedPressed', event.target.checked)}
-          />
-          <span>{t('colorRed')}</span>
-        </label>
-        <label className="checkbox-inline">
-          <input
-            type="checkbox"
-            checked={Boolean(patch.buttonBlackPressed)}
-            onChange={(event) => onSetField('buttonBlackPressed', event.target.checked)}
-          />
-          <span>{t('colorBlack')}</span>
-        </label>
-        <label className="checkbox-inline">
-          <input
-            type="checkbox"
-            checked={Boolean(patch.ledGreenOn)}
-            onChange={(event) => onSetField('ledGreenOn', event.target.checked)}
-          />
-          <span>{t('commandGreenLed')}</span>
-        </label>
-        <label className="checkbox-inline">
-          <input
-            type="checkbox"
-            checked={Boolean(patch.ledOrangeOn)}
-            onChange={(event) => onSetField('ledOrangeOn', event.target.checked)}
-          />
-          <span>{t('commandOrangeLed')}</span>
-        </label>
-        <label>
-          <span>{t('metricTemp')}</span>
-          <input
-            className="input"
-            type="number"
-            step="0.1"
-            value={patch.temperatureC ?? 0}
-            onChange={(event) => {
-              const next = Number.isFinite(event.target.valueAsNumber)
-                ? event.target.valueAsNumber
-                : (patch.temperatureC ?? 0);
-              onSetField('temperatureC', next);
-            }}
+            className="virtual-slider"
+            type="range"
+            min={-10}
+            max={50}
+            step={0.1}
+            value={temperature}
+            onChange={(event) => onSetField('temperatureC', Number(event.target.value))}
           />
         </label>
-        <label>
-          <span>{t('metricHumidity')}</span>
+
+        <label className="virtual-slider-field">
+          <span>
+            {t('metricHumidity')} <strong>{humidity.toFixed(0)} %</strong>
+          </span>
           <input
-            className="input"
-            type="number"
-            step="0.1"
-            value={patch.humidityPct ?? 0}
-            onChange={(event) => {
-              const next = Number.isFinite(event.target.valueAsNumber)
-                ? event.target.valueAsNumber
-                : (patch.humidityPct ?? 0);
-              onSetField('humidityPct', next);
-            }}
+            className="virtual-slider"
+            type="range"
+            min={0}
+            max={100}
+            step={1}
+            value={humidity}
+            onChange={(event) => onSetField('humidityPct', Number(event.target.value))}
           />
         </label>
-        <label>
-          <span>{t('metricBrightness')}</span>
+
+        <label className="virtual-slider-field">
+          <span>
+            {t('metricBrightness')} <strong>{brightness.toFixed(2)} V</strong>
+          </span>
           <input
-            className="input"
-            type="number"
-            step="0.01"
+            className="virtual-slider"
+            type="range"
             min="0"
             max="3.3"
-            value={patch.brightness ?? 0}
-            onChange={(event) => {
-              const raw = Number.isFinite(event.target.valueAsNumber)
-                ? event.target.valueAsNumber
-                : (patch.brightness ?? 0);
-              const next = Math.min(3.3, Math.max(0, raw));
-              onSetField('brightness', Number(next.toFixed(2)));
-            }}
-          />
-        </label>
-        <label>
-          <span>{t('metricCounter')}</span>
-          <input
-            className="input"
-            type="number"
-            step="1"
-            min="0"
-            value={patch.counterValue ?? 0}
-            onChange={(event) => {
-              const raw = Number.isFinite(event.target.valueAsNumber)
-                ? event.target.valueAsNumber
-                : (patch.counterValue ?? 0);
-              onSetField('counterValue', Math.max(0, Math.round(raw)));
-            }}
+            step={0.01}
+            value={brightness}
+            onChange={(event) => onSetField('brightness', Number(event.target.value))}
           />
         </label>
       </div>
 
-      <button
-        className="button"
-        type="button"
-        onClick={onSave}
-        disabled={busy}
-      >
-        {t('applyVirtualState')}
-      </button>
     </section>
   );
 }

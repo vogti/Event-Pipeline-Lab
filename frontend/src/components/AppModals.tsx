@@ -17,8 +17,6 @@ interface AppModalsProps {
   virtualControlPatch: VirtualDevicePatch | null;
   onCloseVirtualControlModal: () => void;
   onSetModalVirtualField: (field: keyof VirtualDevicePatch, value: boolean | number) => void;
-  onSaveAdminVirtualDevice: () => void;
-  virtualControlBusy: boolean;
   resetEventsModalOpen: boolean;
   onCloseResetEventsModal: () => void;
   onResetStoredEvents: () => void;
@@ -50,8 +48,6 @@ export function AppModals({
   virtualControlPatch,
   onCloseVirtualControlModal,
   onSetModalVirtualField,
-  onSaveAdminVirtualDevice,
-  virtualControlBusy,
   resetEventsModalOpen,
   onCloseResetEventsModal,
   onResetStoredEvents,
@@ -68,6 +64,19 @@ export function AppModals({
   onSavePinEditor,
   onClosePinEditor
 }: AppModalsProps) {
+  const virtualTemperature = Number.isFinite(virtualControlPatch?.temperatureC)
+    ? virtualControlPatch?.temperatureC ?? 0
+    : 0;
+  const virtualHumidity = Number.isFinite(virtualControlPatch?.humidityPct)
+    ? virtualControlPatch?.humidityPct ?? 0
+    : 0;
+  const virtualBrightness = Number.isFinite(virtualControlPatch?.brightness)
+    ? virtualControlPatch?.brightness ?? 0
+    : 0;
+  const virtualCounter = Number.isFinite(virtualControlPatch?.counterValue)
+    ? virtualControlPatch?.counterValue ?? 0
+    : 0;
+
   return (
     <>
       {selectedEvent ? (
@@ -117,127 +126,114 @@ export function AppModals({
         <div className="event-modal-backdrop" onClick={onCloseVirtualControlModal}>
           <div className="event-modal virtual-device-modal" onClick={(event) => event.stopPropagation()}>
             <div className="panel-header">
-              <h2>
-                {t('virtualDeviceControls')}: {virtualControlDeviceId}
-              </h2>
-              <button
-                className="modal-close-button"
-                type="button"
-                onClick={onCloseVirtualControlModal}
-                aria-label={t('close')}
-                title={t('close')}
-              >
-                <CloseIcon />
-              </button>
+              <h2>{t('virtualDeviceControls')}</h2>
+              <div className="virtual-modal-header-right">
+                <span className="chip virtual-device-id-label mono">{virtualControlDeviceId}</span>
+                <button
+                  className="modal-close-button"
+                  type="button"
+                  onClick={onCloseVirtualControlModal}
+                  aria-label={t('close')}
+                  title={t('close')}
+                >
+                  <CloseIcon />
+                </button>
+              </div>
             </div>
 
             <p className="muted">
               {t('groupConfig')}: {selectedAdminVirtualDevice.groupKey}
             </p>
 
+            <div className="virtual-button-row">
+              <button
+                type="button"
+                className={`button virtual-push-button virtual-red ${virtualControlPatch.buttonRedPressed ? 'active' : ''}`}
+                onClick={() => onSetModalVirtualField('buttonRedPressed', !Boolean(virtualControlPatch.buttonRedPressed))}
+              >
+                {t('colorRed')}
+              </button>
+              <button
+                type="button"
+                className={`button virtual-push-button virtual-black ${virtualControlPatch.buttonBlackPressed ? 'active' : ''}`}
+                onClick={() => onSetModalVirtualField('buttonBlackPressed', !Boolean(virtualControlPatch.buttonBlackPressed))}
+              >
+                {t('colorBlack')}
+              </button>
+              <button
+                type="button"
+                className="button virtual-counter-button"
+                onClick={() => onSetModalVirtualField('counterValue', Math.max(0, Math.round(virtualCounter) + 1))}
+              >
+                {t('metricCounter')}: {Math.max(0, Math.round(virtualCounter))}
+              </button>
+            </div>
+
             <div className="virtual-controls-grid">
-              <label className="checkbox-inline">
+              <div className="virtual-led-controls">
+                <button
+                  type="button"
+                  className={`virtual-led-toggle green ${virtualControlPatch.ledGreenOn ? 'lit' : ''}`}
+                  onClick={() => onSetModalVirtualField('ledGreenOn', !Boolean(virtualControlPatch.ledGreenOn))}
+                  aria-pressed={Boolean(virtualControlPatch.ledGreenOn)}
+                >
+                  <span className="virtual-led-lamp" aria-hidden="true" />
+                  <span>{t('commandGreenLed')}</span>
+                </button>
+                <button
+                  type="button"
+                  className={`virtual-led-toggle orange ${virtualControlPatch.ledOrangeOn ? 'lit' : ''}`}
+                  onClick={() => onSetModalVirtualField('ledOrangeOn', !Boolean(virtualControlPatch.ledOrangeOn))}
+                  aria-pressed={Boolean(virtualControlPatch.ledOrangeOn)}
+                >
+                  <span className="virtual-led-lamp" aria-hidden="true" />
+                  <span>{t('commandOrangeLed')}</span>
+                </button>
+              </div>
+              <label className="virtual-slider-field">
+                <span>
+                  {t('metricTemp')} <strong>{virtualTemperature.toFixed(1)} °C</strong>
+                </span>
                 <input
-                  type="checkbox"
-                  checked={Boolean(virtualControlPatch.buttonRedPressed)}
-                  onChange={(event) => onSetModalVirtualField('buttonRedPressed', event.target.checked)}
-                />
-                <span>{t('colorRed')}</span>
-              </label>
-              <label className="checkbox-inline">
-                <input
-                  type="checkbox"
-                  checked={Boolean(virtualControlPatch.buttonBlackPressed)}
-                  onChange={(event) => onSetModalVirtualField('buttonBlackPressed', event.target.checked)}
-                />
-                <span>{t('colorBlack')}</span>
-              </label>
-              <label className="checkbox-inline">
-                <input
-                  type="checkbox"
-                  checked={Boolean(virtualControlPatch.ledGreenOn)}
-                  onChange={(event) => onSetModalVirtualField('ledGreenOn', event.target.checked)}
-                />
-                <span>{t('commandGreenLed')}</span>
-              </label>
-              <label className="checkbox-inline">
-                <input
-                  type="checkbox"
-                  checked={Boolean(virtualControlPatch.ledOrangeOn)}
-                  onChange={(event) => onSetModalVirtualField('ledOrangeOn', event.target.checked)}
-                />
-                <span>{t('commandOrangeLed')}</span>
-              </label>
-              <label>
-                <span>{t('metricTemp')}</span>
-                <input
-                  className="input"
-                  type="number"
-                  step="0.1"
-                  value={virtualControlPatch.temperatureC ?? 0}
-                  onChange={(event) => {
-                    const next = Number.isFinite(event.target.valueAsNumber)
-                      ? event.target.valueAsNumber
-                      : (virtualControlPatch.temperatureC ?? 0);
-                    onSetModalVirtualField('temperatureC', next);
-                  }}
+                  className="virtual-slider"
+                  type="range"
+                  min={-10}
+                  max={50}
+                  step={0.1}
+                  value={virtualTemperature}
+                  onChange={(event) => onSetModalVirtualField('temperatureC', Number(event.target.value))}
                 />
               </label>
-              <label>
-                <span>{t('metricHumidity')}</span>
+              <label className="virtual-slider-field">
+                <span>
+                  {t('metricHumidity')} <strong>{virtualHumidity.toFixed(0)} %</strong>
+                </span>
                 <input
-                  className="input"
-                  type="number"
-                  step="0.1"
-                  value={virtualControlPatch.humidityPct ?? 0}
-                  onChange={(event) => {
-                    const next = Number.isFinite(event.target.valueAsNumber)
-                      ? event.target.valueAsNumber
-                      : (virtualControlPatch.humidityPct ?? 0);
-                    onSetModalVirtualField('humidityPct', next);
-                  }}
+                  className="virtual-slider"
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={virtualHumidity}
+                  onChange={(event) => onSetModalVirtualField('humidityPct', Number(event.target.value))}
                 />
               </label>
-              <label>
-                <span>{t('metricBrightness')}</span>
+              <label className="virtual-slider-field">
+                <span>
+                  {t('metricBrightness')} <strong>{virtualBrightness.toFixed(2)} V</strong>
+                </span>
                 <input
-                  className="input"
-                  type="number"
-                  step="0.01"
+                  className="virtual-slider"
+                  type="range"
                   min="0"
                   max="3.3"
-                  value={virtualControlPatch.brightness ?? 0}
-                  onChange={(event) => {
-                    const raw = Number.isFinite(event.target.valueAsNumber)
-                      ? event.target.valueAsNumber
-                      : (virtualControlPatch.brightness ?? 0);
-                    const next = Math.min(3.3, Math.max(0, raw));
-                    onSetModalVirtualField('brightness', Number(next.toFixed(2)));
-                  }}
-                />
-              </label>
-              <label>
-                <span>{t('metricCounter')}</span>
-                <input
-                  className="input"
-                  type="number"
-                  step="1"
-                  min="0"
-                  value={virtualControlPatch.counterValue ?? 0}
-                  onChange={(event) => {
-                    const raw = Number.isFinite(event.target.valueAsNumber)
-                      ? event.target.valueAsNumber
-                      : (virtualControlPatch.counterValue ?? 0);
-                    onSetModalVirtualField('counterValue', Math.max(0, Math.round(raw)));
-                  }}
+                  step={0.01}
+                  value={virtualBrightness}
+                  onChange={(event) => onSetModalVirtualField('brightness', Number(event.target.value))}
                 />
               </label>
             </div>
-
             <div className="event-modal-actions">
-              <button className="button" type="button" onClick={onSaveAdminVirtualDevice} disabled={virtualControlBusy}>
-                {t('applyVirtualState')}
-              </button>
               <button className="button secondary" type="button" onClick={onCloseVirtualControlModal}>
                 {t('close')}
               </button>
