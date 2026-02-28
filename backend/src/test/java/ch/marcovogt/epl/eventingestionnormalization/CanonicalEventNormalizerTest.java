@@ -164,7 +164,7 @@ class CanonicalEventNormalizerTest {
     }
 
     @Test
-    void shouldUseTopicDeviceIdForRpcTopicEvenWhenPayloadContainsVirtualDeviceId() {
+    void shouldUsePayloadVirtualDeviceIdForMirroredRpcTopic() {
         String topic = "epld01/events/rpc";
         byte[] payload = """
                 {
@@ -179,7 +179,7 @@ class CanonicalEventNormalizerTest {
 
         NormalizedEvent normalized = normalizer.normalize(topic, payload, Instant.parse("2026-02-25T10:00:04Z"));
 
-        assertThat(normalized.event().getDeviceId()).isEqualTo("epld01");
+        assertThat(normalized.event().getDeviceId()).isEqualTo("eplvd01");
         assertThat(normalized.event().getGroupKey()).isEqualTo("epld01");
         assertThat(normalized.event().getTopic()).isEqualTo("epld01/event/button/red");
         assertThat(normalized.event().getEventType()).isEqualTo("button.red.press");

@@ -75,16 +75,29 @@ public class CanonicalEventNormalizer {
     }
 
     private String extractDeviceId(String topic, JsonNode payloadNode) {
+        String payloadDeviceId = normalizeDeviceId(text(payloadNode, "deviceId"));
         String[] segments = topic.split("/");
+        String topicDeviceId = null;
         if (segments.length >= 2 && "epld".equals(segments[0])) {
-            return segments[1];
-        }
-        if (segments.length >= 1
+            topicDeviceId = normalizeDeviceId(segments[1]);
+        } else if (segments.length >= 1
                 && (segments[0].startsWith("epld") || segments[0].startsWith("eplvd"))) {
-            return segments[0];
+            topicDeviceId = normalizeDeviceId(segments[0]);
         }
 
-        String payloadDeviceId = normalizeDeviceId(text(payloadNode, "deviceId"));
+        // In physical-topic mirror mode, keep source ownership on the virtual device payload id.
+        if (payloadDeviceId != null
+                && topicDeviceId != null
+                && topic.endsWith("/events/rpc")
+                && DeviceIdMapping.isVirtualDeviceId(payloadDeviceId)
+                && DeviceIdMapping.isPhysicalDeviceId(topicDeviceId)) {
+            return payloadDeviceId;
+        }
+
+        if (topicDeviceId != null) {
+            return topicDeviceId;
+        }
+
         if (payloadDeviceId != null) {
             return payloadDeviceId;
         }
@@ -198,21 +211,25 @@ public class CanonicalEventNormalizer {
         }
 
         String resolvedDeviceId = (deviceId == null || deviceId.isBlank()) ? "unknown" : deviceId.trim();
+        String topicDeviceId = extractTopicDeviceId(rawTopic);
+        String canonicalTopicDeviceId = topicDeviceId == null || topicDeviceId.isBlank()
+                ? resolvedDeviceId
+                : topicDeviceId;
         if (eventType != null && !eventType.isBlank()) {
             String lowerEventType = eventType.toLowerCase(Locale.ROOT);
             if (lowerEventType.startsWith("button.")) {
                 String[] parts = lowerEventType.split("\\.");
                 String buttonName = parts.length >= 2 ? parts[1].trim() : "";
                 if (buttonName.isBlank()) {
-                    return resolvedDeviceId + "/event/button";
+                    return canonicalTopicDeviceId + "/event/button";
                 }
-                return resolvedDeviceId + "/event/button/" + buttonName;
+                return canonicalTopicDeviceId + "/event/button/" + buttonName;
             }
             if (lowerEventType.startsWith("sensor.temperature")) {
-                return resolvedDeviceId + "/event/sensor/temperature";
+                return canonicalTopicDeviceId + "/event/sensor/temperature";
             }
             if (lowerEventType.startsWith("sensor.humidity")) {
-                return resolvedDeviceId + "/event/sensor/humidity";
+                return canonicalTopicDeviceId + "/event/sensor/humidity";
             }
         }
 
@@ -225,30 +242,45 @@ public class CanonicalEventNormalizer {
         }
         String lowerEventType = eventType.toLowerCase(Locale.ROOT);
         if (lowerEventType.startsWith("counter.")) {
-            return resolvedDeviceId + "/event/counter";
+            return canonicalTopicDeviceId + "/event/counter";
         }
         if (lowerEventType.equals("sensor.ldr.voltage")) {
-            return resolvedDeviceId + "/event/sensor/ldr";
+            return canonicalTopicDeviceId + "/event/sensor/ldr";
         }
         if (lowerEventType.startsWith("sensor.temperature")) {
-            return resolvedDeviceId + "/event/sensor/temperature";
+            return canonicalTopicDeviceId + "/event/sensor/temperature";
         }
         if (lowerEventType.startsWith("sensor.humidity")) {
-            return resolvedDeviceId + "/event/sensor/humidity";
+            return canonicalTopicDeviceId + "/event/sensor/humidity";
         }
         if (lowerEventType.startsWith("sensor.dht22")) {
-            return resolvedDeviceId + "/event/sensor/dht22";
+            return canonicalTopicDeviceId + "/event/sensor/dht22";
         }
         if (lowerEventType.equals("led.green.state_changed")) {
-            return resolvedDeviceId + "/event/led/green";
+            return canonicalTopicDeviceId + "/event/led/green";
         }
         if (lowerEventType.equals("led.orange.state_changed")) {
-            return resolvedDeviceId + "/event/led/orange";
+            return canonicalTopicDeviceId + "/event/led/orange";
         }
         if (lowerEventType.startsWith("status.")) {
-            return resolvedDeviceId + "/status/" + lowerEventType.substring("status.".length());
+            return canonicalTopicDeviceId + "/status/" + lowerEventType.substring("status.".length());
         }
         return normalized;
+    }
+
+    private String extractTopicDeviceId(String topic) {
+        if (topic == null || topic.isBlank()) {
+            return null;
+        }
+        String[] segments = topic.split("/");
+        if (segments.length >= 2 && "epld".equals(segments[0])) {
+            return normalizeDeviceId(segments[1]);
+        }
+        if (segments.length >= 1
+                && (segments[0].startsWith("epld") || segments[0].startsWith("eplvd"))) {
+            return normalizeDeviceId(segments[0]);
+        }
+        return null;
     }
 
     private String extractGroupKey(String deviceId, JsonNode payloadNode) {
