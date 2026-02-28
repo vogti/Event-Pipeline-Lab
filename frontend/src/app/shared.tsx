@@ -13,6 +13,7 @@ import type {
   TaskCapabilities,
   TaskInfo,
   TimestampValue,
+  StudentDeviceState,
   VirtualDeviceState
 } from '../types';
 import type { I18nKey, Language } from '../i18n';
@@ -659,6 +660,29 @@ function sameVirtualDeviceState(a: VirtualDeviceState, b: VirtualDeviceState): b
     a.buttonBlackPressed === b.buttonBlackPressed &&
     a.ledGreenOn === b.ledGreenOn &&
     a.ledOrangeOn === b.ledOrangeOn &&
+    a.updatedAt === b.updatedAt
+  );
+}
+
+function sameStudentDeviceState(a: StudentDeviceState | null, b: StudentDeviceState): boolean {
+  if (!a) {
+    return false;
+  }
+  return (
+    a.deviceId === b.deviceId &&
+    a.online === b.online &&
+    a.lastSeen === b.lastSeen &&
+    a.rssi === b.rssi &&
+    a.temperatureC === b.temperatureC &&
+    a.humidityPct === b.humidityPct &&
+    a.brightness === b.brightness &&
+    a.counterValue === b.counterValue &&
+    a.buttonRedPressed === b.buttonRedPressed &&
+    a.buttonBlackPressed === b.buttonBlackPressed &&
+    a.ledGreenOn === b.ledGreenOn &&
+    a.ledOrangeOn === b.ledOrangeOn &&
+    a.uptimeMs === b.uptimeMs &&
+    a.uptimeIngestTs === b.uptimeIngestTs &&
     a.updatedAt === b.updatedAt
   );
 }
@@ -1634,6 +1658,7 @@ export {
   sameEventRateSeries,
   sameAdminSystemStatus,
   sameVirtualDeviceState,
+  sameStudentDeviceState,
   sameVirtualDevicePatch,
   getStoredToken,
   getStoredLanguageOverride,

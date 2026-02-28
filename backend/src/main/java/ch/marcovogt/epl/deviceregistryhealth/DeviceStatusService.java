@@ -11,6 +11,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -61,18 +62,92 @@ public class DeviceStatusService {
 
         deviceDiscoveryProvisioningService.ensureProvisionedForPhysicalDevice(deviceId);
 
-        DeviceStatus status = deviceStatusRepository.findById(deviceId)
+        Optional<DeviceStatus> existing = deviceStatusRepository.findById(deviceId);
+        DeviceStatus status = existing
                 .orElseGet(() -> new DeviceStatus(deviceId));
+        boolean changed = false;
+        boolean shouldTouchPresence = shouldAffectPresence(event, payloadNode, explicitOnline);
 
-        if (explicitOnline == null || explicitOnline) {
-            status.setLastSeen(event.getIngestTs());
+        if (explicitOnline != null) {
+            if (explicitOnline) {
+                Instant nextSeen = event.getIngestTs();
+                if (!Objects.equals(status.getLastSeen(), nextSeen)) {
+                    status.setLastSeen(nextSeen);
+                    changed = true;
+                }
+            }
+            if (status.isOnline() != explicitOnline) {
+                status.setOnline(explicitOnline);
+                changed = true;
+            }
+        } else if (shouldTouchPresence) {
+            Instant nextSeen = event.getIngestTs();
+            if (!Objects.equals(status.getLastSeen(), nextSeen)) {
+                status.setLastSeen(nextSeen);
+                changed = true;
+            }
+            if (!status.isOnline()) {
+                status.setOnline(true);
+                changed = true;
+            }
         }
-        status.setOnline(explicitOnline != null ? explicitOnline : true);
 
-        extractRssi(payloadNode).ifPresent(status::setRssi);
-        extractWifiPayload(payloadNode).ifPresent(status::setWifiPayloadJson);
+        Optional<Integer> rssi = extractRssi(payloadNode);
+        if (rssi.isPresent() && !Objects.equals(status.getRssi(), rssi.get())) {
+            status.setRssi(rssi.get());
+            changed = true;
+        }
+
+        Optional<String> wifiPayload = extractWifiPayload(payloadNode);
+        if (wifiPayload.isPresent() && !Objects.equals(status.getWifiPayloadJson(), wifiPayload.get())) {
+            status.setWifiPayloadJson(wifiPayload.get());
+            changed = true;
+        }
+
+        if (existing.isEmpty() && !changed) {
+            return null;
+        }
+        if (existing.isPresent() && !changed) {
+            return status;
+        }
 
         return deviceStatusRepository.save(status);
+    }
+
+    private boolean shouldAffectPresence(CanonicalEvent event, JsonNode payloadNode, Boolean explicitOnline) {
+        if (explicitOnline != null) {
+            return true;
+        }
+
+        String eventType = event.getEventType() == null ? "" : event.getEventType().trim().toLowerCase();
+        if (eventType.startsWith("command.") || "simple_control.command".equals(eventType)) {
+            return false;
+        }
+
+        String payloadDeviceId = payloadNode == null ? null : text(payloadNode, "deviceId");
+        if (payloadDeviceId != null && !payloadDeviceId.isBlank()) {
+            if (!payloadDeviceId.equalsIgnoreCase(event.getDeviceId())) {
+                return false;
+            }
+            if (DeviceIdMapping.isVirtualDeviceId(payloadDeviceId)
+                    && DeviceIdMapping.isPhysicalDeviceId(event.getDeviceId())) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private String text(JsonNode node, String key) {
+        if (node == null || key == null || key.isBlank()) {
+            return null;
+        }
+        JsonNode value = node.get(key);
+        if (value == null || value.isNull() || !value.isTextual()) {
+            return null;
+        }
+        String text = value.asText();
+        return text == null || text.isBlank() ? null : text.trim();
     }
 
     @Transactional(readOnly = true)

@@ -27,6 +27,7 @@ import type {
   TaskPipelineConfig,
   PipelineView,
   StudentBootstrap,
+  StudentDeviceState,
   TaskInfo,
   VirtualDeviceTopicMode,
   VirtualDeviceState
@@ -249,6 +250,14 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ deviceId, command, on })
       },
+      token
+    );
+  },
+
+  studentDeviceState(token: string, deviceId: string): Promise<StudentDeviceState> {
+    return request<StudentDeviceState>(
+      withQuery('/api/student/device-state', { deviceId }),
+      undefined,
       token
     );
   },

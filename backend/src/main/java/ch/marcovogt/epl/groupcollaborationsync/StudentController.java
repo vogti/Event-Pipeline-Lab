@@ -10,6 +10,8 @@ import ch.marcovogt.epl.authsession.AuthService;
 import ch.marcovogt.epl.authsession.RequestAuth;
 import ch.marcovogt.epl.authsession.SessionPrincipal;
 import ch.marcovogt.epl.common.DeviceIdMapping;
+import ch.marcovogt.epl.deviceregistryhealth.DeviceTelemetryService;
+import ch.marcovogt.epl.deviceregistryhealth.StudentDeviceStateDto;
 import ch.marcovogt.epl.eventfeedquery.EventFeedStage;
 import ch.marcovogt.epl.eventfeedquery.EventFeedService;
 import ch.marcovogt.epl.mqttgateway.MqttCommandPublisher;
@@ -29,6 +31,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.server.ResponseStatusException;
 
 @RestController
@@ -44,6 +47,7 @@ public class StudentController {
     private final MqttCommandPublisher mqttCommandPublisher;
     private final RealtimeSyncService realtimeSyncService;
     private final VirtualDeviceService virtualDeviceService;
+    private final DeviceTelemetryService deviceTelemetryService;
 
     public StudentController(
             RequestAuth requestAuth,
@@ -54,7 +58,8 @@ public class StudentController {
             AppSettingsService appSettingsService,
             MqttCommandPublisher mqttCommandPublisher,
             RealtimeSyncService realtimeSyncService,
-            VirtualDeviceService virtualDeviceService
+            VirtualDeviceService virtualDeviceService,
+            DeviceTelemetryService deviceTelemetryService
     ) {
         this.requestAuth = requestAuth;
         this.taskStateService = taskStateService;
@@ -65,6 +70,7 @@ public class StudentController {
         this.mqttCommandPublisher = mqttCommandPublisher;
         this.realtimeSyncService = realtimeSyncService;
         this.virtualDeviceService = virtualDeviceService;
+        this.deviceTelemetryService = deviceTelemetryService;
     }
 
     @GetMapping("/bootstrap")
@@ -153,6 +159,36 @@ public class StudentController {
         }
 
         publish(body.command(), targetDeviceId, body.on());
+    }
+
+    @GetMapping("/device-state")
+    public StudentDeviceStateDto getStudentDeviceState(
+            HttpServletRequest request,
+            @RequestParam(required = false) String deviceId
+    ) {
+        SessionPrincipal principal = requestAuth.requireRole(request, AppRole.STUDENT);
+        TaskCapabilities capabilities = taskStateService.capabilitiesFor(principal);
+
+        if (!capabilities.canSendDeviceCommands()) {
+            throw AuthExceptions.forbidden();
+        }
+
+        String fallbackDeviceId = principal.groupKey() == null ? "" : principal.groupKey();
+        String targetDeviceId = (deviceId == null || deviceId.isBlank())
+                ? fallbackDeviceId
+                : deviceId.trim().toLowerCase();
+        if (!DeviceIdMapping.isPhysicalDeviceId(targetDeviceId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "deviceId must reference a physical EPLD id");
+        }
+
+        StudentDeviceScope targetScope = capabilities.studentCommandTargetScope() == null
+                ? StudentDeviceScope.OWN_DEVICE
+                : capabilities.studentCommandTargetScope();
+        if (!isAllowedCommandTarget(targetScope, targetDeviceId, principal.groupKey())) {
+            throw AuthExceptions.forbidden();
+        }
+
+        return deviceTelemetryService.getStudentDeviceState(targetDeviceId);
     }
 
     private void validateConfigKeys(StudentConfigUpdateRequest body, TaskCapabilities capabilities) {

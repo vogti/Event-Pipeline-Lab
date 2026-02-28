@@ -397,6 +397,24 @@ export interface StudentBootstrap {
   settings: AppSettings;
 }
 
+export interface StudentDeviceState {
+  deviceId: string;
+  online: boolean;
+  lastSeen: TimestampValue;
+  rssi: number | null;
+  temperatureC: number | null;
+  humidityPct: number | null;
+  brightness: number | null;
+  counterValue: number | null;
+  buttonRedPressed: boolean | null;
+  buttonBlackPressed: boolean | null;
+  ledGreenOn: boolean | null;
+  ledOrangeOn: boolean | null;
+  uptimeMs: number | null;
+  uptimeIngestTs: TimestampValue;
+  updatedAt: TimestampValue;
+}
+
 export interface WsEnvelope<T = unknown> {
   type: string;
   payload: T;

@@ -16,6 +16,7 @@ import type {
   PipelineSinkNode,
   PipelineSinkRuntimeUpdate,
   PipelineSinkSection,
+  StudentDeviceState,
   StudentDeviceScope,
   TaskPipelineConfig,
   PipelineView,
@@ -49,6 +50,7 @@ import {
   sameGroupOverviewList,
   sameAdminSystemStatus,
   sameVirtualDeviceState,
+  sameStudentDeviceState,
   sameVirtualDevicePatch,
   getStoredToken,
   getStoredLanguageOverride,
@@ -375,6 +377,71 @@ function normalizeStudentDeviceScope(raw: string | null | undefined): StudentDev
   return 'OWN_DEVICE';
 }
 
+const VIRTUAL_PATCH_KEYS: Array<keyof VirtualDevicePatch> = [
+  'buttonRedPressed',
+  'buttonBlackPressed',
+  'ledGreenOn',
+  'ledOrangeOn',
+  'temperatureC',
+  'humidityPct',
+  'brightness',
+  'counterValue'
+];
+const VIRTUAL_BUTTON_PATCH_KEYS: Array<keyof VirtualDevicePatch> = ['buttonRedPressed', 'buttonBlackPressed'];
+
+function hasOnlyButtonPatchDifferences(
+  current: VirtualDevicePatch,
+  baseline: VirtualDevicePatch
+): boolean {
+  let hasDifference = false;
+  for (const key of VIRTUAL_PATCH_KEYS) {
+    const currentValue = current[key];
+    const baselineValue = baseline[key];
+    if (currentValue === baselineValue) {
+      continue;
+    }
+    hasDifference = true;
+    if (!VIRTUAL_BUTTON_PATCH_KEYS.includes(key)) {
+      return false;
+    }
+  }
+  return hasDifference;
+}
+
+function resolveStudentCommandTargetDeviceId(
+  scopeRaw: string | null | undefined,
+  ownDeviceIdRaw: string | null | undefined,
+  adminDeviceIdRaw: string | null | undefined,
+  targetDeviceIdRaw: string | null | undefined
+): string {
+  const scope = normalizeStudentDeviceScope(scopeRaw);
+  const ownDeviceId = (ownDeviceIdRaw ?? '').trim();
+  const adminDeviceId = (adminDeviceIdRaw ?? '').trim();
+  const targetDeviceId = (targetDeviceIdRaw ?? '').trim();
+
+  if (scope === 'OWN_DEVICE') {
+    return ownDeviceId;
+  }
+  if (scope === 'ADMIN_DEVICE') {
+    return adminDeviceId;
+  }
+  if (scope === 'OWN_AND_ADMIN_DEVICE') {
+    if (!adminDeviceId) {
+      return ownDeviceId;
+    }
+    if (targetDeviceId === ownDeviceId || targetDeviceId === adminDeviceId) {
+      return targetDeviceId;
+    }
+    return ownDeviceId;
+  }
+  return targetDeviceId;
+}
+
+function isLikelyPhysicalDeviceId(deviceId: string): boolean {
+  const normalized = deviceId.trim().toLowerCase();
+  return /^epld\d+$/.test(normalized);
+}
+
 export default function App() {
   const [token, setToken] = useState<string | null>(() => getStoredToken());
   const [session, setSession] = useState<AuthMe | null>(null);
@@ -396,6 +463,7 @@ export default function App() {
   const [studentPipelineDraft, setStudentPipelineDraft] = useState<PipelineProcessingSection | null>(null);
   const [studentPipelineSinkDraft, setStudentPipelineSinkDraft] = useState<PipelineSinkSection | null>(null);
   const [studentCommandTargetDeviceId, setStudentCommandTargetDeviceId] = useState('');
+  const [studentDeviceStatesById, setStudentDeviceStatesById] = useState<Record<string, StudentDeviceState>>({});
 
   const [adminData, setAdminData] = useState<AdminViewData | null>(null);
   const [adminSystemStatus, setAdminSystemStatus] = useState<AdminSystemStatus | null>(null);
@@ -483,6 +551,8 @@ export default function App() {
   const adminVirtualSaveInFlightRef = useRef(false);
   const studentVirtualAutosaveTimerRef = useRef<number | null>(null);
   const adminVirtualAutosaveTimerRef = useRef<number | null>(null);
+  const studentVirtualMutationQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const adminVirtualMutationQueueRef = useRef<Promise<void>>(Promise.resolve());
 
   const reportBackgroundError = useCallback((context: string, error: unknown) => {
     const message = toErrorMessage(error);
@@ -680,6 +750,8 @@ export default function App() {
     setStudentPipeline(null);
     setStudentPipelineDraft(null);
     setStudentPipelineSinkDraft(null);
+    setStudentCommandTargetDeviceId('');
+    setStudentDeviceStatesById({});
 
     setAdminData(null);
     setAdminSystemStatus(null);
@@ -732,6 +804,8 @@ export default function App() {
     setToasts([]);
     adminDataRef.current = null;
     deferredAdminFeedRef.current = [];
+    studentVirtualMutationQueueRef.current = Promise.resolve();
+    adminVirtualMutationQueueRef.current = Promise.resolve();
     clearRecentFeedHighlights();
   }, [clearRecentFeedHighlights]);
 
@@ -1042,6 +1116,19 @@ export default function App() {
     studentData?.capabilities.studentCommandTargetScope,
     studentData?.settings.adminDeviceId
   ]);
+
+  const studentCommandTargetScope = normalizeStudentDeviceScope(
+    studentData?.capabilities.studentCommandTargetScope
+  );
+  const studentResolvedCommandTargetDeviceId = resolveStudentCommandTargetDeviceId(
+    studentData?.capabilities.studentCommandTargetScope,
+    session?.groupKey,
+    studentData?.settings.adminDeviceId ?? '',
+    studentCommandTargetDeviceId
+  );
+  const studentSelectedDeviceState = studentResolvedCommandTargetDeviceId
+    ? studentDeviceStatesById[studentResolvedCommandTargetDeviceId] ?? null
+    : null;
 
   const studentActiveTaskId = studentData?.activeTask.id ?? '';
   const hasStudentData = studentData !== null;
@@ -2543,21 +2630,98 @@ export default function App() {
     }
   };
 
+  const refreshStudentDeviceState = useCallback(async (deviceIdRaw: string) => {
+    const activeToken = token;
+    if (!activeToken || session?.role !== 'STUDENT') {
+      return;
+    }
+    const deviceId = deviceIdRaw.trim().toLowerCase();
+    if (!isLikelyPhysicalDeviceId(deviceId)) {
+      return;
+    }
+    try {
+      const nextState = await api.studentDeviceState(activeToken, deviceId);
+      setStudentDeviceStatesById((previous) => {
+        const previousState = previous[nextState.deviceId] ?? null;
+        if (sameStudentDeviceState(previousState, nextState)) {
+          return previous;
+        }
+        return {
+          ...previous,
+          [nextState.deviceId]: nextState
+        };
+      });
+    } catch (error) {
+      reportBackgroundError(`studentDeviceState:${deviceId}`, error);
+    }
+  }, [reportBackgroundError, session?.role, token]);
+
+  useEffect(() => {
+    if (
+      !token
+      || session?.role !== 'STUDENT'
+      || !studentData?.capabilities.canSendDeviceCommands
+    ) {
+      return;
+    }
+
+    const candidateIds = new Set<string>();
+    const ownDeviceId = session.groupKey?.trim().toLowerCase() ?? '';
+    const adminDeviceId = studentData.settings.adminDeviceId?.trim().toLowerCase() ?? '';
+    const selectedTargetId = studentCommandTargetDeviceId.trim().toLowerCase();
+    const resolvedTargetId = studentResolvedCommandTargetDeviceId.trim().toLowerCase();
+
+    if (isLikelyPhysicalDeviceId(ownDeviceId)) {
+      candidateIds.add(ownDeviceId);
+    }
+    if (isLikelyPhysicalDeviceId(adminDeviceId)) {
+      candidateIds.add(adminDeviceId);
+    }
+    if (studentCommandTargetScope === 'ALL_DEVICES' && isLikelyPhysicalDeviceId(selectedTargetId)) {
+      candidateIds.add(selectedTargetId);
+    }
+    if (isLikelyPhysicalDeviceId(resolvedTargetId)) {
+      candidateIds.add(resolvedTargetId);
+    }
+
+    if (candidateIds.size === 0) {
+      return;
+    }
+
+    const runRefresh = () => {
+      for (const candidateId of candidateIds) {
+        void refreshStudentDeviceState(candidateId);
+      }
+    };
+
+    runRefresh();
+    const timerId = window.setInterval(runRefresh, 1500);
+    return () => {
+      window.clearInterval(timerId);
+    };
+  }, [
+    refreshStudentDeviceState,
+    session?.groupKey,
+    session?.role,
+    studentCommandTargetDeviceId,
+    studentCommandTargetScope,
+    studentData?.capabilities.canSendDeviceCommands,
+    studentData?.settings.adminDeviceId,
+    studentResolvedCommandTargetDeviceId,
+    token
+  ]);
+
   const sendStudentCommand = async (command: DeviceCommandType, on?: boolean) => {
     if (!token || !session || session.role !== 'STUDENT' || !session.groupKey) {
       return;
     }
 
-    const scope = normalizeStudentDeviceScope(studentData?.capabilities.studentCommandTargetScope);
-    const ownDeviceId = session.groupKey.trim();
-    const adminDeviceId = studentData?.settings.adminDeviceId?.trim() ?? '';
-    const targetDeviceId = scope === 'OWN_DEVICE'
-      ? ownDeviceId
-      : scope === 'ADMIN_DEVICE'
-        ? adminDeviceId
-        : scope === 'OWN_AND_ADMIN_DEVICE'
-          ? studentCommandTargetDeviceId.trim()
-        : studentCommandTargetDeviceId.trim();
+    const targetDeviceId = resolveStudentCommandTargetDeviceId(
+      studentData?.capabilities.studentCommandTargetScope,
+      session.groupKey,
+      studentData?.settings.adminDeviceId ?? '',
+      studentCommandTargetDeviceId
+    );
     if (!targetDeviceId) {
       setErrorMessage(t('invalidInput'));
       return;
@@ -2568,6 +2732,7 @@ export default function App() {
 
     try {
       await api.sendStudentCommand(token, targetDeviceId, command, on);
+      void refreshStudentDeviceState(targetDeviceId);
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
@@ -2676,6 +2841,37 @@ export default function App() {
     [token]
   );
 
+  const applyStudentVirtualPatchImmediate = useCallback((patch: Partial<VirtualDeviceState>) => {
+    if (!token || session?.role !== 'STUDENT') {
+      return;
+    }
+    studentVirtualMutationQueueRef.current = studentVirtualMutationQueueRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        try {
+          const updated = await api.studentVirtualDeviceControl(token, patch);
+          setStudentData((previous) => {
+            if (!previous) {
+              return previous;
+            }
+            if (previous.virtualDevice && sameVirtualDeviceState(previous.virtualDevice, updated)) {
+              return previous;
+            }
+            return {
+              ...previous,
+              virtualDevice: updated
+            };
+          });
+          const nextPatch = patchFromVirtualDevice(updated);
+          setStudentVirtualPatch((previous) =>
+            sameVirtualDevicePatch(previous, nextPatch) ? previous : nextPatch
+          );
+        } catch (error) {
+          setErrorMessage(toErrorMessage(error));
+        }
+      });
+  }, [session?.role, token]);
+
   const setStudentVirtualField = useCallback(<K extends keyof VirtualDevicePatch>(key: K, value: VirtualDevicePatch[K]) => {
     setStudentVirtualPatch((previous) => {
       if (previous && previous[key] === value) {
@@ -2688,6 +2884,19 @@ export default function App() {
       };
     });
   }, []);
+
+  const setStudentVirtualButtonState = useCallback((button: 'red' | 'black', pressed: boolean) => {
+    const field: keyof VirtualDevicePatch = button === 'red' ? 'buttonRedPressed' : 'buttonBlackPressed';
+    setStudentVirtualField(field, pressed);
+    if (studentVirtualAutosaveTimerRef.current !== null) {
+      window.clearTimeout(studentVirtualAutosaveTimerRef.current);
+      studentVirtualAutosaveTimerRef.current = null;
+    }
+    const patch = button === 'red'
+      ? { buttonRedPressed: pressed }
+      : { buttonBlackPressed: pressed };
+    applyStudentVirtualPatchImmediate(patch);
+  }, [applyStudentVirtualPatchImmediate, setStudentVirtualField]);
 
   const setModalVirtualField = useCallback(<K extends keyof VirtualDevicePatch>(key: K, value: VirtualDevicePatch[K]) => {
     setVirtualControlPatch((previous) => {
@@ -2755,6 +2964,9 @@ export default function App() {
     if (sameVirtualDevicePatch(studentVirtualPatch, baseline)) {
       return;
     }
+    if (hasOnlyButtonPatchDifferences(studentVirtualPatch, baseline)) {
+      return;
+    }
 
     studentVirtualAutosaveTimerRef.current = window.setTimeout(() => {
       studentVirtualAutosaveTimerRef.current = null;
@@ -2802,6 +3014,44 @@ export default function App() {
     });
   }, []);
 
+  const applyAdminVirtualPatchImmediate = useCallback((deviceId: string, patch: Partial<VirtualDeviceState>) => {
+    if (!token) {
+      return;
+    }
+    adminVirtualMutationQueueRef.current = adminVirtualMutationQueueRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        try {
+          const updated = await api.adminVirtualDeviceControl(token, deviceId, patch);
+          applyUpdatedVirtualDevice(updated);
+          if (virtualControlDeviceId === updated.deviceId) {
+            const nextPatch = patchFromVirtualDevice(updated);
+            setVirtualControlPatch((previous) =>
+              sameVirtualDevicePatch(previous, nextPatch) ? previous : nextPatch
+            );
+          }
+        } catch (error) {
+          setErrorMessage(toErrorMessage(error));
+        }
+      });
+  }, [applyUpdatedVirtualDevice, token, virtualControlDeviceId]);
+
+  const setModalVirtualButtonState = useCallback((button: 'red' | 'black', pressed: boolean) => {
+    if (!virtualControlDeviceId) {
+      return;
+    }
+    const field: keyof VirtualDevicePatch = button === 'red' ? 'buttonRedPressed' : 'buttonBlackPressed';
+    setModalVirtualField(field, pressed);
+    if (adminVirtualAutosaveTimerRef.current !== null) {
+      window.clearTimeout(adminVirtualAutosaveTimerRef.current);
+      adminVirtualAutosaveTimerRef.current = null;
+    }
+    const patch = button === 'red'
+      ? { buttonRedPressed: pressed }
+      : { buttonBlackPressed: pressed };
+    applyAdminVirtualPatchImmediate(virtualControlDeviceId, patch);
+  }, [applyAdminVirtualPatchImmediate, setModalVirtualField, virtualControlDeviceId]);
+
   const saveAdminVirtualDevice = useCallback(async () => {
     if (!token || !virtualControlDeviceId || !virtualControlPatch) {
       return;
@@ -2842,6 +3092,9 @@ export default function App() {
     }
     const baseline = patchFromVirtualDevice(baselineState);
     if (sameVirtualDevicePatch(virtualControlPatch, baseline)) {
+      return;
+    }
+    if (hasOnlyButtonPatchDifferences(virtualControlPatch, baseline)) {
       return;
     }
 
@@ -4306,25 +4559,15 @@ export default function App() {
               <StudentCommandsSection
                 t={t}
                 studentCommandWhitelist={studentData.capabilities.studentCommandWhitelist}
-                commandTargetScope={normalizeStudentDeviceScope(
-                  studentData.capabilities.studentCommandTargetScope
-                )}
+                commandTargetScope={studentCommandTargetScope}
                 targetDeviceId={studentCommandTargetDeviceId}
+                resolvedTargetId={studentResolvedCommandTargetDeviceId}
+                targetDeviceState={studentSelectedDeviceState}
                 ownDeviceId={session.groupKey ?? ''}
                 adminDeviceId={studentData.settings.adminDeviceId?.trim() ?? ''}
                 onTargetDeviceIdChange={setStudentCommandTargetDeviceId}
                 isCommandBusy={(command, on) => {
-                  const scope = normalizeStudentDeviceScope(studentData.capabilities.studentCommandTargetScope);
-                  const ownDeviceId = session.groupKey?.trim() ?? '';
-                  const adminDeviceId = studentData.settings.adminDeviceId?.trim() ?? '';
-                  const targetDeviceId = scope === 'OWN_DEVICE'
-                    ? ownDeviceId
-                    : scope === 'ADMIN_DEVICE'
-                      ? adminDeviceId
-                      : scope === 'OWN_AND_ADMIN_DEVICE'
-                        ? studentCommandTargetDeviceId.trim()
-                      : studentCommandTargetDeviceId.trim();
-                  return busyKey === `student-command-${command}-${String(on)}-${targetDeviceId}`;
+                  return busyKey === `student-command-${command}-${String(on)}-${studentResolvedCommandTargetDeviceId}`;
                 }}
                 onSendCommand={sendStudentCommand}
               />
@@ -4337,6 +4580,7 @@ export default function App() {
                 patch={studentVirtualPatch}
                 mirrorModeActive={studentData.settings.virtualDeviceTopicMode === 'PHYSICAL_TOPIC'}
                 onSetField={setStudentVirtualField}
+                onSetButtonState={setStudentVirtualButtonState}
               />
             ) : null}
 
@@ -4643,6 +4887,7 @@ export default function App() {
         virtualMirrorModeActive={adminData?.settings.virtualDeviceTopicMode === 'PHYSICAL_TOPIC'}
         onCloseVirtualControlModal={closeVirtualControlModal}
         onSetModalVirtualField={setModalVirtualField}
+        onSetModalVirtualButtonState={setModalVirtualButtonState}
         resetEventsModalOpen={resetEventsModalOpen}
         onCloseResetEventsModal={() => setResetEventsModalOpen(false)}
         onResetStoredEvents={resetStoredEvents}

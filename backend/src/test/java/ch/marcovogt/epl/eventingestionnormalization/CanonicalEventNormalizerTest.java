@@ -3,6 +3,7 @@ package ch.marcovogt.epl.eventingestionnormalization;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import ch.marcovogt.epl.common.EventCategory;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
@@ -182,5 +183,50 @@ class CanonicalEventNormalizerTest {
         assertThat(normalized.event().getGroupKey()).isEqualTo("epld01");
         assertThat(normalized.event().getTopic()).isEqualTo("epld01/event/button/red");
         assertThat(normalized.event().getEventType()).isEqualTo("button.red.press");
+    }
+
+    @Test
+    void shouldCategorizeLedStateChangedAsStatusAndNotInternal() {
+        String topic = "epld01/events/rpc";
+        byte[] payload = """
+                {
+                  "method":"NotifyStatus",
+                  "params":{
+                    "switch:0":{"output":true}
+                  }
+                }
+                """.getBytes(StandardCharsets.UTF_8);
+
+        NormalizedEvent normalized = normalizer.normalize(topic, payload, Instant.parse("2026-02-28T15:00:00Z"));
+
+        assertThat(normalized.event().getTopic()).isEqualTo("epld01/event/led/green");
+        assertThat(normalized.event().getEventType()).isEqualTo("led.green.state_changed");
+        assertThat(normalized.event().getCategory()).isEqualTo(EventCategory.STATUS);
+        assertThat(normalized.event().isInternal()).isFalse();
+    }
+
+    @Test
+    void shouldNormalizeDeviceLedCommandTopicToCommandEventType() {
+        String topic = "epld01/command/led/green";
+        byte[] payload = "\"on\"".getBytes(StandardCharsets.UTF_8);
+
+        NormalizedEvent normalized = normalizer.normalize(topic, payload, Instant.parse("2026-02-28T15:00:01Z"));
+
+        assertThat(normalized.event().getDeviceId()).isEqualTo("epld01");
+        assertThat(normalized.event().getEventType()).isEqualTo("command.led.green");
+        assertThat(normalized.event().getCategory()).isEqualTo(EventCategory.COMMAND);
+        assertThat(normalized.event().isInternal()).isFalse();
+    }
+
+    @Test
+    void shouldKeepSimpleControlCommandEventsInternal() {
+        String topic = "epld01/command/switch:0";
+        byte[] payload = "\"on\"".getBytes(StandardCharsets.UTF_8);
+
+        NormalizedEvent normalized = normalizer.normalize(topic, payload, Instant.parse("2026-02-28T15:00:02Z"));
+
+        assertThat(normalized.event().getEventType()).isEqualTo("simple_control.command");
+        assertThat(normalized.event().getCategory()).isEqualTo(EventCategory.COMMAND);
+        assertThat(normalized.event().isInternal()).isTrue();
     }
 }

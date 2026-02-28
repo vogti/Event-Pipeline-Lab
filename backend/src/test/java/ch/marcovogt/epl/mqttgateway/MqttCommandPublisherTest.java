@@ -30,6 +30,7 @@ class MqttCommandPublisherTest {
         publisher.publishCustom("epld01/command/led/green", "\"pressed\"", 1, false);
 
         verify(mqttGatewayClient).publish("epld/epld01/cmd/led/green", "on", 1, false);
+        verify(mqttGatewayClient).publish("epld01/command/led/green", "on", 1, false);
         verify(mqttGatewayClient).publish("epld01/command/switch:0", "on", 1, false);
         verify(mqttGatewayClient).publish(
                 eq("epld01/rpc"),
@@ -46,6 +47,7 @@ class MqttCommandPublisherTest {
         publisher.publishCustom("epld/epld01/command/led/orange", "off", 1, false);
 
         verify(mqttGatewayClient).publish("epld/epld01/cmd/led/orange", "off", 1, false);
+        verify(mqttGatewayClient).publish("epld01/command/led/orange", "off", 1, false);
         verify(mqttGatewayClient).publish("epld01/command/switch:1", "off", 1, false);
         verify(mqttGatewayClient).publish(
                 eq("epld01/rpc"),
@@ -62,6 +64,7 @@ class MqttCommandPublisherTest {
         publisher.publishCustom("epld01/command/counter/reset", "ignored", 1, false);
 
         verify(mqttGatewayClient).publish("epld/epld01/cmd/counter/reset", "{}", 1, false);
+        verify(mqttGatewayClient).publish("epld01/command/counter/reset", "{}", 1, false);
         verify(mqttGatewayClient).publish(
                 eq("epld01/rpc"),
                 argThat(payload -> payload.contains("\"method\":\"Input.ResetCounters\"")

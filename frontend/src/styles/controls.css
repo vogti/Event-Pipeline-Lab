@@ -274,6 +274,35 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.student-command-header {
+  align-items: flex-start;
+}
+
+.student-command-header-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.student-command-metrics {
+  margin-top: 0.15rem;
+  margin-bottom: 0.65rem;
+}
+
+.student-led-controls {
+  margin: 0.35rem 0 0.55rem;
+}
+
+.student-led-controls .virtual-led-toggle {
+  width: 100%;
+}
+
+.student-command-actions {
+  grid-template-columns: 1fr;
+}
+
 .checkbox-inline {
   display: inline-flex;
   align-items: center;

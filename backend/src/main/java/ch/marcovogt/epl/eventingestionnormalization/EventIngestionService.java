@@ -3,6 +3,7 @@ package ch.marcovogt.epl.eventingestionnormalization;
 import ch.marcovogt.epl.deviceregistryhealth.DeviceStatus;
 import ch.marcovogt.epl.deviceregistryhealth.DeviceStatusDto;
 import ch.marcovogt.epl.deviceregistryhealth.DeviceStatusService;
+import ch.marcovogt.epl.deviceregistryhealth.DeviceTelemetryService;
 import ch.marcovogt.epl.eventfeedquery.EventFeedService;
 import ch.marcovogt.epl.pipelinebuilder.PipelineEventProcessingResult;
 import ch.marcovogt.epl.pipelinebuilder.PipelineLogModeService;
@@ -26,6 +27,7 @@ public class EventIngestionService {
     private final CanonicalEventNormalizer canonicalEventNormalizer;
     private final CanonicalEventRepository canonicalEventRepository;
     private final DeviceStatusService deviceStatusService;
+    private final DeviceTelemetryService deviceTelemetryService;
     private final EventFeedService eventFeedService;
     private final AdminWebSocketBroadcaster adminWebSocketBroadcaster;
     private final RealtimeSyncService realtimeSyncService;
@@ -37,6 +39,7 @@ public class EventIngestionService {
             CanonicalEventNormalizer canonicalEventNormalizer,
             CanonicalEventRepository canonicalEventRepository,
             DeviceStatusService deviceStatusService,
+            DeviceTelemetryService deviceTelemetryService,
             EventFeedService eventFeedService,
             AdminWebSocketBroadcaster adminWebSocketBroadcaster,
             RealtimeSyncService realtimeSyncService,
@@ -46,6 +49,7 @@ public class EventIngestionService {
         this.canonicalEventNormalizer = canonicalEventNormalizer;
         this.canonicalEventRepository = canonicalEventRepository;
         this.deviceStatusService = deviceStatusService;
+        this.deviceTelemetryService = deviceTelemetryService;
         this.eventFeedService = eventFeedService;
         this.adminWebSocketBroadcaster = adminWebSocketBroadcaster;
         this.realtimeSyncService = realtimeSyncService;
@@ -61,6 +65,7 @@ public class EventIngestionService {
 
         CanonicalEvent saved = canonicalEventRepository.save(normalizedEvent.event());
         CanonicalEventDto eventDto = CanonicalEventDto.from(saved);
+        deviceTelemetryService.observeEvent(saved);
 
         eventFeedService.appendToLiveBuffer(eventDto);
         adminWebSocketBroadcaster.broadcastEvent(eventDto);

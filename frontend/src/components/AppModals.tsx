@@ -18,6 +18,7 @@ interface AppModalsProps {
   virtualMirrorModeActive: boolean;
   onCloseVirtualControlModal: () => void;
   onSetModalVirtualField: (field: keyof VirtualDevicePatch, value: boolean | number) => void;
+  onSetModalVirtualButtonState: (button: 'red' | 'black', pressed: boolean) => void;
   resetEventsModalOpen: boolean;
   onCloseResetEventsModal: () => void;
   onResetStoredEvents: () => void;
@@ -50,6 +51,7 @@ export function AppModals({
   virtualMirrorModeActive,
   onCloseVirtualControlModal,
   onSetModalVirtualField,
+  onSetModalVirtualButtonState,
   resetEventsModalOpen,
   onCloseResetEventsModal,
   onResetStoredEvents,
@@ -152,14 +154,70 @@ export function AppModals({
               <button
                 type="button"
                 className={`button virtual-push-button virtual-red ${virtualControlPatch.buttonRedPressed ? 'active' : ''}`}
-                onClick={() => onSetModalVirtualField('buttonRedPressed', !Boolean(virtualControlPatch.buttonRedPressed))}
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  onSetModalVirtualButtonState('red', true);
+                }}
+                onPointerUp={() => onSetModalVirtualButtonState('red', false)}
+                onPointerCancel={() => onSetModalVirtualButtonState('red', false)}
+                onPointerLeave={(event) => {
+                  if ((event.buttons & 1) === 1) {
+                    onSetModalVirtualButtonState('red', false);
+                  }
+                }}
+                onKeyDown={(event) => {
+                  if ((event.key === ' ' || event.key === 'Enter') && !event.repeat) {
+                    event.preventDefault();
+                    onSetModalVirtualButtonState('red', true);
+                  }
+                }}
+                onKeyUp={(event) => {
+                  if (event.key === ' ' || event.key === 'Enter') {
+                    event.preventDefault();
+                    onSetModalVirtualButtonState('red', false);
+                  }
+                }}
+                onBlur={() => {
+                  if (virtualControlPatch.buttonRedPressed) {
+                    onSetModalVirtualButtonState('red', false);
+                  }
+                }}
+                aria-pressed={Boolean(virtualControlPatch.buttonRedPressed)}
               >
                 {t('colorRed')}
               </button>
               <button
                 type="button"
                 className={`button virtual-push-button virtual-black ${virtualControlPatch.buttonBlackPressed ? 'active' : ''}`}
-                onClick={() => onSetModalVirtualField('buttonBlackPressed', !Boolean(virtualControlPatch.buttonBlackPressed))}
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  onSetModalVirtualButtonState('black', true);
+                }}
+                onPointerUp={() => onSetModalVirtualButtonState('black', false)}
+                onPointerCancel={() => onSetModalVirtualButtonState('black', false)}
+                onPointerLeave={(event) => {
+                  if ((event.buttons & 1) === 1) {
+                    onSetModalVirtualButtonState('black', false);
+                  }
+                }}
+                onKeyDown={(event) => {
+                  if ((event.key === ' ' || event.key === 'Enter') && !event.repeat) {
+                    event.preventDefault();
+                    onSetModalVirtualButtonState('black', true);
+                  }
+                }}
+                onKeyUp={(event) => {
+                  if (event.key === ' ' || event.key === 'Enter') {
+                    event.preventDefault();
+                    onSetModalVirtualButtonState('black', false);
+                  }
+                }}
+                onBlur={() => {
+                  if (virtualControlPatch.buttonBlackPressed) {
+                    onSetModalVirtualButtonState('black', false);
+                  }
+                }}
+                aria-pressed={Boolean(virtualControlPatch.buttonBlackPressed)}
               >
                 {t('colorBlack')}
               </button>

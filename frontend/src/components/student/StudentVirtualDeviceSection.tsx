@@ -7,6 +7,7 @@ interface StudentVirtualDeviceSectionProps {
   patch: VirtualDevicePatch;
   mirrorModeActive: boolean;
   onSetField: <K extends keyof VirtualDevicePatch>(field: K, value: VirtualDevicePatch[K]) => void;
+  onSetButtonState: (button: 'red' | 'black', pressed: boolean) => void;
 }
 
 export function StudentVirtualDeviceSection({
@@ -14,7 +15,8 @@ export function StudentVirtualDeviceSection({
   deviceId,
   patch,
   mirrorModeActive,
-  onSetField
+  onSetField,
+  onSetButtonState
 }: StudentVirtualDeviceSectionProps) {
   const temperature = Number.isFinite(patch.temperatureC) ? patch.temperatureC ?? 0 : 0;
   const humidity = Number.isFinite(patch.humidityPct) ? patch.humidityPct ?? 0 : 0;
@@ -34,14 +36,70 @@ export function StudentVirtualDeviceSection({
         <button
           type="button"
           className={`button virtual-push-button virtual-red ${patch.buttonRedPressed ? 'active' : ''}`}
-          onClick={() => onSetField('buttonRedPressed', !Boolean(patch.buttonRedPressed))}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            onSetButtonState('red', true);
+          }}
+          onPointerUp={() => onSetButtonState('red', false)}
+          onPointerCancel={() => onSetButtonState('red', false)}
+          onPointerLeave={(event) => {
+            if ((event.buttons & 1) === 1) {
+              onSetButtonState('red', false);
+            }
+          }}
+          onKeyDown={(event) => {
+            if ((event.key === ' ' || event.key === 'Enter') && !event.repeat) {
+              event.preventDefault();
+              onSetButtonState('red', true);
+            }
+          }}
+          onKeyUp={(event) => {
+            if (event.key === ' ' || event.key === 'Enter') {
+              event.preventDefault();
+              onSetButtonState('red', false);
+            }
+          }}
+          onBlur={() => {
+            if (patch.buttonRedPressed) {
+              onSetButtonState('red', false);
+            }
+          }}
+          aria-pressed={Boolean(patch.buttonRedPressed)}
         >
           {t('colorRed')}
         </button>
         <button
           type="button"
           className={`button virtual-push-button virtual-black ${patch.buttonBlackPressed ? 'active' : ''}`}
-          onClick={() => onSetField('buttonBlackPressed', !Boolean(patch.buttonBlackPressed))}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            onSetButtonState('black', true);
+          }}
+          onPointerUp={() => onSetButtonState('black', false)}
+          onPointerCancel={() => onSetButtonState('black', false)}
+          onPointerLeave={(event) => {
+            if ((event.buttons & 1) === 1) {
+              onSetButtonState('black', false);
+            }
+          }}
+          onKeyDown={(event) => {
+            if ((event.key === ' ' || event.key === 'Enter') && !event.repeat) {
+              event.preventDefault();
+              onSetButtonState('black', true);
+            }
+          }}
+          onKeyUp={(event) => {
+            if (event.key === ' ' || event.key === 'Enter') {
+              event.preventDefault();
+              onSetButtonState('black', false);
+            }
+          }}
+          onBlur={() => {
+            if (patch.buttonBlackPressed) {
+              onSetButtonState('black', false);
+            }
+          }}
+          aria-pressed={Boolean(patch.buttonBlackPressed)}
         >
           {t('colorBlack')}
         </button>

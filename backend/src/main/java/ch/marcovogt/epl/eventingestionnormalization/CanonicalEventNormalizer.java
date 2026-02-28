@@ -141,6 +141,15 @@ public class CanonicalEventNormalizer {
         if (topic.endsWith("/events/rpc")) {
             return normalizeRpcNotification(payloadNode);
         }
+        if (topic.contains("/command/led/green")) {
+            return "command.led.green";
+        }
+        if (topic.contains("/command/led/orange")) {
+            return "command.led.orange";
+        }
+        if (topic.contains("/command/counter/reset")) {
+            return "command.counter.reset";
+        }
         if (topic.contains("/command/switch:")) {
             return "simple_control.command";
         }
@@ -415,6 +424,9 @@ public class CanonicalEventNormalizer {
         if (eventType.startsWith("counter.")) {
             return EventCategory.COUNTER;
         }
+        if (eventType.startsWith("led.")) {
+            return EventCategory.STATUS;
+        }
         if (eventType.startsWith("sensor.") || eventType.startsWith("telemetry.")) {
             return EventCategory.SENSOR;
         }
@@ -433,7 +445,6 @@ public class CanonicalEventNormalizer {
 
     private boolean isInternal(String topic, EventCategory category, String eventType) {
         return category == EventCategory.INTERNAL
-                || category == EventCategory.COMMAND
                 || category == EventCategory.ACK
                 || topic.startsWith("epl/probe/")
                 || eventType.startsWith("rpc.")
