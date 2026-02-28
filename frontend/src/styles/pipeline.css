@@ -192,13 +192,6 @@
   min-width: 120px;
 }
 
-.pipeline-flow-node-title {
-  color: #2a4f67;
-  font-size: 0.78rem;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
 .pipeline-flow-node.slot.filled {
   border-color: rgba(19, 105, 144, 0.4);
 }
@@ -220,27 +213,43 @@
   min-height: 1rem;
 }
 
+.pipeline-node-title-wrap {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.pipeline-node-label {
+  color: #2a4f67;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.2;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 .pipeline-node-header-actions {
   align-items: center;
   display: inline-flex;
-  gap: 0.2rem;
+  gap: 0.35rem;
 }
 
 .pipeline-node-icon-button {
   align-items: center;
   background: transparent;
   border: 0;
-  border-radius: 7px;
+  border-radius: 8px;
   color: rgba(35, 72, 98, 0.74);
   cursor: pointer;
   display: inline-flex;
-  font-size: 1.05rem;
-  height: 1.35rem;
+  font-size: 1.2rem;
+  height: 1.7rem;
   justify-content: center;
   line-height: 1;
   padding: 0;
   transition: background-color 0.16s ease, color 0.16s ease;
-  width: 1.35rem;
+  width: 1.7rem;
 }
 
 .pipeline-node-icon-button:hover {
@@ -260,8 +269,8 @@
 }
 
 .pipeline-info-button svg {
-  height: 0.95rem;
-  width: 0.95rem;
+  height: 1.1rem;
+  width: 1.1rem;
 }
 
 .pipeline-slot-select {
@@ -493,7 +502,7 @@
 .pipeline-sink-board {
   display: grid;
   gap: 0.55rem;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
   padding-bottom: 0.1rem;
 }
 

@@ -1321,8 +1321,10 @@ export function PipelineBuilderSection({
                       onDrop={(event) => onSlotDrop(event, slot.index, isTaskScopeLocked)}
                     >
                       <div className="pipeline-flow-node-header">
-                        <span className="pipeline-flow-node-title" />
-                        <div className="pipeline-node-header-actions">
+                        <div className="pipeline-node-title-wrap">
+                          <strong className="mono pipeline-node-label">
+                            {isEmpty ? t('pipelineDropBlockHint') : slot.blockType}
+                          </strong>
                           {!isEmpty ? (
                             <button
                               type="button"
@@ -1334,6 +1336,8 @@ export function PipelineBuilderSection({
                               <InfoIcon />
                             </button>
                           ) : null}
+                        </div>
+                        <div className="pipeline-node-header-actions">
                           {slotEditable && !isEmpty ? (
                             <button
                               type="button"
@@ -1347,9 +1351,6 @@ export function PipelineBuilderSection({
                           ) : null}
                         </div>
                       </div>
-                      <strong className="mono">
-                        {isEmpty ? t('pipelineDropBlockHint') : slot.blockType}
-                      </strong>
                       {showSlotDeviceScope ? (
                         <label className="stack pipeline-slot-config">
                           <span>{t('pipelineDeviceScope')}</span>
@@ -1721,8 +1722,8 @@ export function PipelineBuilderSection({
             return (
               <article className="pipeline-sink-node" key={sinkNode.id}>
                 <header className="pipeline-sink-node-header">
-                  <strong>{sinkLabel}</strong>
-                  <div className="pipeline-node-header-actions">
+                  <div className="pipeline-node-title-wrap">
+                    <strong className="pipeline-node-label">{sinkLabel}</strong>
                     <button
                       className="pipeline-node-icon-button pipeline-info-button"
                       type="button"
@@ -1732,6 +1733,8 @@ export function PipelineBuilderSection({
                     >
                       <InfoIcon />
                     </button>
+                  </div>
+                  <div className="pipeline-node-header-actions">
                     {view.permissions.sinkEditable && sinkType !== 'EVENT_FEED' && sinkType !== 'VIRTUAL_SIGNAL' ? (
                       <button
                         className="pipeline-node-icon-button"
@@ -2322,6 +2325,7 @@ export function PipelineBuilderSection({
         titleKey="pipelineSinkSendEventConfigTitle"
         submitLabelKey="save"
         hidePayloadFields
+        simpleMode={simplifiedView}
       />
     </section>
   );

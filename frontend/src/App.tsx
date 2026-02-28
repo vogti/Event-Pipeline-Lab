@@ -1307,13 +1307,20 @@ export default function App() {
       studentFeedSourceManualRef.current = false;
       return;
     }
+    if (studentPipelineSimplifiedView) {
+      if (studentFeedSource !== 'AFTER_PIPELINE') {
+        setStudentFeedSource('AFTER_PIPELINE');
+      }
+      studentFeedSourceManualRef.current = false;
+      return;
+    }
     if (studentFeedSourceManualRef.current) {
       return;
     }
     if (studentFeedSource !== 'AFTER_PIPELINE') {
       setStudentFeedSource('AFTER_PIPELINE');
     }
-  }, [studentFeedSource, studentPipelineEnabled]);
+  }, [studentFeedSource, studentPipelineEnabled, studentPipelineSimplifiedView]);
 
   const setStudentFeedSourceFromUi = useCallback((value: StudentFeedSource) => {
     studentFeedSourceManualRef.current = true;
@@ -4961,7 +4968,7 @@ export default function App() {
               }
               studentShowInternal={studentShowInternal}
               onStudentShowInternalChange={setStudentShowInternal}
-              showFeedSourceSelector={studentPipelineEnabled}
+              showFeedSourceSelector={studentPipelineEnabled && !studentPipelineSimplifiedView}
               studentFeedSource={studentFeedSource}
               onStudentFeedSourceChange={setStudentFeedSourceFromUi}
               studentVisibleFeedCount={studentVisibleFeed.length}
