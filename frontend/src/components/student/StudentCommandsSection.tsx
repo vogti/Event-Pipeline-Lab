@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import type { I18nKey } from '../../i18n';
 import { formatBrightnessMeasurement, MetricIcon } from '../../app/shared';
+import { CloseIcon } from '../../app/shared-icons';
 import type { DeviceCommandType, StudentDeviceScope, StudentDeviceState } from '../../types';
 
 interface StudentCommandsSectionProps {
@@ -29,6 +31,7 @@ export function StudentCommandsSection({
   isCommandBusy,
   onSendCommand
 }: StudentCommandsSectionProps) {
+  const [counterResetModalOpen, setCounterResetModalOpen] = useState(false);
   const trimmedOwn = ownDeviceId.trim();
   const trimmedAdmin = adminDeviceId.trim();
   const hasAdmin = trimmedAdmin.length > 0;
@@ -81,11 +84,12 @@ export function StudentCommandsSection({
   const greenBusy = isCommandBusy('LED_GREEN', nextGreenState);
   const orangeBusy = isCommandBusy('LED_ORANGE', nextOrangeState);
   const counterBusy = isCommandBusy('COUNTER_RESET');
+  const canResetCounter = studentCommandWhitelist.includes('COUNTER_RESET');
 
   return (
     <section className="panel panel-animate">
       <div className="panel-header student-command-header">
-        <h2>{t('commands')}</h2>
+        <h2>{t('device')}</h2>
         <div className="student-command-header-right">
           <span className="chip mono">{resolvedTargetId || t('stateUnknown')}</span>
           <span className={`chip ${online === true ? 'ok' : online === false ? 'warn' : ''}`}>
@@ -152,12 +156,27 @@ export function StudentCommandsSection({
           </span>
           <span className="metric-text">{brightness}</span>
         </div>
-        <div className="device-metric">
-          <span className="metric-icon">
-            <MetricIcon kind="counter" />
-          </span>
-          <span className="metric-text">{counterValue}</span>
-        </div>
+        {canResetCounter ? (
+          <button
+            type="button"
+            className="device-metric counter-metric-trigger"
+            onClick={() => setCounterResetModalOpen(true)}
+            title={t('commandCounterReset')}
+            disabled={!hasTarget || counterBusy}
+          >
+            <span className="metric-icon">
+              <MetricIcon kind="counter" />
+            </span>
+            <span className="metric-text">{counterValue}</span>
+          </button>
+        ) : (
+          <div className="device-metric">
+            <span className="metric-icon">
+              <MetricIcon kind="counter" />
+            </span>
+            <span className="metric-text">{counterValue}</span>
+          </div>
+        )}
         <div className="device-metric full">
           <span className="metric-icon">
             <MetricIcon kind="buttons" />
@@ -205,18 +224,43 @@ export function StudentCommandsSection({
         ) : null}
       </div>
 
-      <div className="button-grid student-command-actions">
-        {studentCommandWhitelist.includes('COUNTER_RESET') ? (
-          <button
-            className="button ghost"
-            type="button"
-            onClick={() => onSendCommand('COUNTER_RESET')}
-            disabled={!hasTarget || counterBusy}
-          >
-            {t('commandCounterReset')}
-          </button>
-        ) : null}
-      </div>
+      {counterResetModalOpen ? (
+        <div className="event-modal-backdrop" onClick={() => setCounterResetModalOpen(false)}>
+          <div className="event-modal counter-reset-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="panel-header">
+              <h2>{t('counterResetDialogTitle')}</h2>
+              <button
+                className="modal-close-button"
+                type="button"
+                onClick={() => setCounterResetModalOpen(false)}
+                aria-label={t('close')}
+                title={t('close')}
+              >
+                <CloseIcon />
+              </button>
+            </div>
+            <p>
+              {t('counterResetDialogBody')} <strong>{resolvedTargetId || t('stateUnknown')}</strong>?
+            </p>
+            <div className="event-modal-actions">
+              <button
+                className="button danger"
+                type="button"
+                onClick={() => {
+                  onSendCommand('COUNTER_RESET');
+                  setCounterResetModalOpen(false);
+                }}
+                disabled={!hasTarget || counterBusy}
+              >
+                {t('commandCounterReset')}
+              </button>
+              <button className="button secondary" type="button" onClick={() => setCounterResetModalOpen(false)}>
+                {t('close')}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

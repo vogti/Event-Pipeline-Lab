@@ -61,14 +61,8 @@ interface PipelineBuilderSectionProps {
   onRestartStateLost?: () => void;
   onRestartStateRetained?: () => void;
   stateControlBusy?: boolean;
+  simplifiedView?: boolean;
   formatTs: (value: TimestampValue) => string;
-}
-
-function inputModeLabel(t: (key: I18nKey) => string, mode: string): string {
-  if (mode === 'LOG_MODE') {
-    return t('pipelineInputModeLog');
-  }
-  return t('pipelineInputModeLive');
 }
 
 function featureBadgeLabelKey(badge: string): I18nKey {
@@ -663,6 +657,7 @@ export function PipelineBuilderSection({
   onRestartStateLost,
   onRestartStateRetained,
   stateControlBusy,
+  simplifiedView = false,
   formatTs
 }: PipelineBuilderSectionProps) {
   const [dragOverSlotIndex, setDragOverSlotIndex] = useState<number | null>(null);
@@ -1162,9 +1157,6 @@ export function PipelineBuilderSection({
               </span>
             ))}
           </div>
-          <p className="muted">
-            {t('pipelineInputMode')}: {inputModeLabel(t, view.input.mode)}
-          </p>
         </div>
         {canControlLogMode ? (
           <section className="pipeline-log-mode-box">
@@ -1486,10 +1478,20 @@ export function PipelineBuilderSection({
                             <span className="chip">{t('pipelineMetricIn')}: {slotObservability.inCount}</span>
                             <span className="chip">{t('pipelineMetricOut')}: {slotObservability.outCount}</span>
                             <span className="chip warn">{t('pipelineMetricDrop')}: {slotObservability.dropCount}</span>
-                            <span className="chip">{t('pipelineMetricErrors')}: {slotObservability.errorCount}</span>
-                            <span className="chip">{t('pipelineMetricLatencyP95')}: {slotObservability.latencyP95Ms.toFixed(2)} ms</span>
-                            <span className="chip">{t('pipelineMetricBacklog')}: {slotObservability.backlogDepth}</span>
-                            <span className="chip">{t('pipelineStateType')}: {slotObservability.stateType}</span>
+                            {!simplifiedView || slotObservability.errorCount > 0 ? (
+                              <span className="chip">{t('pipelineMetricErrors')}: {slotObservability.errorCount}</span>
+                            ) : null}
+                            {simplifiedView ? (
+                              <span className="chip">{t('pipelineMetricLatency')}: {slotObservability.latencyP50Ms.toFixed(2)} ms</span>
+                            ) : (
+                              <span className="chip">{t('pipelineMetricLatencyP95')}: {slotObservability.latencyP95Ms.toFixed(2)} ms</span>
+                            )}
+                            {!simplifiedView ? (
+                              <>
+                                <span className="chip">{t('pipelineMetricBacklog')}: {slotObservability.backlogDepth}</span>
+                                <span className="chip">{t('pipelineStateType')}: {slotObservability.stateType}</span>
+                              </>
+                            ) : null}
                           </div>
                           <button
                             type="button"
@@ -1614,17 +1616,22 @@ export function PipelineBuilderSection({
               </div>
             </section>
 
-            <p className="muted">
-              {t('pipelineObservedEvents')}: {view.observability?.observedEvents ?? 0} | {t('pipelineSampling')} 1/
-              {view.observability?.sampleEvery ?? 1} | {t('pipelineStateMode')}: {view.observability?.statePersistenceMode ?? '-'}
-              {' | '}
-              {t('pipelineRestartCount')}: {view.observability?.restartCount ?? 0}
-              {view.observability?.lastRestartAt ? ` | ${formatTs(view.observability.lastRestartAt)}` : ''}
-              {view.observability?.lastRestartMode ? ` (${view.observability.lastRestartMode})` : ''}
-            </p>
-            {view.permissions.stateResetAllowed || view.permissions.stateRestartAllowed ? (
+            {!simplifiedView ? (
+              <p className="muted">
+                {t('pipelineObservedEvents')}: {view.observability?.observedEvents ?? 0}
+                {' | '}
+                {t('pipelineSampling')} 1/{view.observability?.sampleEvery ?? 1}
+                {' | '}
+                {t('pipelineStateMode')}: {view.observability?.statePersistenceMode ?? '-'}
+                {' | '}
+                {t('pipelineRestartCount')}: {view.observability?.restartCount ?? 0}
+                {view.observability?.lastRestartAt ? ` | ${formatTs(view.observability.lastRestartAt)}` : ''}
+                {view.observability?.lastRestartMode ? ` (${view.observability.lastRestartMode})` : ''}
+              </p>
+            ) : null}
+            {(view.permissions.stateRestartAllowed || (view.permissions.stateResetAllowed && !simplifiedView)) ? (
               <div className="pipeline-state-controls">
-                {view.permissions.stateResetAllowed ? (
+                {view.permissions.stateResetAllowed && !simplifiedView ? (
                   <button
                     type="button"
                     className="button tiny secondary"

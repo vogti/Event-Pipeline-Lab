@@ -114,6 +114,34 @@
   width: min(680px, 100%);
 }
 
+.student-settings-modal {
+  width: min(520px, 100%);
+}
+
+.student-settings-field {
+  display: grid;
+  gap: 0.35rem;
+  color: #385367;
+  font-size: 0.9rem;
+}
+
+.student-settings-view-mode {
+  display: grid;
+  gap: 0.42rem;
+}
+
+.student-settings-view-mode h3 {
+  margin: 0;
+  font-size: 0.96rem;
+  color: #2a4a61;
+}
+
+.student-settings-view-mode-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
 .virtual-device-panel-header {
   margin-bottom: 0.35rem;
 }

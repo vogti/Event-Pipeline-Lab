@@ -57,9 +57,7 @@ import {
   setStoredLanguageOverride,
   toErrorMessage,
   formatTimestamp,
-  safeConfigMap,
   statusLabel,
-  sanitizeConfigForCapabilities,
   feedMatchesTopic,
   tryParsePayload,
   isTelemetryEvent,
@@ -108,8 +106,7 @@ import { LoginSection } from './components/auth/LoginSection';
 import { StudentFeedSection } from './components/student/StudentFeedSection';
 import { StudentOnboardingSection } from './components/student/StudentOnboardingSection';
 import { StudentOverviewSection } from './components/student/StudentOverviewSection';
-import { StudentGroupConfigSection } from './components/student/StudentGroupConfigSection';
-import { StudentPresenceSection } from './components/student/StudentPresenceSection';
+import { StudentSettingsModal } from './components/student/StudentSettingsModal';
 import { StudentCommandsSection } from './components/student/StudentCommandsSection';
 import { StudentVirtualDeviceSection } from './components/student/StudentVirtualDeviceSection';
 import { AppModals } from './components/AppModals';
@@ -126,6 +123,7 @@ import {
 
 const PIPELINE_AUTOSAVE_DEBOUNCE_MS = 650;
 const VIRTUAL_DEVICE_AUTOSAVE_DEBOUNCE_MS = 160;
+const STUDENT_PIPELINE_SIMPLIFIED_STORAGE_KEY = 'epl.student.pipeline.simplifiedView';
 
 function processingSectionSignature(value: PipelineProcessingSection | null | undefined): string {
   return JSON.stringify(value ?? null);
@@ -451,7 +449,6 @@ export default function App() {
   const [loginPin, setLoginPin] = useState('');
 
   const [studentData, setStudentData] = useState<StudentViewData | null>(null);
-  const [studentConfigDraft, setStudentConfigDraft] = useState<Record<string, unknown>>({});
   const [displayNameDraft, setDisplayNameDraft] = useState('');
   const [studentTopicFilter, setStudentTopicFilter] = useState('');
   const [studentShowInternal, setStudentShowInternal] = useState(false);
@@ -510,6 +507,21 @@ export default function App() {
   const [selectedEvent, setSelectedEvent] = useState<CanonicalEvent | null>(null);
   const [eventDetailsViewMode, setEventDetailsViewMode] = useState<EventDetailsViewMode>('rendered');
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [studentSettingsOpen, setStudentSettingsOpen] = useState(false);
+  const [studentPipelineSimplifiedView, setStudentPipelineSimplifiedView] = useState<boolean>(() => {
+    if (typeof window === 'undefined') {
+      return true;
+    }
+    try {
+      const stored = window.localStorage.getItem(STUDENT_PIPELINE_SIMPLIFIED_STORAGE_KEY);
+      if (stored === null) {
+        return true;
+      }
+      return stored === 'true';
+    } catch {
+      return true;
+    }
+  });
   const [nowEpochMs, setNowEpochMs] = useState<number>(() => Date.now());
   const [feedDisturbanceClockMs, setFeedDisturbanceClockMs] = useState<number>(() => Date.now());
   const [counterResetTarget, setCounterResetTarget] = useState<CounterResetTarget | null>(null);
@@ -721,6 +733,20 @@ export default function App() {
     };
   }, [errorMessage]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    try {
+      window.localStorage.setItem(
+        STUDENT_PIPELINE_SIMPLIFIED_STORAGE_KEY,
+        studentPipelineSimplifiedView ? 'true' : 'false'
+      );
+    } catch {
+      // Ignore storage failures; this preference is best-effort.
+    }
+  }, [studentPipelineSimplifiedView]);
+
   const language = useMemo<Language>(() => {
     if (languageOverride) {
       return languageOverride;
@@ -739,7 +765,6 @@ export default function App() {
 
   const clearRoleState = useCallback(() => {
     setStudentData(null);
-    setStudentConfigDraft({});
     setDisplayNameDraft('');
     setStudentTopicFilter('');
     setStudentShowInternal(false);
@@ -801,6 +826,7 @@ export default function App() {
     setSystemDataImportSelection(createSystemDataPartSelection(false));
     setFeedScenarioConfig(null);
     setFeedScenarioDraft([]);
+    setStudentSettingsOpen(false);
     setToasts([]);
     adminDataRef.current = null;
     deferredAdminFeedRef.current = [];
@@ -949,7 +975,6 @@ export default function App() {
         settings: bootstrap.settings
       });
       setStudentPipelineFeed(clampFeed(pipelineEvents));
-      setStudentConfigDraft(safeConfigMap(bootstrap.groupConfig.config));
       setDisplayNameDraft(bootstrap.me.displayName);
       setStudentVirtualPatch(bootstrap.virtualDevice ? patchFromVirtualDevice(bootstrap.virtualDevice) : null);
       setStudentOnboardingDone(false);
@@ -1674,7 +1699,6 @@ export default function App() {
     setErrorMessage,
     setStudentData,
     setStudentPipelineFeed,
-    setStudentConfigDraft,
     setStudentVirtualPatch,
     setAdminData,
     setAdminPipelineFeed,
@@ -1817,35 +1841,6 @@ export default function App() {
         setDisplayNameDraft(updated.displayName);
       }
       setStudentOnboardingDone(true);
-    } catch (error) {
-      setErrorMessage(toErrorMessage(error));
-    } finally {
-      setBusyKey(null);
-    }
-  };
-
-  const saveStudentConfig = async () => {
-    if (!token || !studentData) {
-      return;
-    }
-
-    setBusyKey('student-config');
-    setErrorMessage(null);
-
-    try {
-      const sanitized = sanitizeConfigForCapabilities(studentConfigDraft, studentData.capabilities);
-      const updated = await api.updateStudentConfig(token, sanitized);
-      setStudentData((previous) => {
-        if (!previous) {
-          return previous;
-        }
-        return {
-          ...previous,
-          groupConfig: updated
-        };
-      });
-      setStudentConfigDraft(safeConfigMap(updated.config));
-      pushToast(t('configSaved'));
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
@@ -3914,12 +3909,7 @@ export default function App() {
       setUserMenuOpen(false);
       return;
     }
-    const element = document.getElementById('student-settings-panel');
-    if (!element) {
-      setUserMenuOpen(false);
-      return;
-    }
-    element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setStudentSettingsOpen(true);
     setUserMenuOpen(false);
   }, [session]);
 
@@ -4379,70 +4369,6 @@ export default function App() {
     ));
   }, [adminFeedValues, adminVisibleFeed, feedViewMode, formatTs, recentFeedEventIds]);
 
-  const renderConfigInput = (
-    option: string,
-    value: unknown,
-    setValue: (next: unknown) => void
-  ) => {
-    if (option === 'displayMode') {
-      const selected = typeof value === 'string' ? value : 'compact';
-      return (
-        <select
-          className="input"
-          value={selected}
-          onChange={(event) => setValue(event.target.value)}
-        >
-          <option value="compact">{t('configOptionCompact')}</option>
-          <option value="detailed">{t('configOptionDetailed')}</option>
-        </select>
-      );
-    }
-
-    if (option === 'sensorFocus') {
-      const selected = typeof value === 'string' ? value : 'all';
-      return (
-        <select
-          className="input"
-          value={selected}
-          onChange={(event) => setValue(event.target.value)}
-        >
-          <option value="all">{t('configOptionAll')}</option>
-          <option value="ldr">{t('configOptionLdr')}</option>
-          <option value="dht22">{t('configOptionDht22')}</option>
-          <option value="buttons">{t('configOptionButtons')}</option>
-        </select>
-      );
-    }
-
-    if (option === 'commandPanel') {
-      return (
-        <label className="checkbox-inline">
-          <input
-            type="checkbox"
-            checked={Boolean(value)}
-            onChange={(event) => setValue(event.target.checked)}
-          />
-          <span>{t('configEnabled')}</span>
-        </label>
-      );
-    }
-
-    const textValue =
-      typeof value === 'string'
-        ? value
-        : value === undefined || value === null
-          ? ''
-          : JSON.stringify(value);
-
-    return (
-      <input
-        className="input"
-        value={textValue}
-        onChange={(event) => setValue(event.target.value)}
-      />
-    );
-  };
-
   return (
     <div className="app-shell">
       <AppTopBar
@@ -4505,54 +4431,6 @@ export default function App() {
               t={t}
               taskTitle={taskTitle(studentData.activeTask, language)}
               taskDescription={taskDescription(studentData.activeTask, language)}
-              defaultLanguageMode={defaultLanguageMode}
-              displayNameDraft={displayNameDraft}
-              busy={busyKey === 'display-name'}
-              onDisplayNameChange={setDisplayNameDraft}
-              onSaveDisplayName={saveDisplayName}
-            />
-
-            <StudentGroupConfigSection
-              t={t}
-              allowedConfigOptions={studentData.capabilities.allowedConfigOptions}
-              configDraft={studentConfigDraft}
-              revision={studentData.groupConfig.revision}
-              updatedBy={studentData.groupConfig.updatedBy}
-              updatedAt={studentData.groupConfig.updatedAt}
-              busy={busyKey === 'student-config'}
-              onConfigOptionChange={(option, nextValue) => {
-                setStudentConfigDraft((previous) => ({
-                  ...previous,
-                  [option]: nextValue
-                }));
-              }}
-              onSave={saveStudentConfig}
-              renderConfigInput={renderConfigInput}
-              formatTs={formatTs}
-            />
-
-            <PipelineBuilderSection
-              t={t}
-              title={t('pipelineBuilder')}
-              view={studentPipelineEditorView}
-              draftProcessing={studentPipelineDraft}
-              onChangeSlotBlock={changeStudentPipelineSlot}
-              onChangeSlotConfig={changeStudentPipelineSlotConfig}
-              onAddSink={addStudentPipelineSink}
-              onRemoveSink={removeStudentPipelineSink}
-              onConfigureSendEventSink={configureStudentPipelineSendSink}
-              lecturerDeviceAvailable={Boolean(studentData.settings.adminDeviceId?.trim())}
-              onResetState={resetStudentPipelineState}
-              onResetSinkCounter={resetStudentPipelineSinkCounter}
-              stateControlBusy={busyKey === 'student-pipeline-state'}
-              sinkRuntimeBusy={busyKey === 'student-pipeline-sink'}
-              formatTs={formatTs}
-            />
-
-            <StudentPresenceSection
-              t={t}
-              groupPresence={studentData.groupPresence}
-              formatTs={formatTs}
             />
 
             {studentData.capabilities.canSendDeviceCommands ? (
@@ -4583,6 +4461,25 @@ export default function App() {
                 onSetButtonState={setStudentVirtualButtonState}
               />
             ) : null}
+
+            <PipelineBuilderSection
+              t={t}
+              title={t('pipelineBuilder')}
+              view={studentPipelineEditorView}
+              draftProcessing={studentPipelineDraft}
+              onChangeSlotBlock={changeStudentPipelineSlot}
+              onChangeSlotConfig={changeStudentPipelineSlotConfig}
+              onAddSink={addStudentPipelineSink}
+              onRemoveSink={removeStudentPipelineSink}
+              onConfigureSendEventSink={configureStudentPipelineSendSink}
+              lecturerDeviceAvailable={Boolean(studentData.settings.adminDeviceId?.trim())}
+              onResetState={resetStudentPipelineState}
+              onResetSinkCounter={resetStudentPipelineSinkCounter}
+              stateControlBusy={busyKey === 'student-pipeline-state'}
+              sinkRuntimeBusy={busyKey === 'student-pipeline-sink'}
+              simplifiedView={studentPipelineSimplifiedView}
+              formatTs={formatTs}
+            />
 
             <StudentFeedSection
               t={t}
@@ -4850,6 +4747,18 @@ export default function App() {
           </div>
         ) : null}
       </main>
+
+      <StudentSettingsModal
+        t={t}
+        open={Boolean(session?.role === 'STUDENT' && studentOnboardingDone && studentSettingsOpen)}
+        displayNameDraft={displayNameDraft}
+        saveBusy={busyKey === 'display-name'}
+        simplifiedView={studentPipelineSimplifiedView}
+        onDisplayNameChange={setDisplayNameDraft}
+        onSaveDisplayName={saveDisplayName}
+        onSimplifiedViewChange={setStudentPipelineSimplifiedView}
+        onClose={() => setStudentSettingsOpen(false)}
+      />
 
       <AdminMqttEventModal
         t={t}

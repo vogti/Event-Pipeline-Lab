@@ -299,10 +299,6 @@
   width: 100%;
 }
 
-.student-command-actions {
-  grid-template-columns: 1fr;
-}
-
 .checkbox-inline {
   display: inline-flex;
   align-items: center;

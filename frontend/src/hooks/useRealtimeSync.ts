@@ -11,7 +11,6 @@ import {
   mergeIpAddressCache,
   mergeTelemetrySnapshotCache,
   patchFromVirtualDevice,
-  safeConfigMap,
   sameAppSettings,
   sameDeviceStatus,
   sameGroupConfigMeta,
@@ -64,7 +63,6 @@ interface UseRealtimeSyncParams {
   setErrorMessage: Dispatch<SetStateAction<string | null>>;
   setStudentData: Dispatch<SetStateAction<StudentViewData | null>>;
   setStudentPipelineFeed: Dispatch<SetStateAction<CanonicalEvent[]>>;
-  setStudentConfigDraft: Dispatch<SetStateAction<Record<string, unknown>>>;
   setStudentVirtualPatch: Dispatch<SetStateAction<VirtualDevicePatch | null>>;
   setAdminData: Dispatch<SetStateAction<AdminViewData | null>>;
   setAdminPipelineFeed: Dispatch<SetStateAction<CanonicalEvent[]>>;
@@ -108,7 +106,6 @@ export function useRealtimeSync({
   setErrorMessage,
   setStudentData,
   setStudentPipelineFeed,
-  setStudentConfigDraft,
   setStudentVirtualPatch,
   setAdminData,
   setAdminPipelineFeed,
@@ -355,7 +352,6 @@ export function useRealtimeSync({
         });
       },
       'group.config.updated': (nextConfig) => {
-        let changed = false;
         setStudentData((previous) => {
           if (!previous) {
             return previous;
@@ -363,15 +359,11 @@ export function useRealtimeSync({
           if (sameGroupConfigMeta(previous.groupConfig, nextConfig)) {
             return previous;
           }
-          changed = true;
           return {
             ...previous,
             groupConfig: nextConfig
           };
         });
-        if (changed) {
-          setStudentConfigDraft(safeConfigMap(nextConfig.config));
-        }
       },
       'capabilities.updated': (nextCapabilities) => {
         setStudentData((previous) => {
@@ -732,7 +724,6 @@ export function useRealtimeSync({
     setDefaultLanguageMode,
     setFeedScenarioConfig,
     setErrorMessage,
-    setStudentConfigDraft,
     setStudentData,
     setStudentPipelineFeed,
     setStudentVirtualPatch,
