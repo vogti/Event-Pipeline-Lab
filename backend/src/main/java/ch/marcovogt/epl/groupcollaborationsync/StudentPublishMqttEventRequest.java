@@ -9,7 +9,8 @@ public record StudentPublishMqttEventRequest(
         @NotBlank @Size(max = 512) String topic,
         @NotBlank @Size(max = 65535) String payload,
         @Min(0) @Max(2) Integer qos,
-        Boolean retained
+        Boolean retained,
+        @Size(max = 64) String targetDeviceId
 ) {
     public int resolvedQos() {
         return qos == null ? 1 : qos;

@@ -286,6 +286,13 @@
   gap: 0.4rem;
 }
 
+.mqtt-compose-simple-mode-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
 .mqtt-compose-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -297,6 +304,28 @@
   gap: 0.3rem;
   color: #385367;
   font-size: 0.86rem;
+}
+
+.mqtt-topic-lock-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.35rem;
+}
+
+.mqtt-topic-lock-row.locked {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+
+.mqtt-topic-prefix {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.46rem 0.56rem;
+  border-radius: 8px;
+  border: 1px solid rgba(45, 78, 98, 0.26);
+  background: rgba(232, 241, 247, 0.92);
+  color: #35546a;
+  font-size: 0.83rem;
 }
 
 .mqtt-compose-textarea {

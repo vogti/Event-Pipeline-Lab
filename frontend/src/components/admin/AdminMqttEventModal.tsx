@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import type { I18nKey } from '../../i18n';
 import {
+  lockTopicToDevicePrefix,
   normalizeMqttTemplateForTarget,
-  supportedMqttTemplates
+  supportedMqttTemplates,
+  topicSuffixForLockedPrefix
 } from '../../app/mqtt-composer';
 import { CloseIcon } from '../../app/shared-icons';
 import type {
@@ -34,6 +36,10 @@ interface AdminMqttEventModalProps {
   submitLabelKey?: I18nKey;
   enableLedTab?: boolean;
   hidePayloadFields?: boolean;
+  simpleMode?: boolean;
+  showSimpleModeToggle?: boolean;
+  onSimpleModeChange?: (simpleMode: boolean) => void;
+  topicPrefixLock?: string | null;
 }
 
 function templateLabelKey(template: MqttComposerTemplate): I18nKey {
@@ -84,7 +90,11 @@ export function AdminMqttEventModal({
   titleKey = 'sendMqttEvent',
   submitLabelKey = 'sendMqttEvent',
   enableLedTab = true,
-  hidePayloadFields = false
+  hidePayloadFields = false,
+  simpleMode = false,
+  showSimpleModeToggle = false,
+  onSimpleModeChange,
+  topicPrefixLock = null
 }: AdminMqttEventModalProps) {
   const [activeTab, setActiveTab] = useState<'guided' | 'raw' | 'led'>(mode === 'raw' ? 'raw' : 'guided');
   const wasOpenRef = useRef(false);
@@ -108,6 +118,25 @@ export function AdminMqttEventModal({
     }
   }, [activeTab, draft.deviceId, draft.ledColor, draft.ledOn, hidePayloadFields, onDraftChange]);
 
+  const normalizedPrefixLock = (topicPrefixLock ?? '').trim().toLowerCase();
+  const prefixLockActive = normalizedPrefixLock.length > 0;
+
+  useEffect(() => {
+    if (activeTab !== 'guided') {
+      return;
+    }
+    if (draft.template !== 'custom') {
+      return;
+    }
+    if (prefixLockActive) {
+      return;
+    }
+    if (!draft.deviceId || draft.customTopic.trim().length > 0) {
+      return;
+    }
+    onDraftChange('customTopic', `${draft.deviceId.trim().toLowerCase()}/`);
+  }, [activeTab, draft.customTopic, draft.deviceId, draft.template, onDraftChange, prefixLockActive]);
+
   if (!open) {
     return null;
   }
@@ -125,9 +154,33 @@ export function AdminMqttEventModal({
       ? physicalDeviceIds
       : normalizedTargetType === 'virtual'
         ? virtualDeviceIds
-        : [];
+        : prefixLockActive
+          ? physicalDeviceIds
+          : [];
   const ledAvailableDeviceIds = physicalDeviceIds;
-  const showDeviceSelect = normalizedTargetType !== 'custom';
+  const showDeviceSelect = normalizedTargetType !== 'custom' || prefixLockActive;
+  const customTopicSuffix = prefixLockActive
+    ? topicSuffixForLockedPrefix(normalizedPrefixLock, draft.customTopic)
+    : draft.customTopic;
+  const rawTopicSuffix = prefixLockActive
+    ? topicSuffixForLockedPrefix(normalizedPrefixLock, draft.rawTopic)
+    : draft.rawTopic;
+
+  const handleCustomTopicChange = (value: string) => {
+    if (prefixLockActive) {
+      onDraftChange('customTopic', lockTopicToDevicePrefix(normalizedPrefixLock, value));
+      return;
+    }
+    onDraftChange('customTopic', value);
+  };
+
+  const handleRawTopicChange = (value: string) => {
+    if (prefixLockActive) {
+      onDraftChange('rawTopic', lockTopicToDevicePrefix(normalizedPrefixLock, value));
+      return;
+    }
+    onDraftChange('rawTopic', value);
+  };
 
   return (
     <div className="event-modal-backdrop" onClick={onClose}>
@@ -181,6 +234,26 @@ export function AdminMqttEventModal({
             </button>
           ) : null}
         </div>
+
+        {showSimpleModeToggle && onSimpleModeChange ? (
+          <div className="mqtt-compose-simple-mode-row">
+            <span className="muted">{t('pipelineViewMode')}</span>
+            <button
+              className={`button tiny ${simpleMode ? 'active' : 'secondary'}`}
+              type="button"
+              onClick={() => onSimpleModeChange(true)}
+            >
+              {t('pipelineViewModeSimple')}
+            </button>
+            <button
+              className={`button tiny ${!simpleMode ? 'active' : 'secondary'}`}
+              type="button"
+              onClick={() => onSimpleModeChange(false)}
+            >
+              {t('pipelineViewModeAdvanced')}
+            </button>
+          </div>
+        ) : null}
 
         {activeTab === 'led' ? (
           <div className="mqtt-compose-grid">
@@ -520,12 +593,15 @@ export function AdminMqttEventModal({
               <>
                 <label>
                   <span>{t('mqttTopic')}</span>
-                  <input
-                    className="input mono"
-                    value={draft.customTopic}
-                    onChange={(event) => onDraftChange('customTopic', event.target.value)}
-                    disabled={busy}
-                  />
+                  <div className={`mqtt-topic-lock-row ${prefixLockActive ? 'locked' : ''}`}>
+                    {prefixLockActive ? <span className="mqtt-topic-prefix mono">{normalizedPrefixLock}/</span> : null}
+                    <input
+                      className="input mono"
+                      value={customTopicSuffix}
+                      onChange={(event) => handleCustomTopicChange(event.target.value)}
+                      disabled={busy}
+                    />
+                  </div>
                 </label>
                 {!hidePayloadFields ? (
                   <label>
@@ -541,32 +617,39 @@ export function AdminMqttEventModal({
               </>
             ) : null}
 
-            <label>
-              <span>{t('mqttTopicPreview')}</span>
-              <input className="input mono mqtt-preview-input" value={guidedTopic} readOnly />
-            </label>
-            {!hidePayloadFields ? (
+            {normalizedTemplate !== 'custom' ? (
               <>
                 <label>
-                  <span>{t('mqttPayloadPreview')}</span>
-                  <textarea className="input mqtt-compose-textarea mono mqtt-preview-input" value={guidedPayload} readOnly />
+                  <span>{t('mqttTopicPreview')}</span>
+                  <input className="input mono mqtt-preview-input" value={guidedTopic} readOnly />
                 </label>
-                <p className="mqtt-preview-help muted">{t('mqttPreviewReadonly')}</p>
+                {!hidePayloadFields ? (
+                  <>
+                    <label>
+                      <span>{t('mqttPayloadPreview')}</span>
+                      <textarea className="input mqtt-compose-textarea mono mqtt-preview-input" value={guidedPayload} readOnly />
+                    </label>
+                    <p className="mqtt-preview-help muted">{t('mqttPreviewReadonly')}</p>
+                  </>
+                ) : (
+                  <p className="mqtt-preview-help muted">{t('pipelineSinkPayloadFromInput')}</p>
+                )}
               </>
-            ) : (
-              <p className="mqtt-preview-help muted">{t('pipelineSinkPayloadFromInput')}</p>
-            )}
+            ) : null}
           </>
         ) : activeTab === 'raw' ? (
           <>
             <label>
               <span>{t('mqttTopic')}</span>
-              <input
-                className="input mono"
-                value={draft.rawTopic}
-                onChange={(event) => onDraftChange('rawTopic', event.target.value)}
-                disabled={busy}
-              />
+              <div className={`mqtt-topic-lock-row ${prefixLockActive ? 'locked' : ''}`}>
+                {prefixLockActive ? <span className="mqtt-topic-prefix mono">{normalizedPrefixLock}/</span> : null}
+                <input
+                  className="input mono"
+                  value={rawTopicSuffix}
+                  onChange={(event) => handleRawTopicChange(event.target.value)}
+                  disabled={busy}
+                />
+              </div>
             </label>
             {!hidePayloadFields ? (
               <label>
@@ -584,18 +667,20 @@ export function AdminMqttEventModal({
           </>
         ) : null}
 
-        <div className="mqtt-retained-block">
-          <label className="checkbox-inline">
-            <input
-              type="checkbox"
-              checked={draft.retained}
-              onChange={(event) => onDraftChange('retained', event.target.checked)}
-              disabled={busy}
-            />
-            <span>{t('mqttRetained')}</span>
-          </label>
-          <p className="muted mqtt-retained-help">{t('mqttRetainedHelp')}</p>
-        </div>
+        {!simpleMode ? (
+          <div className="mqtt-retained-block">
+            <label className="checkbox-inline">
+              <input
+                type="checkbox"
+                checked={draft.retained}
+                onChange={(event) => onDraftChange('retained', event.target.checked)}
+                disabled={busy}
+              />
+              <span>{t('mqttRetained')}</span>
+            </label>
+            <p className="muted mqtt-retained-help">{t('mqttRetainedHelp')}</p>
+          </div>
+        ) : null}
 
         <div className="event-modal-actions">
           <button className="button" type="button" onClick={onSubmit} disabled={busy}>

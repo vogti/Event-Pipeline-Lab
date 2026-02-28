@@ -117,6 +117,7 @@ import { useRealtimeSync } from './hooks/useRealtimeSync';
 import {
   buildGuidedMqttMessage,
   createMqttEventDraft,
+  lockTopicToDevicePrefix,
   normalizeMqttTemplateForTarget,
   resolveMqttDeviceId
 } from './app/mqtt-composer';
@@ -124,6 +125,7 @@ import {
 const PIPELINE_AUTOSAVE_DEBOUNCE_MS = 650;
 const VIRTUAL_DEVICE_AUTOSAVE_DEBOUNCE_MS = 160;
 const STUDENT_PIPELINE_SIMPLIFIED_STORAGE_KEY = 'epl.student.pipeline.simplifiedView';
+const ADMIN_MQTT_SIMPLIFIED_STORAGE_KEY = 'epl.admin.mqtt.simplifiedView';
 
 function processingSectionSignature(value: PipelineProcessingSection | null | undefined): string {
   return JSON.stringify(value ?? null);
@@ -490,6 +492,11 @@ function isLikelyPhysicalDeviceId(deviceId: string): boolean {
   return /^epld\d+$/.test(normalized);
 }
 
+function normalizeTopicPrefixDeviceId(deviceId: string | null | undefined): string {
+  const normalized = (deviceId ?? '').trim().toLowerCase();
+  return isLikelyPhysicalDeviceId(normalized) ? normalized : '';
+}
+
 export default function App() {
   const [token, setToken] = useState<string | null>(() => getStoredToken());
   const [session, setSession] = useState<AuthMe | null>(null);
@@ -569,6 +576,20 @@ export default function App() {
       return stored === 'true';
     } catch {
       return true;
+    }
+  });
+  const [adminMqttSimplifiedView, setAdminMqttSimplifiedView] = useState<boolean>(() => {
+    if (typeof window === 'undefined') {
+      return false;
+    }
+    try {
+      const stored = window.localStorage.getItem(ADMIN_MQTT_SIMPLIFIED_STORAGE_KEY);
+      if (stored === null) {
+        return false;
+      }
+      return stored === 'true';
+    } catch {
+      return false;
     }
   });
   const [nowEpochMs, setNowEpochMs] = useState<number>(() => Date.now());
@@ -798,6 +819,20 @@ export default function App() {
       // Ignore storage failures; this preference is best-effort.
     }
   }, [studentPipelineSimplifiedView]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    try {
+      window.localStorage.setItem(
+        ADMIN_MQTT_SIMPLIFIED_STORAGE_KEY,
+        adminMqttSimplifiedView ? 'true' : 'false'
+      );
+    } catch {
+      // Ignore storage failures; this preference is best-effort.
+    }
+  }, [adminMqttSimplifiedView]);
 
   const language = useMemo<Language>(() => {
     if (languageOverride) {
@@ -1193,6 +1228,10 @@ export default function App() {
       studentAdminDeviceId
     ),
     [studentAdminDeviceId, studentCommandTargetScope, studentOwnDeviceId]
+  );
+  const studentSelectedTopicPrefixDeviceId = useMemo(
+    () => normalizeTopicPrefixDeviceId(studentMqttEventDraft.deviceId),
+    [studentMqttEventDraft.deviceId]
   );
   const studentSelectedDeviceState = studentOwnDeviceId
     ? studentDeviceStatesById[studentOwnDeviceId] ?? null
@@ -1764,6 +1803,7 @@ export default function App() {
     setWsConnection,
     setErrorMessage,
     setStudentData,
+    setStudentDeviceStatesById,
     setStudentPipelineFeed,
     setStudentVirtualPatch,
     setAdminData,
@@ -3311,11 +3351,18 @@ export default function App() {
         adminPhysicalDeviceIds,
         adminVirtualDeviceIds
       );
+      const customTopicSeed =
+        nextTemplate === 'custom'
+          ? previous.customTopic.trim().length > 0
+            ? previous.customTopic
+            : (/^(epld|eplvd)\d+$/i.test(nextDeviceId.trim()) ? `${nextDeviceId.trim().toLowerCase()}/` : '')
+          : previous.customTopic;
       return {
         ...previous,
         targetType,
         template: nextTemplate,
-        deviceId: nextDeviceId
+        deviceId: nextDeviceId,
+        customTopic: customTopicSeed
       };
     });
   }, [adminPhysicalDeviceIds, adminVirtualDeviceIds]);
@@ -3326,9 +3373,18 @@ export default function App() {
       if (previous.template === nextTemplate) {
         return previous;
       }
+      const customTopicSeed =
+        nextTemplate === 'custom'
+          ? previous.customTopic.trim().length > 0
+            ? previous.customTopic
+            : (/^(epld|eplvd)\d+$/i.test(previous.deviceId.trim())
+              ? `${previous.deviceId.trim().toLowerCase()}/`
+              : '')
+          : previous.customTopic;
       return {
         ...previous,
-        template: nextTemplate
+        template: nextTemplate,
+        customTopic: customTopicSeed
       };
     });
   }, []);
@@ -3338,24 +3394,36 @@ export default function App() {
       if (previous.deviceId === deviceId) {
         return previous;
       }
+      const customTopicSeed =
+        previous.template === 'custom' && previous.customTopic.trim().length === 0 && /^(epld|eplvd)\d+$/i.test(deviceId.trim())
+          ? `${deviceId.trim().toLowerCase()}/`
+          : previous.customTopic;
       return {
         ...previous,
-        deviceId
+        deviceId,
+        customTopic: customTopicSeed
       };
     });
   }, []);
 
   const setStudentMqttDraftField = useCallback(<K extends keyof MqttEventDraft>(key: K, value: MqttEventDraft[K]) => {
     setStudentMqttEventDraft((previous) => {
-      if (previous[key] === value) {
+      let nextValue = value;
+      if ((key === 'rawTopic' || key === 'customTopic') && studentSelectedTopicPrefixDeviceId) {
+        nextValue = lockTopicToDevicePrefix(
+          studentSelectedTopicPrefixDeviceId,
+          String(value)
+        ) as MqttEventDraft[K];
+      }
+      if (previous[key] === nextValue) {
         return previous;
       }
       return {
         ...previous,
-        [key]: value
+        [key]: nextValue
       };
     });
-  }, []);
+  }, [studentSelectedTopicPrefixDeviceId]);
 
   const setStudentMqttTargetType = useCallback((targetType: MqttComposerTargetType) => {
     if (!studentSendEventTargetTypeOptions.includes(targetType)) {
@@ -3372,11 +3440,20 @@ export default function App() {
         studentAllowedPhysicalTargetIds,
         []
       );
+      const normalizedDeviceId = normalizeTopicPrefixDeviceId(nextDeviceId);
+      const lockedRawTopic = normalizedDeviceId
+        ? lockTopicToDevicePrefix(normalizedDeviceId, previous.rawTopic)
+        : previous.rawTopic;
+      const lockedCustomTopic = normalizedDeviceId
+        ? lockTopicToDevicePrefix(normalizedDeviceId, previous.customTopic)
+        : previous.customTopic;
       return {
         ...previous,
         targetType,
         template: nextTemplate,
-        deviceId: nextDeviceId
+        deviceId: nextDeviceId,
+        rawTopic: lockedRawTopic,
+        customTopic: lockedCustomTopic
       };
     });
   }, [studentAllowedPhysicalTargetIds, studentSendEventTargetTypeOptions]);
@@ -3387,9 +3464,15 @@ export default function App() {
       if (previous.template === nextTemplate) {
         return previous;
       }
+      const normalizedDeviceId = normalizeTopicPrefixDeviceId(previous.deviceId);
+      const customTopicSeed =
+        nextTemplate === 'custom' && normalizedDeviceId
+          ? lockTopicToDevicePrefix(normalizedDeviceId, previous.customTopic)
+          : previous.customTopic;
       return {
         ...previous,
-        template: nextTemplate
+        template: nextTemplate,
+        customTopic: customTopicSeed
       };
     });
   }, []);
@@ -3399,9 +3482,18 @@ export default function App() {
       if (previous.deviceId === deviceId) {
         return previous;
       }
+      const normalizedDeviceId = normalizeTopicPrefixDeviceId(deviceId);
+      const lockedRawTopic = normalizedDeviceId
+        ? lockTopicToDevicePrefix(normalizedDeviceId, previous.rawTopic)
+        : previous.rawTopic;
+      const lockedCustomTopic = normalizedDeviceId
+        ? lockTopicToDevicePrefix(normalizedDeviceId, previous.customTopic)
+        : previous.customTopic;
       return {
         ...previous,
-        deviceId
+        deviceId,
+        rawTopic: lockedRawTopic,
+        customTopic: lockedCustomTopic
       };
     });
   }, []);
@@ -3469,12 +3561,16 @@ export default function App() {
       }
 
       const nextTemplate = normalizeMqttTemplateForTarget(nextTargetType, previous.template);
-      const nextDeviceId = resolveMqttDeviceId(
+      const resolvedDeviceId = resolveMqttDeviceId(
         nextTargetType,
         previous.deviceId,
         studentAllowedPhysicalTargetIds,
         []
       );
+      const nextDeviceId = isLikelyPhysicalDeviceId(resolvedDeviceId)
+        ? resolvedDeviceId
+        : (studentAllowedPhysicalTargetIds[0] ?? resolvedDeviceId);
+      const normalizedDeviceId = normalizeTopicPrefixDeviceId(nextDeviceId);
 
       const nextDraft = {
         ...previous,
@@ -3483,10 +3579,16 @@ export default function App() {
         deviceId: nextDeviceId
       };
       const guided = buildGuidedMqttMessage(nextDraft);
+      const lockedGuidedTopic = normalizedDeviceId
+        ? lockTopicToDevicePrefix(normalizedDeviceId, guided.topic)
+        : guided.topic;
       return {
         ...nextDraft,
-        rawTopic: guided.topic,
-        rawPayload: guided.payload
+        rawTopic: lockedGuidedTopic,
+        rawPayload: guided.payload,
+        customTopic: normalizedDeviceId
+          ? lockTopicToDevicePrefix(normalizedDeviceId, nextDraft.customTopic)
+          : nextDraft.customTopic
       };
     });
     setStudentMqttModalOpen(true);
@@ -3503,10 +3605,12 @@ export default function App() {
     }
     setStudentMqttEventDraft((previous) => ({
       ...previous,
-      rawTopic: guidedStudentMqttMessage.topic,
+      rawTopic: studentSelectedTopicPrefixDeviceId
+        ? lockTopicToDevicePrefix(studentSelectedTopicPrefixDeviceId, guidedStudentMqttMessage.topic)
+        : guidedStudentMqttMessage.topic,
       rawPayload: guidedStudentMqttMessage.payload
     }));
-  }, [guidedStudentMqttMessage.payload, guidedStudentMqttMessage.topic]);
+  }, [guidedStudentMqttMessage.payload, guidedStudentMqttMessage.topic, studentSelectedTopicPrefixDeviceId]);
 
   const sendStudentMqttEvent = async () => {
     if (
@@ -3517,9 +3621,14 @@ export default function App() {
     ) {
       return;
     }
-    const topic = (
+    if (!studentSelectedTopicPrefixDeviceId) {
+      setErrorMessage(t('mqttDeviceRequired'));
+      return;
+    }
+    const requestedTopic = (
       studentMqttComposerMode === 'raw' ? studentMqttEventDraft.rawTopic : guidedStudentMqttMessage.topic
     ).trim();
+    const topic = lockTopicToDevicePrefix(studentSelectedTopicPrefixDeviceId, requestedTopic).trim();
     const payload = (
       studentMqttComposerMode === 'raw' ? studentMqttEventDraft.rawPayload : guidedStudentMqttMessage.payload
     ).trim();
@@ -3565,7 +3674,8 @@ export default function App() {
         topic,
         payload,
         studentMqttEventDraft.qos,
-        studentMqttEventDraft.retained
+        studentMqttEventDraft.retained,
+        studentSelectedTopicPrefixDeviceId
       );
       setStudentMqttModalOpen(false);
       pushToast(t('mqttEventSent'));
@@ -5051,6 +5161,9 @@ export default function App() {
         onTemplateChange={setMqttTemplate}
         onDeviceIdChange={setMqttDeviceId}
         onDraftChange={setMqttDraftField}
+        simpleMode={adminMqttSimplifiedView}
+        showSimpleModeToggle
+        onSimpleModeChange={setAdminMqttSimplifiedView}
       />
 
       <AdminMqttEventModal
@@ -5063,6 +5176,8 @@ export default function App() {
         virtualDeviceIds={[]}
         guidedTopic={guidedStudentMqttMessage.topic}
         guidedPayload={guidedStudentMqttMessage.payload}
+        titleKey="publishEvent"
+        submitLabelKey="publishEvent"
         onClose={closeStudentMqttEventModal}
         onSubmit={sendStudentMqttEvent}
         onModeChange={setStudentMqttComposerModeWithSync}
@@ -5071,6 +5186,8 @@ export default function App() {
         onDeviceIdChange={setStudentMqttDeviceId}
         onDraftChange={setStudentMqttDraftField}
         targetTypeOptions={studentSendEventTargetTypeOptions}
+        simpleMode={studentPipelineSimplifiedView}
+        topicPrefixLock={studentSelectedTopicPrefixDeviceId}
       />
 
       <AppModals

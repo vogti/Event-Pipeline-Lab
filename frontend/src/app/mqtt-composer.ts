@@ -5,6 +5,11 @@ export interface MqttMessageDraft {
   payload: string;
 }
 
+function isDeviceTopicPrefix(segment: string): boolean {
+  const normalized = segment.trim().toLowerCase();
+  return /^epld\d+$/.test(normalized) || /^eplvd\d+$/.test(normalized);
+}
+
 const PHYSICAL_TEMPLATES: MqttComposerTemplate[] = [
   'button',
   'counter',
@@ -43,6 +48,48 @@ function topicPrefixForPhysical(deviceId: string): string {
 
 function firstOrBlank(values: string[]): string {
   return values[0] ?? '';
+}
+
+export function topicSuffixWithoutDevicePrefix(topic: string): string {
+  const trimmed = topic.trim().replace(/^\/+/, '');
+  if (!trimmed) {
+    return '';
+  }
+  const segments = trimmed.split('/');
+  if (segments.length > 0 && isDeviceTopicPrefix(segments[0])) {
+    return segments.slice(1).join('/');
+  }
+  return trimmed;
+}
+
+export function topicSuffixForLockedPrefix(deviceId: string, topic: string): string {
+  const normalizedDeviceId = deviceId.trim().toLowerCase();
+  const trimmedTopic = topic.trim().replace(/^\/+/, '');
+  if (!trimmedTopic) {
+    return '';
+  }
+  if (!normalizedDeviceId) {
+    return topicSuffixWithoutDevicePrefix(trimmedTopic);
+  }
+
+  if (trimmedTopic.toLowerCase() === normalizedDeviceId) {
+    return '';
+  }
+  const withSlashPrefix = `${normalizedDeviceId}/`;
+  if (trimmedTopic.toLowerCase().startsWith(withSlashPrefix)) {
+    return trimmedTopic.slice(withSlashPrefix.length);
+  }
+  return topicSuffixWithoutDevicePrefix(trimmedTopic);
+}
+
+export function lockTopicToDevicePrefix(deviceId: string, topicOrSuffix: string): string {
+  const normalizedDeviceId = deviceId.trim().toLowerCase();
+  const value = topicOrSuffix.trim();
+  if (!normalizedDeviceId) {
+    return value;
+  }
+  const suffix = topicSuffixForLockedPrefix(normalizedDeviceId, value);
+  return suffix ? `${normalizedDeviceId}/${suffix}` : normalizedDeviceId;
 }
 
 function topicForTemplate(draft: MqttEventDraft, deviceId: string): string {

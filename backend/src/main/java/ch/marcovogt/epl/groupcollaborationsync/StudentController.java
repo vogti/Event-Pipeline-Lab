@@ -178,11 +178,19 @@ public class StudentController {
         String payload = body.payload();
         int qos = body.resolvedQos();
         boolean retained = body.resolvedRetained();
+        String targetDeviceId = body.targetDeviceId() == null ? "" : body.targetDeviceId().trim().toLowerCase(Locale.ROOT);
+        if (!DeviceIdMapping.isPhysicalDeviceId(targetDeviceId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "targetDeviceId must reference a physical EPLD id");
+        }
+        String topicPrefix = extractTopicPrefix(topic);
+        if (topicPrefix == null || !targetDeviceId.equalsIgnoreCase(topicPrefix)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "topic prefix must match targetDeviceId");
+        }
         StudentDeviceScope targetScope = capabilities.studentCommandTargetScope() == null
                 ? StudentDeviceScope.OWN_DEVICE
                 : capabilities.studentCommandTargetScope();
         String adminDeviceId = appSettingsService.getAdminDeviceId();
-        if (!isAllowedTopicTarget(targetScope, topic, principal.groupKey(), adminDeviceId)) {
+        if (!isAllowedCommandTarget(targetScope, targetDeviceId, principal.groupKey(), adminDeviceId)) {
             throw AuthExceptions.forbidden();
         }
         try {
@@ -250,20 +258,7 @@ public class StudentController {
         }
     }
 
-    private boolean isAllowedTopicTarget(
-            StudentDeviceScope scope,
-            String topic,
-            String studentGroupKey,
-            String adminDeviceId
-    ) {
-        String targetGroupKey = extractTopicTargetGroupKey(topic);
-        if (targetGroupKey == null || targetGroupKey.isBlank()) {
-            return scope == StudentDeviceScope.ALL_DEVICES;
-        }
-        return isAllowedCommandTarget(scope, targetGroupKey, studentGroupKey, adminDeviceId);
-    }
-
-    private String extractTopicTargetGroupKey(String topic) {
+    private String extractTopicPrefix(String topic) {
         if (topic == null || topic.isBlank()) {
             return null;
         }
@@ -272,10 +267,7 @@ public class StudentController {
         String firstSegment = (separatorIndex < 0 ? normalized : normalized.substring(0, separatorIndex))
                 .trim()
                 .toLowerCase(Locale.ROOT);
-        if (firstSegment.isEmpty()) {
-            return null;
-        }
-        return DeviceIdMapping.groupKeyForDevice(firstSegment).orElse(null);
+        return firstSegment.isEmpty() ? null : firstSegment;
     }
 
     private boolean isAllowedCommandTarget(

@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   buildGuidedMqttMessage,
   createMqttEventDraft,
+  lockTopicToDevicePrefix,
   normalizeMqttTemplateForTarget,
-  resolveMqttDeviceId
+  resolveMqttDeviceId,
+  topicSuffixForLockedPrefix,
+  topicSuffixWithoutDevicePrefix
 } from './mqtt-composer';
 
 describe('mqtt composer', () => {
@@ -64,5 +67,18 @@ describe('mqtt composer', () => {
     expect(resolveMqttDeviceId('physical', '', ['epld03'], ['eplvd03'])).toBe('epld03');
     expect(resolveMqttDeviceId('virtual', 'eplvd05', ['epld03'], ['eplvd03'])).toBe('eplvd03');
     expect(resolveMqttDeviceId('custom', 'custom-topic', ['epld03'], ['eplvd03'])).toBe('custom-topic');
+  });
+
+  it('extracts topic suffix and applies locked device prefixes', () => {
+    expect(topicSuffixWithoutDevicePrefix('epld01/events/rpc')).toBe('events/rpc');
+    expect(topicSuffixWithoutDevicePrefix('events/rpc')).toBe('events/rpc');
+
+    expect(topicSuffixForLockedPrefix('epld01', 'epld01/events/rpc')).toBe('events/rpc');
+    expect(topicSuffixForLockedPrefix('epld01', 'epld09/events/rpc')).toBe('events/rpc');
+    expect(topicSuffixForLockedPrefix('epld01', 'events/rpc')).toBe('events/rpc');
+
+    expect(lockTopicToDevicePrefix('epld01', 'events/rpc')).toBe('epld01/events/rpc');
+    expect(lockTopicToDevicePrefix('epld01', 'epld09/events/rpc')).toBe('epld01/events/rpc');
+    expect(lockTopicToDevicePrefix('epld01', 'epld01/events/rpc')).toBe('epld01/events/rpc');
   });
 });

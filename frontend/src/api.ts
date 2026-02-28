@@ -259,13 +259,14 @@ export const api = {
     topic: string,
     payload: string,
     qos: 0 | 1 | 2,
-    retained: boolean
+    retained: boolean,
+    targetDeviceId: string
   ): Promise<void> {
     return request<void>(
       '/api/student/events/publish',
       {
         method: 'POST',
-        body: JSON.stringify({ topic, payload, qos, retained })
+        body: JSON.stringify({ topic, payload, qos, retained, targetDeviceId })
       },
       token
     );

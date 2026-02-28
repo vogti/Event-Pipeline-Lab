@@ -40,6 +40,7 @@ import type {
   PipelineSinkRuntimeUpdate,
   PipelineView,
   PresenceUser,
+  StudentDeviceState,
   TaskDefinitionPayload,
   TaskInfo,
   VirtualDeviceTopicMode,
@@ -62,6 +63,7 @@ interface UseRealtimeSyncParams {
   setWsConnection: Dispatch<SetStateAction<WsConnectionState>>;
   setErrorMessage: Dispatch<SetStateAction<string | null>>;
   setStudentData: Dispatch<SetStateAction<StudentViewData | null>>;
+  setStudentDeviceStatesById: Dispatch<SetStateAction<Record<string, StudentDeviceState>>>;
   setStudentPipelineFeed: Dispatch<SetStateAction<CanonicalEvent[]>>;
   setStudentVirtualPatch: Dispatch<SetStateAction<VirtualDevicePatch | null>>;
   setAdminData: Dispatch<SetStateAction<AdminViewData | null>>;
@@ -105,6 +107,7 @@ export function useRealtimeSync({
   setWsConnection,
   setErrorMessage,
   setStudentData,
+  setStudentDeviceStatesById,
   setStudentPipelineFeed,
   setStudentVirtualPatch,
   setAdminData,
@@ -147,6 +150,9 @@ export function useRealtimeSync({
     let adminPipelineFeedQueue: CanonicalEvent[] = [];
     const adminDeviceStatusQueue = new Map<string, DeviceStatus>();
     let closed = false;
+    const ownStudentDeviceId = session.role === 'STUDENT'
+      ? (session.groupKey ?? '').trim().toLowerCase()
+      : '';
 
     const rolePath = session.role === 'ADMIN' ? '/ws/admin' : '/ws/student';
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -323,8 +329,154 @@ export function useRealtimeSync({
       adminDeviceStatusFlushTimer = window.setTimeout(flushAdminDeviceStatusQueue, 240);
     };
 
+    const isOwnStudentDevice = (deviceId: string): boolean => {
+      return ownStudentDeviceId.length > 0 && deviceId.trim().toLowerCase() === ownStudentDeviceId;
+    };
+
+    const applyStudentDeviceStatus = (deviceStatus: DeviceStatus) => {
+      if (!isOwnStudentDevice(deviceStatus.deviceId)) {
+        return;
+      }
+      setStudentDeviceStatesById((previous) => {
+        const existing = previous[ownStudentDeviceId];
+        const baseline: StudentDeviceState = existing ?? {
+          deviceId: ownStudentDeviceId,
+          online: deviceStatus.online,
+          lastSeen: deviceStatus.lastSeen,
+          rssi: deviceStatus.rssi,
+          temperatureC: null,
+          humidityPct: null,
+          brightness: null,
+          counterValue: null,
+          buttonRedPressed: null,
+          buttonBlackPressed: null,
+          ledGreenOn: null,
+          ledOrangeOn: null,
+          uptimeMs: null,
+          uptimeIngestTs: null,
+          updatedAt: deviceStatus.updatedAt
+        };
+
+        const merged: StudentDeviceState = {
+          ...baseline,
+          deviceId: ownStudentDeviceId,
+          online: deviceStatus.online,
+          lastSeen: deviceStatus.lastSeen,
+          rssi: deviceStatus.rssi,
+          updatedAt: deviceStatus.updatedAt
+        };
+
+        if (existing && sameDeviceStatus({
+          deviceId: existing.deviceId,
+          online: existing.online,
+          lastSeen: existing.lastSeen,
+          rssi: existing.rssi,
+          wifiPayloadJson: null,
+          updatedAt: existing.updatedAt
+        }, {
+          deviceId: merged.deviceId,
+          online: merged.online,
+          lastSeen: merged.lastSeen,
+          rssi: merged.rssi,
+          wifiPayloadJson: null,
+          updatedAt: merged.updatedAt
+        })) {
+          return previous;
+        }
+
+        return {
+          ...previous,
+          [ownStudentDeviceId]: merged
+        };
+      });
+    };
+
+    const applyStudentTelemetryEvent = (eventPayload: CanonicalEvent) => {
+      if (!isOwnStudentDevice(eventPayload.deviceId)) {
+        return;
+      }
+
+      const snapshot = buildDeviceTelemetrySnapshots([eventPayload])[eventPayload.deviceId];
+      if (!snapshot) {
+        return;
+      }
+
+      const hasDelta =
+        snapshot.temperatureC !== null ||
+        snapshot.humidityPct !== null ||
+        snapshot.brightness !== null ||
+        snapshot.counterValue !== null ||
+        snapshot.buttonRedPressed !== null ||
+        snapshot.buttonBlackPressed !== null ||
+        snapshot.ledGreenOn !== null ||
+        snapshot.ledOrangeOn !== null ||
+        snapshot.uptimeMs !== null;
+      if (!hasDelta) {
+        return;
+      }
+
+      setStudentDeviceStatesById((previous) => {
+        const existing = previous[ownStudentDeviceId];
+        const baseline: StudentDeviceState = existing ?? {
+          deviceId: ownStudentDeviceId,
+          online: false,
+          lastSeen: null,
+          rssi: null,
+          temperatureC: null,
+          humidityPct: null,
+          brightness: null,
+          counterValue: null,
+          buttonRedPressed: null,
+          buttonBlackPressed: null,
+          ledGreenOn: null,
+          ledOrangeOn: null,
+          uptimeMs: null,
+          uptimeIngestTs: null,
+          updatedAt: null
+        };
+
+        const merged: StudentDeviceState = {
+          ...baseline,
+          deviceId: ownStudentDeviceId,
+          temperatureC: snapshot.temperatureC ?? baseline.temperatureC,
+          humidityPct: snapshot.humidityPct ?? baseline.humidityPct,
+          brightness: snapshot.brightness ?? baseline.brightness,
+          counterValue: snapshot.counterValue ?? baseline.counterValue,
+          buttonRedPressed: snapshot.buttonRedPressed ?? baseline.buttonRedPressed,
+          buttonBlackPressed: snapshot.buttonBlackPressed ?? baseline.buttonBlackPressed,
+          ledGreenOn: snapshot.ledGreenOn ?? baseline.ledGreenOn,
+          ledOrangeOn: snapshot.ledOrangeOn ?? baseline.ledOrangeOn,
+          uptimeMs: snapshot.uptimeMs ?? baseline.uptimeMs,
+          uptimeIngestTs: snapshot.uptimeMs !== null ? snapshot.uptimeIngestTs : baseline.uptimeIngestTs,
+          updatedAt: eventPayload.ingestTs ?? baseline.updatedAt
+        };
+
+        if (existing && (
+          existing.temperatureC === merged.temperatureC &&
+          existing.humidityPct === merged.humidityPct &&
+          existing.brightness === merged.brightness &&
+          existing.counterValue === merged.counterValue &&
+          existing.buttonRedPressed === merged.buttonRedPressed &&
+          existing.buttonBlackPressed === merged.buttonBlackPressed &&
+          existing.ledGreenOn === merged.ledGreenOn &&
+          existing.ledOrangeOn === merged.ledOrangeOn &&
+          existing.uptimeMs === merged.uptimeMs &&
+          existing.uptimeIngestTs === merged.uptimeIngestTs &&
+          existing.updatedAt === merged.updatedAt
+        )) {
+          return previous;
+        }
+
+        return {
+          ...previous,
+          [ownStudentDeviceId]: merged
+        };
+      });
+    };
+
     const studentHandlers: WsDispatchHandlers = {
       'event.feed.append': (eventPayload) => {
+        applyStudentTelemetryEvent(eventPayload);
         if (studentPauseRef.current) {
           return;
         }
@@ -500,6 +652,9 @@ export function useRealtimeSync({
           }
           return config;
         });
+      },
+      'device.status.updated': (deviceStatus) => {
+        applyStudentDeviceStatus(deviceStatus);
       }
     };
 
@@ -725,6 +880,7 @@ export function useRealtimeSync({
     setFeedScenarioConfig,
     setErrorMessage,
     setStudentData,
+    setStudentDeviceStatesById,
     setStudentPipelineFeed,
     setStudentVirtualPatch,
     setTimeFormat24h,

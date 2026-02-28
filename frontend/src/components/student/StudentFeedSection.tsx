@@ -64,7 +64,7 @@ export function StudentFeedSection({
         </button>
         {showSendEventButton ? (
           <button className="button ghost" type="button" onClick={onOpenSendEventModal}>
-            {t('sendMqttEvent')}
+            {t('publishEvent')}
           </button>
         ) : null}
 
