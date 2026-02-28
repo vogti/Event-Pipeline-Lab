@@ -656,6 +656,7 @@ export default function App() {
   const deferredAdminFeedRef = useRef<CanonicalEvent[]>([]);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const recentFeedClearTimerRef = useRef<number | null>(null);
+  const studentFeedSourceManualRef = useRef(false);
   const adminPipelineGroupKeyRef = useRef<string>('');
   const nextToastIdRef = useRef(1);
   const studentPipelineAutosaveTimerRef = useRef<number | null>(null);
@@ -886,6 +887,7 @@ export default function App() {
     setStudentTopicFilter('');
     setStudentShowInternal(false);
     setStudentFeedSource('BEFORE_PIPELINE');
+    studentFeedSourceManualRef.current = false;
     setStudentFeedPaused(false);
     setStudentPipelineFeed([]);
     setStudentOnboardingDone(false);
@@ -1298,11 +1300,25 @@ export default function App() {
   );
 
   useEffect(() => {
-    if (studentPipelineEnabled || studentFeedSource === 'BEFORE_PIPELINE') {
+    if (!studentPipelineEnabled) {
+      if (studentFeedSource !== 'BEFORE_PIPELINE') {
+        setStudentFeedSource('BEFORE_PIPELINE');
+      }
+      studentFeedSourceManualRef.current = false;
       return;
     }
-    setStudentFeedSource('BEFORE_PIPELINE');
+    if (studentFeedSourceManualRef.current) {
+      return;
+    }
+    if (studentFeedSource !== 'AFTER_PIPELINE') {
+      setStudentFeedSource('AFTER_PIPELINE');
+    }
   }, [studentFeedSource, studentPipelineEnabled]);
+
+  const setStudentFeedSourceFromUi = useCallback((value: StudentFeedSource) => {
+    studentFeedSourceManualRef.current = true;
+    setStudentFeedSource(value);
+  }, []);
 
   useEffect(() => {
     if (!token || session?.role !== 'STUDENT' || !hasStudentData) {
@@ -4947,7 +4963,7 @@ export default function App() {
               onStudentShowInternalChange={setStudentShowInternal}
               showFeedSourceSelector={studentPipelineEnabled}
               studentFeedSource={studentFeedSource}
-              onStudentFeedSourceChange={setStudentFeedSource}
+              onStudentFeedSourceChange={setStudentFeedSourceFromUi}
               studentVisibleFeedCount={studentVisibleFeed.length}
               studentFeedRows={studentFeedRows}
             />

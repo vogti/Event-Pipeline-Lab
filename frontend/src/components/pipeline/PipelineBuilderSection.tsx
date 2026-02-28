@@ -1326,7 +1326,7 @@ export function PipelineBuilderSection({
                           {!isEmpty ? (
                             <button
                               type="button"
-                              className="button tiny ghost pipeline-info-button"
+                              className="pipeline-node-icon-button pipeline-info-button"
                               onClick={() => openProcessingBlockInfo(slot.blockType)}
                               aria-label={t('pipelineBlockInfo')}
                               title={t('pipelineBlockInfo')}
@@ -1337,8 +1337,10 @@ export function PipelineBuilderSection({
                           {slotEditable && !isEmpty ? (
                             <button
                               type="button"
-                              className="button tiny ghost"
+                              className="pipeline-node-icon-button"
                               onClick={() => setSlotBlockType(slot.index, 'NONE')}
+                              aria-label={t('pipelineSinkRemove')}
+                              title={t('pipelineSinkRemove')}
                             >
                               ×
                             </button>
@@ -1722,7 +1724,7 @@ export function PipelineBuilderSection({
                   <strong>{sinkLabel}</strong>
                   <div className="pipeline-node-header-actions">
                     <button
-                      className="button tiny ghost pipeline-info-button"
+                      className="pipeline-node-icon-button pipeline-info-button"
                       type="button"
                       onClick={() => openSinkBlockInfo(sinkType)}
                       aria-label={t('pipelineBlockInfo')}
@@ -1732,11 +1734,13 @@ export function PipelineBuilderSection({
                     </button>
                     {view.permissions.sinkEditable && sinkType !== 'EVENT_FEED' && sinkType !== 'VIRTUAL_SIGNAL' ? (
                       <button
-                        className="button tiny ghost"
+                        className="pipeline-node-icon-button"
                         type="button"
                         onClick={() => onRemoveSink?.(sinkNode.id)}
+                        aria-label={t('pipelineSinkRemove')}
+                        title={t('pipelineSinkRemove')}
                       >
-                        {t('pipelineSinkRemove')}
+                        ×
                       </button>
                     ) : null}
                   </div>

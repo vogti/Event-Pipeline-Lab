@@ -226,6 +226,33 @@
   gap: 0.2rem;
 }
 
+.pipeline-node-icon-button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  color: rgba(35, 72, 98, 0.74);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 1.05rem;
+  height: 1.35rem;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+  transition: background-color 0.16s ease, color 0.16s ease;
+  width: 1.35rem;
+}
+
+.pipeline-node-icon-button:hover {
+  background: rgba(41, 84, 114, 0.12);
+  color: rgba(22, 58, 82, 0.95);
+}
+
+.pipeline-node-icon-button:focus-visible {
+  box-shadow: 0 0 0 2px rgba(46, 126, 168, 0.28);
+  outline: none;
+}
+
 .pipeline-info-button {
   align-items: center;
   display: inline-flex;
