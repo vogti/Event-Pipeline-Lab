@@ -138,10 +138,10 @@ public class MqttCommandPublisher {
     private boolean parseLedTargetState(String rawPayload) {
         String normalized = normalizePayloadToken(rawPayload);
         return switch (normalized) {
-            case "on", "true", "1", "pressed", "press" -> true;
-            case "off", "false", "0", "released", "release" -> false;
+            case "on", "true", "1" -> true;
+            case "off", "false", "0" -> false;
             default -> throw new IllegalArgumentException(
-                    "Unsupported LED command payload. Use on/off, true/false, 1/0, pressed/released"
+                    "Unsupported LED command payload. Use on/off, true/false, 1/0"
             );
         };
     }

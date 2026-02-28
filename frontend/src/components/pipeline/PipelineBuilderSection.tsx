@@ -2234,7 +2234,6 @@ export function PipelineBuilderSection({
                       className="input mono"
                       value={mapping.from}
                       onChange={(event) => updateTransformPayloadDraft(index, 'from', event.target.value)}
-                      placeholder="pressed"
                     />
                   </label>
                   <span className="pipeline-transform-arrow" aria-hidden="true">
@@ -2246,7 +2245,6 @@ export function PipelineBuilderSection({
                       className="input mono"
                       value={mapping.to}
                       onChange={(event) => updateTransformPayloadDraft(index, 'to', event.target.value)}
-                      placeholder="on"
                     />
                   </label>
                   <button

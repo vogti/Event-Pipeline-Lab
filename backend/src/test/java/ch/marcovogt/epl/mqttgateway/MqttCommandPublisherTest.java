@@ -27,7 +27,7 @@ class MqttCommandPublisherTest {
 
     @Test
     void publishCustomShouldNormalizeLedGreenCommandTopic() {
-        publisher.publishCustom("epld01/command/led/green", "\"pressed\"", 1, false);
+        publisher.publishCustom("epld01/command/led/green", "on", 1, false);
 
         verify(mqttGatewayClient).publish("epld/epld01/cmd/led/green", "on", 1, false);
         verify(mqttGatewayClient).publish("epld01/command/led/green", "on", 1, false);
@@ -75,6 +75,16 @@ class MqttCommandPublisherTest {
     @Test
     void publishCustomShouldRejectUnsupportedLedPayload() {
         assertThatThrownBy(() -> publisher.publishCustom("epld01/command/led/green", "banana", 1, false))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Unsupported LED command payload");
+    }
+
+    @Test
+    void publishCustomShouldRejectPressedReleasedAliasesForLedPayload() {
+        assertThatThrownBy(() -> publisher.publishCustom("epld01/command/led/green", "\"pressed\"", 1, false))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Unsupported LED command payload");
+        assertThatThrownBy(() -> publisher.publishCustom("epld01/command/led/orange", "released", 1, false))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Unsupported LED command payload");
     }

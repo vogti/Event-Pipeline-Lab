@@ -103,7 +103,6 @@ public class PipelineObservabilityService {
         groupState.lastUpdatedAt = Instant.now(clock);
 
         RuntimeEvent runtimeEvent = RuntimeEvent.from(event, objectMapper);
-        boolean sampled = shouldSample(groupState.observedEvents);
         boolean dropped = false;
 
         for (int index = 0; index < processing.slotCount(); index++) {
@@ -112,6 +111,7 @@ public class PipelineObservabilityService {
             BlockState blockState = blockState(groupState, index, blockType);
 
             blockState.inCount += 1L;
+            boolean sampled = shouldSample(blockState.inCount);
             long startedNs = System.nanoTime();
 
             RuntimeEvent inputCopy = runtimeEvent.copy(objectMapper);
