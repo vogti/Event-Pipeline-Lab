@@ -1253,12 +1253,17 @@ export function PipelineBuilderSection({
         {!view.permissions.inputEditable ? <p className="muted">{t('pipelineReadOnlyTask')}</p> : null}
       </article>
 
+      <div className="pipeline-panel-connector" aria-hidden="true">
+        <span className="pipeline-panel-connector-track">
+          <span className="pipeline-panel-connector-head" />
+        </span>
+      </div>
+
       <article className="panel panel-animate full-width pipeline-panel pipeline-processing-panel">
         <h4>{t('pipelineProcessing')}</h4>
         <div className="pipeline-builder-workbench">
           <section className="pipeline-flow-column">
             <section className="pipeline-flow-board" onDragLeave={() => setDragOverSlotIndex(null)}>
-              <div className="pipeline-flow-edge-label mono">{`${t('pipelineInput')} ->`}</div>
               {processingSlots.map((slot) => {
                 const isEmpty = slot.blockType === 'NONE';
                 const isDropTarget = dragOverSlotIndex === slot.index;
@@ -1616,7 +1621,6 @@ export function PipelineBuilderSection({
                   </Fragment>
                 );
               })}
-              <div className="pipeline-flow-edge-label mono">{`-> ${t('pipelineOutput')}`}</div>
             </section>
           </section>
 
@@ -1694,6 +1698,12 @@ export function PipelineBuilderSection({
         </div>
         {!view.permissions.processingEditable ? <p className="muted">{t('pipelineReadOnlyTask')}</p> : null}
       </article>
+
+      <div className="pipeline-panel-connector" aria-hidden="true">
+        <span className="pipeline-panel-connector-track">
+          <span className="pipeline-panel-connector-head" />
+        </span>
+      </div>
 
       <article className="panel panel-animate full-width pipeline-panel pipeline-panel-sink">
         <h4>{t('pipelineSink')}</h4>
