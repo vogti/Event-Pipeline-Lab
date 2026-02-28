@@ -251,7 +251,7 @@ public class PipelineStateService {
         PipelineStatePayload updatedGroup = new PipelineStatePayload(
                 groupCurrent.input(),
                 processing,
-                groupCurrent.sink()
+                sink
         );
         persist(groupState, updatedGroup, principal.username());
         pipelineObservabilityService.reset(task.id(), groupKey);
@@ -500,23 +500,25 @@ public class PipelineStateService {
         List<String> globalScenarioOverlays = feedScenarioService.getConfig().scenarioOverlays();
         if (!config.lecturerMode() || globalState == null) {
             PipelineInputSection groupInput = groupPayload.input();
+            PipelineSinkSection groupSink = groupPayload.sink() == null ? defaults.sink() : groupPayload.sink();
             PipelineInputSection resolvedInput = new PipelineInputSection(
                     groupInput.mode(),
                     groupInput.deviceScope(),
                     groupInput.ingestFilters(),
                     globalScenarioOverlays
             );
-            return new PipelineStatePayload(resolvedInput, groupPayload.processing(), defaults.sink());
+            return new PipelineStatePayload(resolvedInput, groupPayload.processing(), groupSink);
         }
         PipelineStatePayload globalPayload = deserializeOrDefault(globalState.getStateJson(), defaults);
         PipelineInputSection globalInput = globalPayload.input();
+        PipelineSinkSection groupSink = groupPayload.sink() == null ? defaults.sink() : groupPayload.sink();
         PipelineInputSection resolvedInput = new PipelineInputSection(
                 globalInput.mode(),
                 globalInput.deviceScope(),
                 globalInput.ingestFilters(),
                 globalScenarioOverlays
         );
-        return new PipelineStatePayload(resolvedInput, groupPayload.processing(), globalPayload.sink());
+        return new PipelineStatePayload(resolvedInput, groupPayload.processing(), groupSink);
     }
 
     private long effectiveRevision(PipelineState groupState, PipelineState globalState) {
