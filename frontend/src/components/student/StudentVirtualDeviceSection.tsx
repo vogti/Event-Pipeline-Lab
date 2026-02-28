@@ -117,7 +117,7 @@ export function StudentVirtualDeviceSection({
           <button
             type="button"
             className={`virtual-led-toggle green ${patch.ledGreenOn ? 'lit' : ''}`}
-            onClick={() => onSetField('ledGreenOn', !Boolean(patch.ledGreenOn))}
+            onClick={() => onSetField('ledGreenOn', !patch.ledGreenOn)}
             aria-pressed={Boolean(patch.ledGreenOn)}
           >
             <span className="virtual-led-lamp" aria-hidden="true" />
@@ -126,7 +126,7 @@ export function StudentVirtualDeviceSection({
           <button
             type="button"
             className={`virtual-led-toggle orange ${patch.ledOrangeOn ? 'lit' : ''}`}
-            onClick={() => onSetField('ledOrangeOn', !Boolean(patch.ledOrangeOn))}
+            onClick={() => onSetField('ledOrangeOn', !patch.ledOrangeOn)}
             aria-pressed={Boolean(patch.ledOrangeOn)}
           >
             <span className="virtual-led-lamp" aria-hidden="true" />

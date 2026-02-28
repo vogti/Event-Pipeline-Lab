@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { I18nKey } from '../../i18n';
 import {
   lockTopicToDevicePrefix,
@@ -98,14 +98,6 @@ export function AdminMqttEventModal({
   topicPrefixLock = null
 }: AdminMqttEventModalProps) {
   const [activeTab, setActiveTab] = useState<'guided' | 'raw' | 'led'>(mode === 'raw' ? 'raw' : 'guided');
-  const wasOpenRef = useRef(false);
-
-  useEffect(() => {
-    if (open && !wasOpenRef.current) {
-      setActiveTab(mode === 'raw' ? 'raw' : 'guided');
-    }
-    wasOpenRef.current = open;
-  }, [mode, open]);
 
   useEffect(() => {
     if (activeTab !== 'led') {

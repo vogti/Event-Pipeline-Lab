@@ -1250,9 +1250,14 @@ export default function App() {
   );
   const studentOwnDeviceId = (session?.groupKey ?? '').trim();
   const studentAdminDeviceId = (studentData?.settings.adminDeviceId ?? '').trim();
-  const studentSendEventTargetTypeOptions = studentCommandTargetScope === 'ALL_DEVICES'
-    ? (['physical', 'custom'] as MqttComposerTargetType[])
-    : (['physical'] as MqttComposerTargetType[]);
+  const studentSendEventTargetTypeOptions = useMemo<MqttComposerTargetType[]>(
+    () => (
+      studentCommandTargetScope === 'ALL_DEVICES'
+        ? (['physical', 'custom'] as MqttComposerTargetType[])
+        : (['physical'] as MqttComposerTargetType[])
+    ),
+    [studentCommandTargetScope]
+  );
   const studentAllowedPhysicalTargetIds = useMemo(
     () => allowedPhysicalTargetsForScope(
       studentCommandTargetScope,
@@ -5223,51 +5228,55 @@ export default function App() {
         onClose={() => setStudentSettingsOpen(false)}
       />
 
-      <AdminMqttEventModal
-        t={t}
-        open={mqttModalOpen}
-        busy={busyKey === 'admin-mqtt-publish'}
-        mode={mqttComposerMode}
-        draft={mqttEventDraft}
-        physicalDeviceIds={adminPhysicalDeviceIds}
-        virtualDeviceIds={adminVirtualDeviceIds}
-        guidedTopic={guidedMqttMessage.topic}
-        guidedPayload={guidedMqttMessage.payload}
-        onClose={closeMqttEventModal}
-        onSubmit={sendAdminMqttEvent}
-        onModeChange={setMqttComposerModeWithSync}
-        onTargetTypeChange={setMqttTargetType}
-        onTemplateChange={setMqttTemplate}
-        onDeviceIdChange={setMqttDeviceId}
-        onDraftChange={setMqttDraftField}
-        simpleMode={adminMqttSimplifiedView}
-        showSimpleModeToggle
-        onSimpleModeChange={setAdminMqttSimplifiedView}
-      />
+      {mqttModalOpen ? (
+        <AdminMqttEventModal
+          t={t}
+          open={mqttModalOpen}
+          busy={busyKey === 'admin-mqtt-publish'}
+          mode={mqttComposerMode}
+          draft={mqttEventDraft}
+          physicalDeviceIds={adminPhysicalDeviceIds}
+          virtualDeviceIds={adminVirtualDeviceIds}
+          guidedTopic={guidedMqttMessage.topic}
+          guidedPayload={guidedMqttMessage.payload}
+          onClose={closeMqttEventModal}
+          onSubmit={sendAdminMqttEvent}
+          onModeChange={setMqttComposerModeWithSync}
+          onTargetTypeChange={setMqttTargetType}
+          onTemplateChange={setMqttTemplate}
+          onDeviceIdChange={setMqttDeviceId}
+          onDraftChange={setMqttDraftField}
+          simpleMode={adminMqttSimplifiedView}
+          showSimpleModeToggle
+          onSimpleModeChange={setAdminMqttSimplifiedView}
+        />
+      ) : null}
 
-      <AdminMqttEventModal
-        t={t}
-        open={studentMqttModalOpen}
-        busy={busyKey === 'student-mqtt-publish'}
-        mode={studentMqttComposerMode}
-        draft={studentMqttEventDraft}
-        physicalDeviceIds={studentAllowedPhysicalTargetIds}
-        virtualDeviceIds={[]}
-        guidedTopic={guidedStudentMqttMessage.topic}
-        guidedPayload={guidedStudentMqttMessage.payload}
-        titleKey="publishEvent"
-        submitLabelKey="publishEvent"
-        onClose={closeStudentMqttEventModal}
-        onSubmit={sendStudentMqttEvent}
-        onModeChange={setStudentMqttComposerModeWithSync}
-        onTargetTypeChange={setStudentMqttTargetType}
-        onTemplateChange={setStudentMqttTemplate}
-        onDeviceIdChange={setStudentMqttDeviceId}
-        onDraftChange={setStudentMqttDraftField}
-        targetTypeOptions={studentSendEventTargetTypeOptions}
-        simpleMode={studentPipelineSimplifiedView}
-        topicPrefixLock={studentSelectedTopicPrefixDeviceId}
-      />
+      {studentMqttModalOpen ? (
+        <AdminMqttEventModal
+          t={t}
+          open={studentMqttModalOpen}
+          busy={busyKey === 'student-mqtt-publish'}
+          mode={studentMqttComposerMode}
+          draft={studentMqttEventDraft}
+          physicalDeviceIds={studentAllowedPhysicalTargetIds}
+          virtualDeviceIds={[]}
+          guidedTopic={guidedStudentMqttMessage.topic}
+          guidedPayload={guidedStudentMqttMessage.payload}
+          titleKey="publishEvent"
+          submitLabelKey="publishEvent"
+          onClose={closeStudentMqttEventModal}
+          onSubmit={sendStudentMqttEvent}
+          onModeChange={setStudentMqttComposerModeWithSync}
+          onTargetTypeChange={setStudentMqttTargetType}
+          onTemplateChange={setStudentMqttTemplate}
+          onDeviceIdChange={setStudentMqttDeviceId}
+          onDraftChange={setStudentMqttDraftField}
+          targetTypeOptions={studentSendEventTargetTypeOptions}
+          simpleMode={studentPipelineSimplifiedView}
+          topicPrefixLock={studentSelectedTopicPrefixDeviceId}
+        />
+      ) : null}
 
       <AppModals
         t={t}

@@ -876,6 +876,7 @@ export function useRealtimeSync({
     setAdminSettingsDraftTimeFormat24h,
     setAdminSettingsDraftVirtualVisible,
     setAdminSettingsDraftAdminDeviceId,
+    setAdminSettingsDraftVirtualDeviceTopicMode,
     setDefaultLanguageMode,
     setFeedScenarioConfig,
     setErrorMessage,

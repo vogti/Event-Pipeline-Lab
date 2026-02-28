@@ -236,7 +236,7 @@ export function AppModals({
                 <button
                   type="button"
                   className={`virtual-led-toggle green ${virtualControlPatch.ledGreenOn ? 'lit' : ''}`}
-                  onClick={() => onSetModalVirtualField('ledGreenOn', !Boolean(virtualControlPatch.ledGreenOn))}
+                  onClick={() => onSetModalVirtualField('ledGreenOn', !virtualControlPatch.ledGreenOn)}
                   aria-pressed={Boolean(virtualControlPatch.ledGreenOn)}
                 >
                   <span className="virtual-led-lamp" aria-hidden="true" />
@@ -245,7 +245,7 @@ export function AppModals({
                 <button
                   type="button"
                   className={`virtual-led-toggle orange ${virtualControlPatch.ledOrangeOn ? 'lit' : ''}`}
-                  onClick={() => onSetModalVirtualField('ledOrangeOn', !Boolean(virtualControlPatch.ledOrangeOn))}
+                  onClick={() => onSetModalVirtualField('ledOrangeOn', !virtualControlPatch.ledOrangeOn)}
                   aria-pressed={Boolean(virtualControlPatch.ledOrangeOn)}
                 >
                   <span className="virtual-led-lamp" aria-hidden="true" />

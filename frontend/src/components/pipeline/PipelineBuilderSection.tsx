@@ -2302,29 +2302,31 @@ export function PipelineBuilderSection({
         </ModalPortal>
       ) : null}
 
-      <AdminMqttEventModal
-        t={t}
-        open={sinkEditorSinkId !== null}
-        busy={false}
-        mode={sinkComposerMode}
-        draft={sinkDraft}
-        physicalDeviceIds={physicalDeviceIds}
-        virtualDeviceIds={virtualDeviceIds}
-        guidedTopic={guidedSinkMqttMessage.topic}
-        guidedPayload={guidedSinkMqttMessage.payload}
-        onClose={() => setSinkEditorSinkId(null)}
-        onSubmit={saveSendEventSinkEditor}
-        onModeChange={setSinkComposerModeWithSync}
-        onTargetTypeChange={setSinkTargetType}
-        onTemplateChange={setSinkTemplate}
-        onDeviceIdChange={setSinkDeviceId}
-        onDraftChange={setSinkDraftField}
-        targetTypeOptions={sendEventTargetTypeOptions}
-        titleKey="pipelineSinkSendEventConfigTitle"
-        submitLabelKey="save"
-        hidePayloadFields
-        simpleMode={simplifiedView}
-      />
+      {sinkEditorSinkId !== null ? (
+        <AdminMqttEventModal
+          t={t}
+          open
+          busy={false}
+          mode={sinkComposerMode}
+          draft={sinkDraft}
+          physicalDeviceIds={physicalDeviceIds}
+          virtualDeviceIds={virtualDeviceIds}
+          guidedTopic={guidedSinkMqttMessage.topic}
+          guidedPayload={guidedSinkMqttMessage.payload}
+          onClose={() => setSinkEditorSinkId(null)}
+          onSubmit={saveSendEventSinkEditor}
+          onModeChange={setSinkComposerModeWithSync}
+          onTargetTypeChange={setSinkTargetType}
+          onTemplateChange={setSinkTemplate}
+          onDeviceIdChange={setSinkDeviceId}
+          onDraftChange={setSinkDraftField}
+          targetTypeOptions={sendEventTargetTypeOptions}
+          titleKey="pipelineSinkSendEventConfigTitle"
+          submitLabelKey="save"
+          hidePayloadFields
+          simpleMode={simplifiedView}
+        />
+      ) : null}
     </section>
   );
 }

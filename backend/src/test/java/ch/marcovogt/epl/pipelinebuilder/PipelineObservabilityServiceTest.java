@@ -230,6 +230,52 @@ class PipelineObservabilityServiceTest {
         assertThat(output.payloadJson()).isEqualTo("\"on\"");
     }
 
+    @Test
+    void samplingShouldBeBasedOnPerBlockInputCountForDownstreamInspector() {
+        PipelineObservabilityService sampledService = new PipelineObservabilityService(
+                new ObjectMapper(),
+                Clock.fixed(Instant.parse("2026-02-26T15:00:00Z"), ZoneOffset.UTC),
+                10,
+                8,
+                64,
+                64
+        );
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                2,
+                List.of(
+                        new PipelineSlot(0, "FILTER_TOPIC", java.util.Map.of("topicFilter", "+/event/button")),
+                        new PipelineSlot(1, "EXTRACT_VALUE", java.util.Map.of())
+                )
+        );
+
+        CanonicalEventDto droppedFirst = event(
+                "sample-drop-first",
+                "epld01/event/sensor/ldr",
+                "sensor.ldr.voltage",
+                EventCategory.SENSOR,
+                "{\"voltage\":2.2}"
+        );
+        CanonicalEventDto passSecond = event(
+                "sample-pass-second",
+                "epld01/event/button",
+                "button.black.press",
+                EventCategory.BUTTON,
+                "{\"state\":true}"
+        );
+
+        sampledService.recordEvent("task_intro", "epld01", processing, droppedFirst);
+        sampledService.recordEvent("task_intro", "epld01", processing, passSecond);
+
+        PipelineObservabilityDto snapshot = sampledService.snapshot("task_intro", "epld01", processing);
+        PipelineBlockObservabilityDto downstream = snapshot.blocks().get(1);
+
+        assertThat(downstream.inCount()).isEqualTo(1);
+        assertThat(downstream.outCount()).isEqualTo(1);
+        assertThat(downstream.samples()).hasSize(1);
+        assertThat(downstream.samples().get(0).dropped()).isFalse();
+    }
+
     private CanonicalEventDto event(String suffix, String payloadJson) {
         return event(
                 suffix,
