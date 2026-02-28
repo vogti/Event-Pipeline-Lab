@@ -14,6 +14,7 @@ import type {
 } from '../../app/shared-types';
 import { CloseIcon, InfoIcon } from '../../app/shared-icons';
 import { AdminMqttEventModal } from '../admin/AdminMqttEventModal';
+import { ModalPortal } from '../layout/ModalPortal';
 import type {
   PipelineBlockObservability,
   PipelineLogModeStatus,
@@ -1777,8 +1778,9 @@ export function PipelineBuilderSection({
       </article>
 
       {topicFilterModalSlotIndex !== null ? (
-        <div className="event-modal-backdrop" onClick={closeTopicFilterModal}>
-          <div className="event-modal mqtt-compose-modal" onClick={(event) => event.stopPropagation()}>
+        <ModalPortal>
+          <div className="event-modal-backdrop" onClick={closeTopicFilterModal}>
+            <div className="event-modal mqtt-compose-modal" onClick={(event) => event.stopPropagation()}>
             <div className="panel-header">
               <h2>{t('pipelineFilterTopicModalTitle')}</h2>
               <button
@@ -1846,13 +1848,15 @@ export function PipelineBuilderSection({
                 {t('save')}
               </button>
             </div>
+            </div>
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
 
       {rateLimitModalSlotIndex !== null ? (
-        <div className="event-modal-backdrop" onClick={closeRateLimitModal}>
-          <div className="event-modal mqtt-compose-modal" onClick={(event) => event.stopPropagation()}>
+        <ModalPortal>
+          <div className="event-modal-backdrop" onClick={closeRateLimitModal}>
+            <div className="event-modal mqtt-compose-modal" onClick={(event) => event.stopPropagation()}>
             <div className="panel-header">
               <h2>{t('pipelineRateLimitModalTitle')}</h2>
               <button
@@ -1902,13 +1906,15 @@ export function PipelineBuilderSection({
                 {t('save')}
               </button>
             </div>
+            </div>
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
 
       {dedupModalSlotIndex !== null ? (
-        <div className="event-modal-backdrop" onClick={closeDedupModal}>
-          <div className="event-modal mqtt-compose-modal" onClick={(event) => event.stopPropagation()}>
+        <ModalPortal>
+          <div className="event-modal-backdrop" onClick={closeDedupModal}>
+            <div className="event-modal mqtt-compose-modal" onClick={(event) => event.stopPropagation()}>
             <div className="panel-header">
               <h2>{t('pipelineDedupModalTitle')}</h2>
               <button
@@ -1980,13 +1986,15 @@ export function PipelineBuilderSection({
                 {t('save')}
               </button>
             </div>
+            </div>
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
 
       {windowAggregateModalSlotIndex !== null ? (
-        <div className="event-modal-backdrop" onClick={closeWindowAggregateModal}>
-          <div className="event-modal mqtt-compose-modal" onClick={(event) => event.stopPropagation()}>
+        <ModalPortal>
+          <div className="event-modal-backdrop" onClick={closeWindowAggregateModal}>
+            <div className="event-modal mqtt-compose-modal" onClick={(event) => event.stopPropagation()}>
             <div className="panel-header">
               <h2>{t('pipelineWindowAggregateModalTitle')}</h2>
               <button
@@ -2089,13 +2097,15 @@ export function PipelineBuilderSection({
                 {t('save')}
               </button>
             </div>
+            </div>
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
 
       {microBatchModalSlotIndex !== null ? (
-        <div className="event-modal-backdrop" onClick={closeMicroBatchModal}>
-          <div className="event-modal mqtt-compose-modal" onClick={(event) => event.stopPropagation()}>
+        <ModalPortal>
+          <div className="event-modal-backdrop" onClick={closeMicroBatchModal}>
+            <div className="event-modal mqtt-compose-modal" onClick={(event) => event.stopPropagation()}>
             <div className="panel-header">
               <h2>{t('pipelineMicroBatchModalTitle')}</h2>
               <button
@@ -2145,13 +2155,15 @@ export function PipelineBuilderSection({
                 {t('save')}
               </button>
             </div>
+            </div>
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
 
       {transformPayloadModalSlotIndex !== null ? (
-        <div className="event-modal-backdrop" onClick={closeTransformPayloadModal}>
-          <div className="event-modal mqtt-compose-modal" onClick={(event) => event.stopPropagation()}>
+        <ModalPortal>
+          <div className="event-modal-backdrop" onClick={closeTransformPayloadModal}>
+            <div className="event-modal mqtt-compose-modal" onClick={(event) => event.stopPropagation()}>
             <div className="panel-header">
               <h2>{t('pipelineTransformPayloadModalTitle')}</h2>
               <button
@@ -2213,13 +2225,15 @@ export function PipelineBuilderSection({
                 {t('save')}
               </button>
             </div>
+            </div>
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
 
       {blockInfoModal !== null ? (
-        <div className="event-modal-backdrop" onClick={() => setBlockInfoModal(null)}>
-          <div className="event-modal pipeline-doc-modal" onClick={(event) => event.stopPropagation()}>
+        <ModalPortal>
+          <div className="event-modal-backdrop" onClick={() => setBlockInfoModal(null)}>
+            <div className="event-modal pipeline-doc-modal" onClick={(event) => event.stopPropagation()}>
             <div className="panel-header">
               <h2>{blockInfoModal.title}</h2>
               <button
@@ -2237,8 +2251,9 @@ export function PipelineBuilderSection({
                 <p key={`pipeline-doc-line-${index}`}>{line}</p>
               ))}
             </div>
+            </div>
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
 
       <AdminMqttEventModal

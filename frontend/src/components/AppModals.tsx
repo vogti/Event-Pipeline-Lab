@@ -2,6 +2,7 @@ import type { I18nKey } from '../i18n';
 import type { CounterResetTarget, VirtualDevicePatch } from '../app/shared-types';
 import type { CanonicalEvent, VirtualDeviceState } from '../types';
 import { CloseIcon } from '../app/shared-icons';
+import { ModalPortal } from './layout/ModalPortal';
 
 interface AppModalsProps {
   t: (key: I18nKey) => string;
@@ -82,7 +83,7 @@ export function AppModals({
     : 0;
 
   return (
-    <>
+    <ModalPortal>
       {selectedEvent ? (
         <div className="event-modal-backdrop" onClick={onCloseSelectedEvent}>
           <div className="event-modal" onClick={(event) => event.stopPropagation()}>
@@ -402,6 +403,6 @@ export function AppModals({
           </div>
         </div>
       ) : null}
-    </>
+    </ModalPortal>
   );
 }

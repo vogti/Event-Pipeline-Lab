@@ -7,6 +7,7 @@ import {
   topicSuffixForLockedPrefix
 } from '../../app/mqtt-composer';
 import { CloseIcon } from '../../app/shared-icons';
+import { ModalPortal } from '../layout/ModalPortal';
 import type {
   MqttComposerMode,
   MqttComposerTargetType,
@@ -183,6 +184,7 @@ export function AdminMqttEventModal({
   };
 
   return (
+    <ModalPortal>
     <div className="event-modal-backdrop" onClick={onClose}>
       <div className="event-modal mqtt-compose-modal" onClick={(event) => event.stopPropagation()}>
         <div className="panel-header">
@@ -692,5 +694,6 @@ export function AdminMqttEventModal({
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }

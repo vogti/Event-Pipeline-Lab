@@ -1,5 +1,6 @@
 import type { I18nKey } from '../../i18n';
 import { CloseIcon } from '../../app/shared-icons';
+import { ModalPortal } from '../layout/ModalPortal';
 
 interface StudentSettingsModalProps {
   t: (key: I18nKey) => string;
@@ -29,8 +30,9 @@ export function StudentSettingsModal({
   }
 
   return (
-    <div className="event-modal-backdrop" onClick={onClose}>
-      <div className="event-modal student-settings-modal" onClick={(event) => event.stopPropagation()}>
+    <ModalPortal>
+      <div className="event-modal-backdrop" onClick={onClose}>
+        <div className="event-modal student-settings-modal" onClick={(event) => event.stopPropagation()}>
         <div className="panel-header">
           <h2>{t('settings')}</h2>
           <button
@@ -83,7 +85,8 @@ export function StudentSettingsModal({
             </button>
           </div>
         </section>
+        </div>
       </div>
-    </div>
+    </ModalPortal>
   );
 }

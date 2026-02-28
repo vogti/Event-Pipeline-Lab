@@ -3,6 +3,7 @@ import type { I18nKey } from '../../i18n';
 import { formatBrightnessMeasurement, MetricIcon, rssiBars, rssiClassName } from '../../app/shared';
 import { CloseIcon } from '../../app/shared-icons';
 import type { DeviceCommandType, StudentDeviceState } from '../../types';
+import { ModalPortal } from '../layout/ModalPortal';
 
 interface StudentCommandsSectionProps {
   t: (key: I18nKey) => string;
@@ -198,41 +199,43 @@ export function StudentCommandsSection({
       </div>
 
       {counterResetModalOpen ? (
-        <div className="event-modal-backdrop" onClick={() => setCounterResetModalOpen(false)}>
-          <div className="event-modal counter-reset-modal" onClick={(event) => event.stopPropagation()}>
-            <div className="panel-header">
-              <h2>{t('counterResetDialogTitle')}</h2>
-              <button
-                className="modal-close-button"
-                type="button"
-                onClick={() => setCounterResetModalOpen(false)}
-                aria-label={t('close')}
-                title={t('close')}
-              >
-                <CloseIcon />
-              </button>
-            </div>
-            <p>
-              {t('counterResetDialogBody')} <strong>{resolvedDeviceId || t('stateUnknown')}</strong>?
-            </p>
-            <div className="event-modal-actions">
-              <button
-                className="button danger"
-                type="button"
-                onClick={() => {
-                  onSendCommand('COUNTER_RESET');
-                  setCounterResetModalOpen(false);
-                }}
-                disabled={!hasTarget || counterBusy}
-              >
-                {t('commandCounterReset')}
-              </button>
-              <button className="button secondary" type="button" onClick={() => setCounterResetModalOpen(false)}>
-                {t('close')}
-              </button>
+        <ModalPortal>
+          <div className="event-modal-backdrop" onClick={() => setCounterResetModalOpen(false)}>
+            <div className="event-modal counter-reset-modal" onClick={(event) => event.stopPropagation()}>
+              <div className="panel-header">
+                <h2>{t('counterResetDialogTitle')}</h2>
+                <button
+                  className="modal-close-button"
+                  type="button"
+                  onClick={() => setCounterResetModalOpen(false)}
+                  aria-label={t('close')}
+                  title={t('close')}
+                >
+                  <CloseIcon />
+                </button>
+              </div>
+              <p>
+                {t('counterResetDialogBody')} <strong>{resolvedDeviceId || t('stateUnknown')}</strong>?
+              </p>
+              <div className="event-modal-actions">
+                <button
+                  className="button danger"
+                  type="button"
+                  onClick={() => {
+                    onSendCommand('COUNTER_RESET');
+                    setCounterResetModalOpen(false);
+                  }}
+                  disabled={!hasTarget || counterBusy}
+                >
+                  {t('commandCounterReset')}
+                </button>
+                <button className="button secondary" type="button" onClick={() => setCounterResetModalOpen(false)}>
+                  {t('close')}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </ModalPortal>
       ) : null}
     </section>
   );
