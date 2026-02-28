@@ -11,6 +11,7 @@ public record PipelineTaskConfig(
         String deviceScope,
         StudentDeviceScope studentEventVisibilityScope,
         StudentDeviceScope studentCommandTargetScope,
+        boolean studentSendEventEnabled,
         List<String> ingestFilters,
         List<String> scenarioOverlays,
         List<String> sinkTargets,

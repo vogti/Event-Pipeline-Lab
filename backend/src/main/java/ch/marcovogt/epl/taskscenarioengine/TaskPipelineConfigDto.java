@@ -11,6 +11,7 @@ public record TaskPipelineConfigDto(
         List<String> scenarioOverlays,
         StudentDeviceScope studentEventVisibilityScope,
         StudentDeviceScope studentCommandTargetScope,
+        boolean studentSendEventEnabled,
         List<String> availableProcessingBlocks,
         int minSlotCount,
         int maxSlotCount,

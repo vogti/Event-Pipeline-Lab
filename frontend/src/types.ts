@@ -50,6 +50,7 @@ export interface TaskPipelineConfig {
   scenarioOverlays: string[];
   studentEventVisibilityScope: StudentDeviceScope;
   studentCommandTargetScope: StudentDeviceScope;
+  studentSendEventEnabled: boolean;
   availableProcessingBlocks: string[];
   minSlotCount: number;
   maxSlotCount: number;
@@ -62,6 +63,7 @@ export interface TaskPipelineConfig {
 export interface TaskCapabilities {
   canViewRoomEvents: boolean;
   canSendDeviceCommands: boolean;
+  studentSendEventEnabled: boolean;
   canFilterByTopic: boolean;
   showInternalEventsToggle: boolean;
   allowedConfigOptions: string[];

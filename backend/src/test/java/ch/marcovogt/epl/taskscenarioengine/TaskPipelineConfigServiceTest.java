@@ -101,6 +101,7 @@ class TaskPipelineConfigServiceTest {
                 List.of("delay:250ms", "drop:4%"),
                 StudentDeviceScope.ALL_DEVICES,
                 StudentDeviceScope.ADMIN_DEVICE,
+                true,
                 "admin"
         );
 
@@ -110,6 +111,7 @@ class TaskPipelineConfigServiceTest {
         assertThat(updated.scenarioOverlays()).containsExactly("delay:250ms", "drops:4%");
         assertThat(updated.studentEventVisibilityScope()).isEqualTo(StudentDeviceScope.ALL_DEVICES);
         assertThat(updated.studentCommandTargetScope()).isEqualTo(StudentDeviceScope.ADMIN_DEVICE);
+        assertThat(updated.studentSendEventEnabled()).isTrue();
         assertThat(updated.overrideActive()).isTrue();
         assertThat(updated.availableProcessingBlocks()).doesNotContain(PipelineBlockLibrary.NONE);
         assertThat(updated.updatedBy()).isEqualTo("admin");
@@ -134,6 +136,7 @@ class TaskPipelineConfigServiceTest {
                 List.of(),
                 StudentDeviceScope.OWN_DEVICE,
                 StudentDeviceScope.OWN_DEVICE,
+                false,
                 "admin"
         );
 
@@ -151,6 +154,7 @@ class TaskPipelineConfigServiceTest {
                 List.of(),
                 StudentDeviceScope.OWN_DEVICE,
                 StudentDeviceScope.OWN_DEVICE,
+                false,
                 "admin"
         ))
                 .isInstanceOf(ResponseStatusException.class)
@@ -171,6 +175,7 @@ class TaskPipelineConfigServiceTest {
                 List.of(),
                 StudentDeviceScope.OWN_DEVICE,
                 StudentDeviceScope.OWN_DEVICE,
+                false,
                 "admin"
         ))
                 .isInstanceOf(ResponseStatusException.class)
@@ -193,6 +198,7 @@ class TaskPipelineConfigServiceTest {
                         false,
                         false,
                         false,
+                        false,
                         List.of(),
                         List.of(),
                         StudentDeviceScope.OWN_DEVICE,
@@ -207,6 +213,7 @@ class TaskPipelineConfigServiceTest {
                         "GROUP_DEVICES",
                         StudentDeviceScope.OWN_DEVICE,
                         StudentDeviceScope.OWN_DEVICE,
+                        false,
                         List.of(),
                         List.of(),
                         List.of("DEVICE_CONTROL"),
@@ -227,6 +234,7 @@ class TaskPipelineConfigServiceTest {
                         false,
                         false,
                         false,
+                        false,
                         List.of(),
                         List.of(),
                         StudentDeviceScope.OWN_DEVICE,
@@ -241,6 +249,7 @@ class TaskPipelineConfigServiceTest {
                         "GROUP_DEVICES",
                         StudentDeviceScope.OWN_DEVICE,
                         StudentDeviceScope.OWN_DEVICE,
+                        false,
                         List.of(),
                         List.of("delay:300ms"),
                         List.of("DEVICE_CONTROL"),

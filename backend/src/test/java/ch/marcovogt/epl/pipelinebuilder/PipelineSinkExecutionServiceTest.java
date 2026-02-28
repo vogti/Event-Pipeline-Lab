@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import ch.marcovogt.epl.common.EventCategory;
 import ch.marcovogt.epl.eventingestionnormalization.CanonicalEventDto;
 import ch.marcovogt.epl.mqttgateway.MqttCommandPublisher;
+import ch.marcovogt.epl.taskscenarioengine.StudentDeviceScope;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -142,6 +143,41 @@ class PipelineSinkExecutionServiceTest {
                 1,
                 false
         );
+    }
+
+    @Test
+    void sendEventSinkShouldRespectStudentTargetScope() {
+        PipelineSinkSection sinkSection = new PipelineSinkSection(
+                List.of(new PipelineSinkNode(
+                        "send-event",
+                        "SEND_EVENT",
+                        Map.of(
+                                "topic", "epld02/command/led/green",
+                                "qos", 1,
+                                "retained", false
+                        )
+                )),
+                List.of(),
+                "goal"
+        );
+
+        CanonicalEventDto inputEvent = event(
+                "event-3",
+                "epld01/event/button/black",
+                "\"pressed\""
+        );
+
+        service.processProjectedEvent(
+                "task_intro",
+                "epld01",
+                sinkSection,
+                inputEvent,
+                StudentDeviceScope.OWN_DEVICE,
+                "epld01",
+                "epld99"
+        );
+
+        verify(mqttCommandPublisher, never()).publishCustom(anyString(), anyString(), anyInt(), anyBoolean());
     }
 
     private CanonicalEventDto event(String idSeed, String topic, String payloadJson) {

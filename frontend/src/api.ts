@@ -254,6 +254,23 @@ export const api = {
     );
   },
 
+  studentPublishMqttEvent(
+    token: string,
+    topic: string,
+    payload: string,
+    qos: 0 | 1 | 2,
+    retained: boolean
+  ): Promise<void> {
+    return request<void>(
+      '/api/student/events/publish',
+      {
+        method: 'POST',
+        body: JSON.stringify({ topic, payload, qos, retained })
+      },
+      token
+    );
+  },
+
   studentDeviceState(token: string, deviceId: string): Promise<StudentDeviceState> {
     return request<StudentDeviceState>(
       withQuery('/api/student/device-state', { deviceId }),
@@ -282,7 +299,8 @@ export const api = {
     allowedProcessingBlocks: string[],
     scenarioOverlays: string[],
     studentEventVisibilityScope: StudentDeviceScope,
-    studentCommandTargetScope: StudentDeviceScope
+    studentCommandTargetScope: StudentDeviceScope,
+    studentSendEventEnabled: boolean
   ): Promise<TaskPipelineConfig> {
     return request<TaskPipelineConfig>(
       '/api/admin/task-pipeline-config',
@@ -295,7 +313,8 @@ export const api = {
           allowedProcessingBlocks,
           scenarioOverlays,
           studentEventVisibilityScope,
-          studentCommandTargetScope
+          studentCommandTargetScope,
+          studentSendEventEnabled
         })
       },
       token

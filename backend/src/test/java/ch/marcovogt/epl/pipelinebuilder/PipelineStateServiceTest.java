@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 
 import ch.marcovogt.epl.authsession.AppRole;
 import ch.marcovogt.epl.authsession.SessionPrincipal;
+import ch.marcovogt.epl.admin.AppSettingsService;
 import ch.marcovogt.epl.eventfeedquery.FeedScenarioConfigDto;
 import ch.marcovogt.epl.eventfeedquery.FeedScenarioService;
 import ch.marcovogt.epl.taskscenarioengine.PipelineTaskConfig;
@@ -44,6 +45,9 @@ class PipelineStateServiceTest {
     @Mock
     private FeedScenarioService feedScenarioService;
 
+    @Mock
+    private AppSettingsService appSettingsService;
+
     private PipelineStateService service;
     private Map<String, PipelineState> states;
 
@@ -55,6 +59,7 @@ class PipelineStateServiceTest {
                 pipelineObservabilityService,
                 pipelineSinkExecutionService,
                 feedScenarioService,
+                appSettingsService,
                 new ObjectMapper()
         );
 
@@ -145,6 +150,7 @@ class PipelineStateServiceTest {
                 new TaskCapabilities(
                         false,
                         true,
+                        false,
                         true,
                         false,
                         List.of(),
@@ -161,6 +167,7 @@ class PipelineStateServiceTest {
                         "GROUP_DEVICES",
                         StudentDeviceScope.OWN_DEVICE,
                         StudentDeviceScope.OWN_DEVICE,
+                        false,
                         List.of(),
                         List.of(),
                         List.of("DEVICE_CONTROL", "VIRTUAL_SIGNAL"),

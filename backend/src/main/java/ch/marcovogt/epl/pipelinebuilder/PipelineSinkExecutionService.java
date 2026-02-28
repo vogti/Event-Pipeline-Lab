@@ -1,12 +1,15 @@
 package ch.marcovogt.epl.pipelinebuilder;
 
+import ch.marcovogt.epl.common.DeviceIdMapping;
 import ch.marcovogt.epl.eventingestionnormalization.CanonicalEventDto;
 import ch.marcovogt.epl.mqttgateway.MqttCommandPublisher;
+import ch.marcovogt.epl.taskscenarioengine.StudentDeviceScope;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -51,6 +54,26 @@ public class PipelineSinkExecutionService {
             PipelineSinkSection sinkSection,
             CanonicalEventDto event
     ) {
+        return processProjectedEvent(
+                taskId,
+                groupKey,
+                sinkSection,
+                event,
+                StudentDeviceScope.ALL_DEVICES,
+                groupKey,
+                null
+        );
+    }
+
+    public synchronized PipelineSinkRuntimeSection processProjectedEvent(
+            String taskId,
+            String groupKey,
+            PipelineSinkSection sinkSection,
+            CanonicalEventDto event,
+            StudentDeviceScope targetScope,
+            String ownerGroupKey,
+            String adminDeviceId
+    ) {
         if (taskId == null || taskId.isBlank() || groupKey == null || groupKey.isBlank()) {
             return emptySection();
         }
@@ -72,7 +95,7 @@ public class PipelineSinkExecutionService {
             state.lastReceivedAt = now;
 
             if (PipelineSinkLibrary.SEND_EVENT.equals(sinkType)) {
-                publishSendEventSink(sink, event);
+                publishSendEventSink(sink, event, targetScope, ownerGroupKey, adminDeviceId);
             }
         }
 
@@ -105,10 +128,26 @@ public class PipelineSinkExecutionService {
         runtimeByKey.keySet().removeIf(key -> key.startsWith(prefix));
     }
 
-    private void publishSendEventSink(PipelineSinkNode sink, CanonicalEventDto inputEvent) {
+    private void publishSendEventSink(
+            PipelineSinkNode sink,
+            CanonicalEventDto inputEvent,
+            StudentDeviceScope targetScope,
+            String ownerGroupKey,
+            String adminDeviceId
+    ) {
         SendEventConfig config = parseSendEventConfig(sink.config());
         String targetTopic = resolveSendEventTopic(config.topic(), inputEvent);
         if (targetTopic.isBlank()) {
+            return;
+        }
+        StudentDeviceScope resolvedScope = targetScope == null ? StudentDeviceScope.ALL_DEVICES : targetScope;
+        if (!isTopicAllowedForScope(resolvedScope, targetTopic, ownerGroupKey, adminDeviceId)) {
+            log.debug(
+                    "Skipped SEND_EVENT sink publish due target scope restriction sinkId={} topic={} scope={}",
+                    normalizeSinkId(sink),
+                    targetTopic,
+                    resolvedScope
+            );
             return;
         }
         String outgoingPayload = inputEvent != null ? inputEvent.payloadJson() : config.payload();
@@ -164,6 +203,44 @@ public class PipelineSinkExecutionService {
 
     private boolean startsWithIgnoreCase(String value, String prefix) {
         return value.regionMatches(true, 0, prefix, 0, prefix.length());
+    }
+
+    private boolean isTopicAllowedForScope(
+            StudentDeviceScope scope,
+            String topic,
+            String ownerGroupKey,
+            String adminDeviceId
+    ) {
+        if (scope == StudentDeviceScope.ALL_DEVICES) {
+            return true;
+        }
+        String targetGroupKey = extractTopicTargetGroupKey(topic);
+        if (targetGroupKey == null || targetGroupKey.isBlank()) {
+            return false;
+        }
+        boolean isOwn = ownerGroupKey != null && ownerGroupKey.equalsIgnoreCase(targetGroupKey);
+        boolean isAdmin = adminDeviceId != null && adminDeviceId.equalsIgnoreCase(targetGroupKey);
+        return switch (scope) {
+            case OWN_DEVICE -> isOwn;
+            case ADMIN_DEVICE -> isAdmin;
+            case OWN_AND_ADMIN_DEVICE -> isOwn || isAdmin;
+            case ALL_DEVICES -> true;
+        };
+    }
+
+    private String extractTopicTargetGroupKey(String topic) {
+        if (topic == null || topic.isBlank()) {
+            return null;
+        }
+        String normalized = topic.trim();
+        int separatorIndex = normalized.indexOf('/');
+        String firstSegment = (separatorIndex < 0 ? normalized : normalized.substring(0, separatorIndex))
+                .trim()
+                .toLowerCase(Locale.ROOT);
+        if (firstSegment.isEmpty()) {
+            return null;
+        }
+        return DeviceIdMapping.groupKeyForDevice(firstSegment).orElse(null);
     }
 
     private SendEventConfig parseSendEventConfig(Map<String, Object> config) {

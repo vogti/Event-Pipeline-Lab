@@ -64,6 +64,7 @@ public class TaskPipelineConfigService {
                                 ? base.studentCommandTargetScope()
                                 : override.getStudentCommandTargetScope()
                 ),
+                override.isStudentSendEventEnabled(),
                 base.ingestFilters(),
                 scenarioOverlays,
                 base.sinkTargets(),
@@ -93,6 +94,7 @@ public class TaskPipelineConfigService {
                 normalizeScenarioOverlays(pipeline.scenarioOverlays()),
                 normalizeScope(pipeline.studentEventVisibilityScope()),
                 normalizeScope(pipeline.studentCommandTargetScope()),
+                pipeline.studentSendEventEnabled(),
                 availableBlocks(),
                 MIN_SLOT_COUNT,
                 MAX_SLOT_COUNT,
@@ -112,6 +114,7 @@ public class TaskPipelineConfigService {
             List<String> scenarioOverlays,
             StudentDeviceScope studentEventVisibilityScope,
             StudentDeviceScope studentCommandTargetScope,
+            boolean studentSendEventEnabled,
             String actor
     ) {
         int normalizedSlotCount = clampSlotCountStrict(slotCount);
@@ -133,6 +136,7 @@ public class TaskPipelineConfigService {
         state.setScenarioOverlaysJson(serializeScenarioOverlays(normalizedScenarioOverlays));
         state.setStudentEventVisibilityScope(normalizedEventScope);
         state.setStudentCommandTargetScope(normalizedCommandScope);
+        state.setStudentSendEventEnabled(studentSendEventEnabled);
         state.setUpdatedAt(Instant.now(clock));
         state.setUpdatedBy(actor == null || actor.isBlank() ? "system" : actor);
         repository.save(state);

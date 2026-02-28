@@ -42,6 +42,7 @@ interface PipelineBuilderSectionProps {
   onAddSink?: (sinkType: 'SEND_EVENT' | 'VIRTUAL_SIGNAL') => void;
   onRemoveSink?: (sinkId: string) => void;
   onConfigureSendEventSink?: (sinkId: string, config: Record<string, unknown>) => void;
+  sendEventTargetTypeOptions?: MqttComposerTargetType[];
   onResetSinkCounter?: (sinkId: string) => void;
   sinkRuntimeBusy?: boolean;
   physicalDeviceIds?: string[];
@@ -638,6 +639,7 @@ export function PipelineBuilderSection({
   onAddSink,
   onRemoveSink,
   onConfigureSendEventSink,
+  sendEventTargetTypeOptions,
   onResetSinkCounter,
   sinkRuntimeBusy,
   physicalDeviceIds = [],
@@ -2256,6 +2258,7 @@ export function PipelineBuilderSection({
         onTemplateChange={setSinkTemplate}
         onDeviceIdChange={setSinkDeviceId}
         onDraftChange={setSinkDraftField}
+        targetTypeOptions={sendEventTargetTypeOptions}
         titleKey="pipelineSinkSendEventConfigTitle"
         submitLabelKey="save"
         hidePayloadFields

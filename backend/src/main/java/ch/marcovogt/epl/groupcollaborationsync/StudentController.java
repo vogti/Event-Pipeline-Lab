@@ -23,6 +23,7 @@ import ch.marcovogt.epl.taskscenarioengine.TaskStateService;
 import ch.marcovogt.epl.virtualdevice.VirtualDeviceService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import org.springframework.http.HttpStatus;
@@ -154,11 +155,41 @@ public class StudentController {
         StudentDeviceScope targetScope = capabilities.studentCommandTargetScope() == null
                 ? StudentDeviceScope.OWN_DEVICE
                 : capabilities.studentCommandTargetScope();
-        if (!isAllowedCommandTarget(targetScope, targetDeviceId, principal.groupKey())) {
+        String adminDeviceId = appSettingsService.getAdminDeviceId();
+        if (!isAllowedCommandTarget(targetScope, targetDeviceId, principal.groupKey(), adminDeviceId)) {
             throw AuthExceptions.forbidden();
         }
 
         publish(body.command(), targetDeviceId, body.on());
+    }
+
+    @PostMapping("/events/publish")
+    public void publishEvent(
+            HttpServletRequest request,
+            @Valid @RequestBody StudentPublishMqttEventRequest body
+    ) {
+        SessionPrincipal principal = requestAuth.requireRole(request, AppRole.STUDENT);
+        TaskCapabilities capabilities = taskStateService.capabilitiesFor(principal);
+        if (!capabilities.studentSendEventEnabled()) {
+            throw AuthExceptions.forbidden();
+        }
+
+        String topic = body.topic().trim();
+        String payload = body.payload();
+        int qos = body.resolvedQos();
+        boolean retained = body.resolvedRetained();
+        StudentDeviceScope targetScope = capabilities.studentCommandTargetScope() == null
+                ? StudentDeviceScope.OWN_DEVICE
+                : capabilities.studentCommandTargetScope();
+        String adminDeviceId = appSettingsService.getAdminDeviceId();
+        if (!isAllowedTopicTarget(targetScope, topic, principal.groupKey(), adminDeviceId)) {
+            throw AuthExceptions.forbidden();
+        }
+        try {
+            mqttCommandPublisher.publishCustom(topic, payload, qos, retained);
+        } catch (IllegalArgumentException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
+        }
     }
 
     @GetMapping("/device-state")
@@ -184,7 +215,8 @@ public class StudentController {
         StudentDeviceScope targetScope = capabilities.studentCommandTargetScope() == null
                 ? StudentDeviceScope.OWN_DEVICE
                 : capabilities.studentCommandTargetScope();
-        if (!isAllowedCommandTarget(targetScope, targetDeviceId, principal.groupKey())) {
+        String adminDeviceId = appSettingsService.getAdminDeviceId();
+        if (!isAllowedCommandTarget(targetScope, targetDeviceId, principal.groupKey(), adminDeviceId)) {
             throw AuthExceptions.forbidden();
         }
 
@@ -218,15 +250,44 @@ public class StudentController {
         }
     }
 
-    private boolean isAllowedCommandTarget(StudentDeviceScope scope, String targetDeviceId, String studentGroupKey) {
+    private boolean isAllowedTopicTarget(
+            StudentDeviceScope scope,
+            String topic,
+            String studentGroupKey,
+            String adminDeviceId
+    ) {
+        String targetGroupKey = extractTopicTargetGroupKey(topic);
+        if (targetGroupKey == null || targetGroupKey.isBlank()) {
+            return scope == StudentDeviceScope.ALL_DEVICES;
+        }
+        return isAllowedCommandTarget(scope, targetGroupKey, studentGroupKey, adminDeviceId);
+    }
+
+    private String extractTopicTargetGroupKey(String topic) {
+        if (topic == null || topic.isBlank()) {
+            return null;
+        }
+        String normalized = topic.trim();
+        int separatorIndex = normalized.indexOf('/');
+        String firstSegment = (separatorIndex < 0 ? normalized : normalized.substring(0, separatorIndex))
+                .trim()
+                .toLowerCase(Locale.ROOT);
+        if (firstSegment.isEmpty()) {
+            return null;
+        }
+        return DeviceIdMapping.groupKeyForDevice(firstSegment).orElse(null);
+    }
+
+    private boolean isAllowedCommandTarget(
+            StudentDeviceScope scope,
+            String targetDeviceId,
+            String studentGroupKey,
+            String adminDeviceId
+    ) {
         return switch (scope) {
             case ALL_DEVICES -> true;
-            case ADMIN_DEVICE -> {
-                String adminDeviceId = appSettingsService.getAdminDeviceId();
-                yield adminDeviceId != null && adminDeviceId.equalsIgnoreCase(targetDeviceId);
-            }
+            case ADMIN_DEVICE -> adminDeviceId != null && adminDeviceId.equalsIgnoreCase(targetDeviceId);
             case OWN_AND_ADMIN_DEVICE -> {
-                String adminDeviceId = appSettingsService.getAdminDeviceId();
                 boolean isOwn = studentGroupKey != null && studentGroupKey.equalsIgnoreCase(targetDeviceId);
                 boolean isAdmin = adminDeviceId != null && adminDeviceId.equalsIgnoreCase(targetDeviceId);
                 yield isOwn || isAdmin;

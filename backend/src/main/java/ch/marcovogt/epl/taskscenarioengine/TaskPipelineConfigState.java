@@ -36,6 +36,9 @@ public class TaskPipelineConfigState {
     @Column(name = "student_command_target_scope", length = 32)
     private StudentDeviceScope studentCommandTargetScope;
 
+    @Column(name = "student_send_event_enabled", nullable = false)
+    private boolean studentSendEventEnabled;
+
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
@@ -96,6 +99,14 @@ public class TaskPipelineConfigState {
 
     public void setStudentCommandTargetScope(StudentDeviceScope studentCommandTargetScope) {
         this.studentCommandTargetScope = studentCommandTargetScope;
+    }
+
+    public boolean isStudentSendEventEnabled() {
+        return studentSendEventEnabled;
+    }
+
+    public void setStudentSendEventEnabled(boolean studentSendEventEnabled) {
+        this.studentSendEventEnabled = studentSendEventEnabled;
     }
 
     public Instant getUpdatedAt() {

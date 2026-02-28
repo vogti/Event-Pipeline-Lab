@@ -406,33 +406,83 @@ function hasOnlyButtonPatchDifferences(
   return hasDifference;
 }
 
-function resolveStudentCommandTargetDeviceId(
-  scopeRaw: string | null | undefined,
-  ownDeviceIdRaw: string | null | undefined,
-  adminDeviceIdRaw: string | null | undefined,
-  targetDeviceIdRaw: string | null | undefined
-): string {
-  const scope = normalizeStudentDeviceScope(scopeRaw);
-  const ownDeviceId = (ownDeviceIdRaw ?? '').trim();
-  const adminDeviceId = (adminDeviceIdRaw ?? '').trim();
-  const targetDeviceId = (targetDeviceIdRaw ?? '').trim();
+function extractTopicTargetGroupKey(topic: string): string | null {
+  const normalizedTopic = topic.trim().toLowerCase();
+  if (!normalizedTopic) {
+    return null;
+  }
+  const firstSegment = normalizedTopic.split('/', 1)[0]?.trim() ?? '';
+  if (/^epld\d+$/.test(firstSegment)) {
+    return firstSegment;
+  }
+  const virtualMatch = /^eplvd(\d+)$/.exec(firstSegment);
+  if (virtualMatch) {
+    return `epld${virtualMatch[1]}`;
+  }
+  return null;
+}
 
+function isTopicAllowedForStudentScope(
+  scopeRaw: StudentDeviceScope | null | undefined,
+  topic: string,
+  ownDeviceIdRaw: string | null | undefined,
+  adminDeviceIdRaw: string | null | undefined
+): boolean {
+  const scope = normalizeStudentDeviceScope(scopeRaw);
+  if (scope === 'ALL_DEVICES') {
+    return true;
+  }
+  const targetGroupKey = extractTopicTargetGroupKey(topic);
+  if (!targetGroupKey) {
+    return false;
+  }
+  const ownDeviceId = (ownDeviceIdRaw ?? '').trim().toLowerCase();
+  const adminDeviceId = (adminDeviceIdRaw ?? '').trim().toLowerCase();
   if (scope === 'OWN_DEVICE') {
-    return ownDeviceId;
+    return ownDeviceId.length > 0 && targetGroupKey === ownDeviceId;
   }
   if (scope === 'ADMIN_DEVICE') {
-    return adminDeviceId;
+    return adminDeviceId.length > 0 && targetGroupKey === adminDeviceId;
+  }
+  return (
+    (ownDeviceId.length > 0 && targetGroupKey === ownDeviceId) ||
+    (adminDeviceId.length > 0 && targetGroupKey === adminDeviceId)
+  );
+}
+
+function allowedPhysicalTargetsForScope(
+  scopeRaw: StudentDeviceScope | null | undefined,
+  ownDeviceIdRaw: string | null | undefined,
+  adminDeviceIdRaw: string | null | undefined
+): string[] {
+  const scope = normalizeStudentDeviceScope(scopeRaw);
+  const ownDeviceId = (ownDeviceIdRaw ?? '').trim().toLowerCase();
+  const adminDeviceId = (adminDeviceIdRaw ?? '').trim().toLowerCase();
+  const values: string[] = [];
+  const pushIfValid = (value: string) => {
+    if (!isLikelyPhysicalDeviceId(value)) {
+      return;
+    }
+    if (!values.includes(value)) {
+      values.push(value);
+    }
+  };
+  if (scope === 'OWN_DEVICE') {
+    pushIfValid(ownDeviceId);
+    return values;
+  }
+  if (scope === 'ADMIN_DEVICE') {
+    pushIfValid(adminDeviceId);
+    return values;
   }
   if (scope === 'OWN_AND_ADMIN_DEVICE') {
-    if (!adminDeviceId) {
-      return ownDeviceId;
-    }
-    if (targetDeviceId === ownDeviceId || targetDeviceId === adminDeviceId) {
-      return targetDeviceId;
-    }
-    return ownDeviceId;
+    pushIfValid(ownDeviceId);
+    pushIfValid(adminDeviceId);
+    return values;
   }
-  return targetDeviceId;
+  pushIfValid(ownDeviceId);
+  pushIfValid(adminDeviceId);
+  return values;
 }
 
 function isLikelyPhysicalDeviceId(deviceId: string): boolean {
@@ -459,7 +509,6 @@ export default function App() {
   const [studentPipeline, setStudentPipeline] = useState<PipelineView | null>(null);
   const [studentPipelineDraft, setStudentPipelineDraft] = useState<PipelineProcessingSection | null>(null);
   const [studentPipelineSinkDraft, setStudentPipelineSinkDraft] = useState<PipelineSinkSection | null>(null);
-  const [studentCommandTargetDeviceId, setStudentCommandTargetDeviceId] = useState('');
   const [studentDeviceStatesById, setStudentDeviceStatesById] = useState<Record<string, StudentDeviceState>>({});
 
   const [adminData, setAdminData] = useState<AdminViewData | null>(null);
@@ -532,6 +581,9 @@ export default function App() {
   const [mqttModalOpen, setMqttModalOpen] = useState(false);
   const [mqttComposerMode, setMqttComposerMode] = useState<MqttComposerMode>('guided');
   const [mqttEventDraft, setMqttEventDraft] = useState<MqttEventDraft>(() => createMqttEventDraft());
+  const [studentMqttModalOpen, setStudentMqttModalOpen] = useState(false);
+  const [studentMqttComposerMode, setStudentMqttComposerMode] = useState<MqttComposerMode>('guided');
+  const [studentMqttEventDraft, setStudentMqttEventDraft] = useState<MqttEventDraft>(() => createMqttEventDraft());
   const [adminPage, setAdminPage] = useState<AdminPage>('dashboard');
   const [recentFeedEventIds, setRecentFeedEventIds] = useState<Record<string, true>>({});
   const [systemDataExportSelection, setSystemDataExportSelection] = useState<Record<SystemDataPart, boolean>>(
@@ -775,8 +827,10 @@ export default function App() {
     setStudentPipeline(null);
     setStudentPipelineDraft(null);
     setStudentPipelineSinkDraft(null);
-    setStudentCommandTargetDeviceId('');
     setStudentDeviceStatesById({});
+    setStudentMqttModalOpen(false);
+    setStudentMqttComposerMode('guided');
+    setStudentMqttEventDraft(createMqttEventDraft());
 
     setAdminData(null);
     setAdminSystemStatus(null);
@@ -1111,48 +1165,37 @@ export default function App() {
   }, [studentData]);
 
   useEffect(() => {
-    const scopeRaw = studentData?.capabilities.studentCommandTargetScope;
-    const adminDeviceId = studentData?.settings.adminDeviceId?.trim() ?? '';
-    if (session?.role !== 'STUDENT' || !scopeRaw || !session.groupKey) {
-      setStudentCommandTargetDeviceId('');
+    if (!studentPipelineSimplifiedView || !studentShowInternal) {
       return;
     }
-    const ownDeviceId = session.groupKey.trim();
-    const scope = normalizeStudentDeviceScope(scopeRaw);
-    setStudentCommandTargetDeviceId((previous) => {
-      if (scope === 'OWN_DEVICE') {
-        return ownDeviceId;
-      }
-      if (scope === 'ADMIN_DEVICE') {
-        return adminDeviceId;
-      }
-      if (scope === 'OWN_AND_ADMIN_DEVICE') {
-        const trimmed = previous.trim();
-        if (trimmed && (trimmed === ownDeviceId || trimmed === adminDeviceId)) {
-          return trimmed;
-        }
-        return ownDeviceId;
-      }
-      return previous.trim() ? previous : ownDeviceId;
-    });
-  }, [
-    session?.role,
-    session?.groupKey,
-    studentData?.capabilities.studentCommandTargetScope,
-    studentData?.settings.adminDeviceId
-  ]);
+    setStudentShowInternal(false);
+  }, [studentPipelineSimplifiedView, studentShowInternal]);
+
+  useEffect(() => {
+    if (studentData?.capabilities.studentSendEventEnabled) {
+      return;
+    }
+    setStudentMqttModalOpen(false);
+  }, [studentData?.capabilities.studentSendEventEnabled]);
 
   const studentCommandTargetScope = normalizeStudentDeviceScope(
     studentData?.capabilities.studentCommandTargetScope
   );
-  const studentResolvedCommandTargetDeviceId = resolveStudentCommandTargetDeviceId(
-    studentData?.capabilities.studentCommandTargetScope,
-    session?.groupKey,
-    studentData?.settings.adminDeviceId ?? '',
-    studentCommandTargetDeviceId
+  const studentOwnDeviceId = (session?.groupKey ?? '').trim();
+  const studentAdminDeviceId = (studentData?.settings.adminDeviceId ?? '').trim();
+  const studentSendEventTargetTypeOptions = studentCommandTargetScope === 'ALL_DEVICES'
+    ? (['physical', 'custom'] as MqttComposerTargetType[])
+    : (['physical'] as MqttComposerTargetType[]);
+  const studentAllowedPhysicalTargetIds = useMemo(
+    () => allowedPhysicalTargetsForScope(
+      studentCommandTargetScope,
+      studentOwnDeviceId,
+      studentAdminDeviceId
+    ),
+    [studentAdminDeviceId, studentCommandTargetScope, studentOwnDeviceId]
   );
-  const studentSelectedDeviceState = studentResolvedCommandTargetDeviceId
-    ? studentDeviceStatesById[studentResolvedCommandTargetDeviceId] ?? null
+  const studentSelectedDeviceState = studentOwnDeviceId
+    ? studentDeviceStatesById[studentOwnDeviceId] ?? null
     : null;
 
   const studentActiveTaskId = studentData?.activeTask.id ?? '';
@@ -1175,6 +1218,7 @@ export default function App() {
       sink: studentPipelineSinkDraft ?? studentPipeline.sink
     };
   }, [studentPipeline, studentPipelineDraft, studentPipelineSinkDraft]);
+  const studentPipelineEnabled = studentPipelineEditorView?.permissions.visible === true;
   const adminPipelineDraftSig = useMemo(
     () => pipelineAdminDraftSignature(adminPipelineDraft),
     [adminPipelineDraft]
@@ -1183,6 +1227,13 @@ export default function App() {
     () => pipelineAdminDraftSignature(adminPipeline),
     [adminPipeline]
   );
+
+  useEffect(() => {
+    if (studentPipelineEnabled || studentFeedSource === 'BEFORE_PIPELINE') {
+      return;
+    }
+    setStudentFeedSource('BEFORE_PIPELINE');
+  }, [studentFeedSource, studentPipelineEnabled]);
 
   useEffect(() => {
     if (!token || session?.role !== 'STUDENT' || !hasStudentData) {
@@ -1454,6 +1505,21 @@ export default function App() {
       window.removeEventListener('keydown', onKeyDown);
     };
   }, [mqttModalOpen]);
+
+  useEffect(() => {
+    if (!studentMqttModalOpen) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setStudentMqttModalOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [studentMqttModalOpen]);
 
   useEffect(() => {
     const timerId = window.setInterval(() => {
@@ -1741,6 +1807,9 @@ export default function App() {
   const guidedMqttMessage = useMemo(() => {
     return buildGuidedMqttMessage(mqttEventDraft);
   }, [mqttEventDraft]);
+  const guidedStudentMqttMessage = useMemo(() => {
+    return buildGuidedMqttMessage(studentMqttEventDraft);
+  }, [studentMqttEventDraft]);
 
   useEffect(() => {
     if (mqttComposerMode !== 'guided') {
@@ -1760,6 +1829,25 @@ export default function App() {
       };
     });
   }, [guidedMqttMessage.payload, guidedMqttMessage.topic, mqttComposerMode]);
+
+  useEffect(() => {
+    if (studentMqttComposerMode !== 'guided') {
+      return;
+    }
+    setStudentMqttEventDraft((previous) => {
+      if (
+        previous.rawTopic === guidedStudentMqttMessage.topic &&
+        previous.rawPayload === guidedStudentMqttMessage.payload
+      ) {
+        return previous;
+      }
+      return {
+        ...previous,
+        rawTopic: guidedStudentMqttMessage.topic,
+        rawPayload: guidedStudentMqttMessage.payload
+      };
+    });
+  }, [guidedStudentMqttMessage.payload, guidedStudentMqttMessage.topic, studentMqttComposerMode]);
 
   const handleLogin = async () => {
     setBusyKey('login');
@@ -1974,13 +2062,28 @@ export default function App() {
   }, []);
 
   const configureStudentPipelineSendSink = useCallback((sinkId: string, config: Record<string, unknown>) => {
+    const configuredTopic = typeof config.topic === 'string' ? config.topic.trim() : '';
+    const dynamicTopic = /^(\$\{deviceId\}|\{deviceId\}|DEVICE|OWN_DEVICE)(\/|$)/i.test(configuredTopic);
+    if (
+      configuredTopic.length > 0 &&
+      !dynamicTopic &&
+      !isTopicAllowedForStudentScope(
+        studentCommandTargetScope,
+        configuredTopic,
+        studentOwnDeviceId,
+        studentAdminDeviceId
+      )
+    ) {
+      setErrorMessage(t('mqttTopicNotAllowedForTaskScope'));
+      return;
+    }
     setStudentPipelineSinkDraft((previous) => {
       if (!previous) {
         return previous;
       }
       return updatePipelineSendEventSinkConfig(previous, sinkId, config);
     });
-  }, []);
+  }, [studentAdminDeviceId, studentCommandTargetScope, studentOwnDeviceId, t]);
 
   useEffect(() => {
     if (studentPipelineAutosaveTimerRef.current !== null) {
@@ -2385,6 +2488,18 @@ export default function App() {
     });
   }, []);
 
+  const changeTaskPipelineStudentSendEventEnabled = useCallback((enabled: boolean) => {
+    setAdminTaskPipelineConfigDraft((previous) => {
+      if (!previous) {
+        return previous;
+      }
+      return {
+        ...previous,
+        studentSendEventEnabled: enabled
+      };
+    });
+  }, []);
+
   const toggleTaskPipelineAllowedBlock = useCallback((blockType: string, enabled: boolean) => {
     setAdminTaskPipelineConfigDraft((previous) => {
       if (!previous) {
@@ -2451,7 +2566,8 @@ export default function App() {
         adminTaskPipelineConfigDraft.allowedProcessingBlocks,
         adminTaskPipelineConfigDraft.scenarioOverlays,
         normalizeStudentDeviceScope(adminTaskPipelineConfigDraft.studentEventVisibilityScope),
-        normalizeStudentDeviceScope(adminTaskPipelineConfigDraft.studentCommandTargetScope)
+        normalizeStudentDeviceScope(adminTaskPipelineConfigDraft.studentCommandTargetScope),
+        Boolean(adminTaskPipelineConfigDraft.studentSendEventEnabled)
       );
       setAdminTaskPipelineConfig(updated);
       setAdminTaskPipelineConfigDraft(updated);
@@ -2660,33 +2776,13 @@ export default function App() {
       return;
     }
 
-    const candidateIds = new Set<string>();
     const ownDeviceId = session.groupKey?.trim().toLowerCase() ?? '';
-    const adminDeviceId = studentData.settings.adminDeviceId?.trim().toLowerCase() ?? '';
-    const selectedTargetId = studentCommandTargetDeviceId.trim().toLowerCase();
-    const resolvedTargetId = studentResolvedCommandTargetDeviceId.trim().toLowerCase();
-
-    if (isLikelyPhysicalDeviceId(ownDeviceId)) {
-      candidateIds.add(ownDeviceId);
-    }
-    if (isLikelyPhysicalDeviceId(adminDeviceId)) {
-      candidateIds.add(adminDeviceId);
-    }
-    if (studentCommandTargetScope === 'ALL_DEVICES' && isLikelyPhysicalDeviceId(selectedTargetId)) {
-      candidateIds.add(selectedTargetId);
-    }
-    if (isLikelyPhysicalDeviceId(resolvedTargetId)) {
-      candidateIds.add(resolvedTargetId);
-    }
-
-    if (candidateIds.size === 0) {
+    if (!isLikelyPhysicalDeviceId(ownDeviceId)) {
       return;
     }
 
     const runRefresh = () => {
-      for (const candidateId of candidateIds) {
-        void refreshStudentDeviceState(candidateId);
-      }
+      void refreshStudentDeviceState(ownDeviceId);
     };
 
     runRefresh();
@@ -2698,11 +2794,7 @@ export default function App() {
     refreshStudentDeviceState,
     session?.groupKey,
     session?.role,
-    studentCommandTargetDeviceId,
-    studentCommandTargetScope,
     studentData?.capabilities.canSendDeviceCommands,
-    studentData?.settings.adminDeviceId,
-    studentResolvedCommandTargetDeviceId,
     token
   ]);
 
@@ -2711,13 +2803,8 @@ export default function App() {
       return;
     }
 
-    const targetDeviceId = resolveStudentCommandTargetDeviceId(
-      studentData?.capabilities.studentCommandTargetScope,
-      session.groupKey,
-      studentData?.settings.adminDeviceId ?? '',
-      studentCommandTargetDeviceId
-    );
-    if (!targetDeviceId) {
+    const targetDeviceId = session.groupKey.trim().toLowerCase();
+    if (!isLikelyPhysicalDeviceId(targetDeviceId)) {
       setErrorMessage(t('invalidInput'));
       return;
     }
@@ -3258,6 +3345,67 @@ export default function App() {
     });
   }, []);
 
+  const setStudentMqttDraftField = useCallback(<K extends keyof MqttEventDraft>(key: K, value: MqttEventDraft[K]) => {
+    setStudentMqttEventDraft((previous) => {
+      if (previous[key] === value) {
+        return previous;
+      }
+      return {
+        ...previous,
+        [key]: value
+      };
+    });
+  }, []);
+
+  const setStudentMqttTargetType = useCallback((targetType: MqttComposerTargetType) => {
+    if (!studentSendEventTargetTypeOptions.includes(targetType)) {
+      return;
+    }
+    setStudentMqttEventDraft((previous) => {
+      if (previous.targetType === targetType) {
+        return previous;
+      }
+      const nextTemplate = normalizeMqttTemplateForTarget(targetType, previous.template);
+      const nextDeviceId = resolveMqttDeviceId(
+        targetType,
+        previous.deviceId,
+        studentAllowedPhysicalTargetIds,
+        []
+      );
+      return {
+        ...previous,
+        targetType,
+        template: nextTemplate,
+        deviceId: nextDeviceId
+      };
+    });
+  }, [studentAllowedPhysicalTargetIds, studentSendEventTargetTypeOptions]);
+
+  const setStudentMqttTemplate = useCallback((template: MqttComposerTemplate) => {
+    setStudentMqttEventDraft((previous) => {
+      const nextTemplate = normalizeMqttTemplateForTarget(previous.targetType, template);
+      if (previous.template === nextTemplate) {
+        return previous;
+      }
+      return {
+        ...previous,
+        template: nextTemplate
+      };
+    });
+  }, []);
+
+  const setStudentMqttDeviceId = useCallback((deviceId: string) => {
+    setStudentMqttEventDraft((previous) => {
+      if (previous.deviceId === deviceId) {
+        return previous;
+      }
+      return {
+        ...previous,
+        deviceId
+      };
+    });
+  }, []);
+
   const openMqttEventModal = useCallback(() => {
     setMqttComposerMode('guided');
     setMqttEventDraft((previous) => {
@@ -3308,6 +3456,125 @@ export default function App() {
       rawPayload: guidedMqttMessage.payload
     }));
   }, [guidedMqttMessage.payload, guidedMqttMessage.topic]);
+
+  const openStudentMqttEventModal = useCallback(() => {
+    setStudentMqttComposerMode('guided');
+    setStudentMqttEventDraft((previous) => {
+      let nextTargetType = previous.targetType;
+      if (!studentSendEventTargetTypeOptions.includes(nextTargetType)) {
+        nextTargetType = studentSendEventTargetTypeOptions[0] ?? 'physical';
+      }
+      if (nextTargetType === 'physical' && studentAllowedPhysicalTargetIds.length === 0) {
+        nextTargetType = studentSendEventTargetTypeOptions.includes('custom') ? 'custom' : 'physical';
+      }
+
+      const nextTemplate = normalizeMqttTemplateForTarget(nextTargetType, previous.template);
+      const nextDeviceId = resolveMqttDeviceId(
+        nextTargetType,
+        previous.deviceId,
+        studentAllowedPhysicalTargetIds,
+        []
+      );
+
+      const nextDraft = {
+        ...previous,
+        targetType: nextTargetType,
+        template: nextTemplate,
+        deviceId: nextDeviceId
+      };
+      const guided = buildGuidedMqttMessage(nextDraft);
+      return {
+        ...nextDraft,
+        rawTopic: guided.topic,
+        rawPayload: guided.payload
+      };
+    });
+    setStudentMqttModalOpen(true);
+  }, [studentAllowedPhysicalTargetIds, studentSendEventTargetTypeOptions]);
+
+  const closeStudentMqttEventModal = useCallback(() => {
+    setStudentMqttModalOpen(false);
+  }, []);
+
+  const setStudentMqttComposerModeWithSync = useCallback((mode: MqttComposerMode) => {
+    setStudentMqttComposerMode(mode);
+    if (mode !== 'raw') {
+      return;
+    }
+    setStudentMqttEventDraft((previous) => ({
+      ...previous,
+      rawTopic: guidedStudentMqttMessage.topic,
+      rawPayload: guidedStudentMqttMessage.payload
+    }));
+  }, [guidedStudentMqttMessage.payload, guidedStudentMqttMessage.topic]);
+
+  const sendStudentMqttEvent = async () => {
+    if (
+      !token
+      || !session
+      || session.role !== 'STUDENT'
+      || !studentData?.capabilities.studentSendEventEnabled
+    ) {
+      return;
+    }
+    const topic = (
+      studentMqttComposerMode === 'raw' ? studentMqttEventDraft.rawTopic : guidedStudentMqttMessage.topic
+    ).trim();
+    const payload = (
+      studentMqttComposerMode === 'raw' ? studentMqttEventDraft.rawPayload : guidedStudentMqttMessage.payload
+    ).trim();
+    if (!topic) {
+      setErrorMessage(t('mqttTopicRequired'));
+      return;
+    }
+    if (!payload) {
+      setErrorMessage(t('mqttPayloadRequired'));
+      return;
+    }
+    if (!isTopicAllowedForStudentScope(
+      studentCommandTargetScope,
+      topic,
+      studentOwnDeviceId,
+      studentAdminDeviceId
+    )) {
+      setErrorMessage(t('mqttTopicNotAllowedForTaskScope'));
+      return;
+    }
+    const payloadLooksLikeJsonLiteral =
+      payload.startsWith('{') ||
+      payload.startsWith('[') ||
+      payload.startsWith('"') ||
+      payload === 'true' ||
+      payload === 'false' ||
+      payload === 'null' ||
+      /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(payload);
+    if (payloadLooksLikeJsonLiteral) {
+      try {
+        JSON.parse(payload);
+      } catch {
+        setErrorMessage(t('mqttPayloadInvalidJson'));
+        return;
+      }
+    }
+
+    setBusyKey('student-mqtt-publish');
+    setErrorMessage(null);
+    try {
+      await api.studentPublishMqttEvent(
+        token,
+        topic,
+        payload,
+        studentMqttEventDraft.qos,
+        studentMqttEventDraft.retained
+      );
+      setStudentMqttModalOpen(false);
+      pushToast(t('mqttEventSent'));
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error));
+    } finally {
+      setBusyKey(null);
+    }
+  };
 
   const sendAdminMqttEvent = async () => {
     if (!token || !session || session.role !== 'ADMIN') {
@@ -3773,6 +4040,8 @@ export default function App() {
     return values;
   }, [studentVisibleFeed]);
 
+  const studentFeedViewMode: FeedViewMode = studentPipelineSimplifiedView ? 'rendered' : feedViewMode;
+
   const adminFeedValues = useMemo(() => {
     const values = new Map<string, string>();
     for (const event of adminVisibleFeed) {
@@ -3992,16 +4261,15 @@ export default function App() {
       >
         <td>{formatTs(eventItem.ingestTs)}</td>
         <td>{eventItem.deviceId}</td>
-        <td>{eventItem.eventType}</td>
+        <td className="mono">{eventItem.topic}</td>
         <td className="mono raw-cell">
-          {feedViewMode === 'rendered'
+          {studentFeedViewMode === 'rendered'
             ? (studentFeedValues.get(eventItem.id) ?? '')
             : eventItem.payloadJson}
         </td>
-        <td className="mono">{eventItem.topic}</td>
       </tr>
     ));
-  }, [feedViewMode, formatTs, recentFeedEventIds, studentFeedValues, studentVisibleFeed]);
+  }, [formatTs, recentFeedEventIds, studentFeedValues, studentFeedViewMode, studentVisibleFeed]);
 
   const adminDeviceCards = useMemo(() => {
     const adminDevices = adminData?.devices;
@@ -4357,14 +4625,13 @@ export default function App() {
       >
         <td>{formatTs(eventItem.ingestTs)}</td>
         <td>{eventItem.deviceId}</td>
-        <td>{eventItem.eventType}</td>
+        <td className="mono">{eventItem.topic}</td>
         <td className="mono raw-cell">
           {feedViewMode === 'rendered'
             ? (adminFeedValues.get(eventItem.id) ?? '')
             : eventItem.payloadJson}
         </td>
         <td>{eventItem.category}</td>
-        <td className="mono">{eventItem.topic}</td>
       </tr>
     ));
   }, [adminFeedValues, adminVisibleFeed, feedViewMode, formatTs, recentFeedEventIds]);
@@ -4437,15 +4704,10 @@ export default function App() {
               <StudentCommandsSection
                 t={t}
                 studentCommandWhitelist={studentData.capabilities.studentCommandWhitelist}
-                commandTargetScope={studentCommandTargetScope}
-                targetDeviceId={studentCommandTargetDeviceId}
-                resolvedTargetId={studentResolvedCommandTargetDeviceId}
-                targetDeviceState={studentSelectedDeviceState}
-                ownDeviceId={session.groupKey ?? ''}
-                adminDeviceId={studentData.settings.adminDeviceId?.trim() ?? ''}
-                onTargetDeviceIdChange={setStudentCommandTargetDeviceId}
+                deviceId={studentOwnDeviceId}
+                deviceState={studentSelectedDeviceState}
                 isCommandBusy={(command, on) => {
-                  return busyKey === `student-command-${command}-${String(on)}-${studentResolvedCommandTargetDeviceId}`;
+                  return busyKey === `student-command-${command}-${String(on)}-${studentOwnDeviceId.toLowerCase()}`;
                 }}
                 onSendCommand={sendStudentCommand}
               />
@@ -4462,29 +4724,35 @@ export default function App() {
               />
             ) : null}
 
-            <PipelineBuilderSection
-              t={t}
-              title={t('pipelineBuilder')}
-              view={studentPipelineEditorView}
-              draftProcessing={studentPipelineDraft}
-              onChangeSlotBlock={changeStudentPipelineSlot}
-              onChangeSlotConfig={changeStudentPipelineSlotConfig}
-              onAddSink={addStudentPipelineSink}
-              onRemoveSink={removeStudentPipelineSink}
-              onConfigureSendEventSink={configureStudentPipelineSendSink}
-              lecturerDeviceAvailable={Boolean(studentData.settings.adminDeviceId?.trim())}
-              onResetState={resetStudentPipelineState}
-              onResetSinkCounter={resetStudentPipelineSinkCounter}
-              stateControlBusy={busyKey === 'student-pipeline-state'}
-              sinkRuntimeBusy={busyKey === 'student-pipeline-sink'}
-              simplifiedView={studentPipelineSimplifiedView}
-              formatTs={formatTs}
-            />
+            {studentPipelineEditorView?.permissions.visible !== false ? (
+              <PipelineBuilderSection
+                t={t}
+                title={t('pipelineBuilder')}
+                view={studentPipelineEditorView}
+                draftProcessing={studentPipelineDraft}
+                onChangeSlotBlock={changeStudentPipelineSlot}
+                onChangeSlotConfig={changeStudentPipelineSlotConfig}
+                onAddSink={addStudentPipelineSink}
+                onRemoveSink={removeStudentPipelineSink}
+                onConfigureSendEventSink={configureStudentPipelineSendSink}
+                sendEventTargetTypeOptions={studentSendEventTargetTypeOptions}
+                lecturerDeviceAvailable={Boolean(studentData.settings.adminDeviceId?.trim())}
+                physicalDeviceIds={studentAllowedPhysicalTargetIds}
+                virtualDeviceIds={[]}
+                onResetState={resetStudentPipelineState}
+                onResetSinkCounter={resetStudentPipelineSinkCounter}
+                stateControlBusy={busyKey === 'student-pipeline-state'}
+                sinkRuntimeBusy={busyKey === 'student-pipeline-sink'}
+                simplifiedView={studentPipelineSimplifiedView}
+                formatTs={formatTs}
+              />
+            ) : null}
 
             <StudentFeedSection
               t={t}
               studentFeedPaused={studentFeedPaused}
-              feedViewMode={feedViewMode}
+              feedViewMode={studentFeedViewMode}
+              showRawViewToggle={!studentPipelineSimplifiedView}
               onTogglePause={() => setStudentFeedPaused((value) => !value)}
               onToggleFeedViewMode={() =>
                 setFeedViewMode((mode) => (mode === 'rendered' ? 'raw' : 'rendered'))
@@ -4501,12 +4769,17 @@ export default function App() {
                   return { ...previous, feed: [] };
                 });
               }}
+              showSendEventButton={Boolean(studentData.capabilities.studentSendEventEnabled)}
+              onOpenSendEventModal={openStudentMqttEventModal}
               studentTopicFilter={studentTopicFilter}
               onStudentTopicFilterChange={setStudentTopicFilter}
               canFilterByTopic={studentData.capabilities.canFilterByTopic}
-              showInternalEventsToggle={studentData.capabilities.showInternalEventsToggle}
+              showInternalEventsToggle={
+                studentData.capabilities.showInternalEventsToggle && !studentPipelineSimplifiedView
+              }
               studentShowInternal={studentShowInternal}
               onStudentShowInternalChange={setStudentShowInternal}
+              showFeedSourceSelector={studentPipelineEnabled}
               studentFeedSource={studentFeedSource}
               onStudentFeedSourceChange={setStudentFeedSource}
               studentVisibleFeedCount={studentVisibleFeed.length}
@@ -4609,6 +4882,7 @@ export default function App() {
                   onToggleVisibleToStudents={changeTaskPipelineVisibleToStudents}
                   onStudentEventVisibilityScopeChange={changeTaskPipelineStudentEventVisibilityScope}
                   onStudentCommandTargetScopeChange={changeTaskPipelineStudentCommandTargetScope}
+                  onStudentSendEventEnabledChange={changeTaskPipelineStudentSendEventEnabled}
                   onToggleAllowedBlock={toggleTaskPipelineAllowedBlock}
                   onScenarioOverlaysChange={changeTaskPipelineScenarioOverlays}
                   onSaveTaskConfig={saveAdminTaskPipelineConfig}
@@ -4777,6 +5051,26 @@ export default function App() {
         onTemplateChange={setMqttTemplate}
         onDeviceIdChange={setMqttDeviceId}
         onDraftChange={setMqttDraftField}
+      />
+
+      <AdminMqttEventModal
+        t={t}
+        open={studentMqttModalOpen}
+        busy={busyKey === 'student-mqtt-publish'}
+        mode={studentMqttComposerMode}
+        draft={studentMqttEventDraft}
+        physicalDeviceIds={studentAllowedPhysicalTargetIds}
+        virtualDeviceIds={[]}
+        guidedTopic={guidedStudentMqttMessage.topic}
+        guidedPayload={guidedStudentMqttMessage.payload}
+        onClose={closeStudentMqttEventModal}
+        onSubmit={sendStudentMqttEvent}
+        onModeChange={setStudentMqttComposerModeWithSync}
+        onTargetTypeChange={setStudentMqttTargetType}
+        onTemplateChange={setStudentMqttTemplate}
+        onDeviceIdChange={setStudentMqttDeviceId}
+        onDraftChange={setStudentMqttDraftField}
+        targetTypeOptions={studentSendEventTargetTypeOptions}
       />
 
       <AppModals

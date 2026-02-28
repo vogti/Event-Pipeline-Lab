@@ -32,6 +32,7 @@ public class TaskStateService {
             true,
             true,
             true,
+            true,
             List.of("*"),
             List.of("LED_GREEN", "LED_ORANGE", "COUNTER_RESET"),
             StudentDeviceScope.ALL_DEVICES,
@@ -214,6 +215,7 @@ public class TaskStateService {
             List<String> scenarioOverlays,
             StudentDeviceScope studentEventVisibilityScope,
             StudentDeviceScope studentCommandTargetScope,
+            boolean studentSendEventEnabled,
             String actor
     ) {
         TaskDefinition baseline = resolveTaskById(taskId);
@@ -225,6 +227,7 @@ public class TaskStateService {
                 scenarioOverlays,
                 studentEventVisibilityScope,
                 studentCommandTargetScope,
+                studentSendEventEnabled,
                 actor
         );
     }
@@ -541,6 +544,9 @@ public class TaskStateService {
         return new TaskCapabilities(
                 eventScope == StudentDeviceScope.ALL_DEVICES,
                 base.canSendDeviceCommands(),
+                pipeline != null
+                        ? pipeline.studentSendEventEnabled()
+                        : base.studentSendEventEnabled(),
                 base.canFilterByTopic(),
                 base.showInternalEventsToggle(),
                 base.allowedConfigOptions(),

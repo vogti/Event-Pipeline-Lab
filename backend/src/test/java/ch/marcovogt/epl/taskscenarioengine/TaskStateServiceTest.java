@@ -100,6 +100,7 @@ class TaskStateServiceTest {
                 List.of("delay:300ms"),
                 StudentDeviceScope.OWN_DEVICE,
                 StudentDeviceScope.OWN_DEVICE,
+                false,
                 List.of("DEDUP"),
                 4,
                 6,
@@ -108,7 +109,7 @@ class TaskStateServiceTest {
                 null,
                 "admin"
         );
-        when(taskPipelineConfigService.update(any(), anyBoolean(), anyInt(), any(), any(), any(), any(), any()))
+        when(taskPipelineConfigService.update(any(), anyBoolean(), anyInt(), any(), any(), any(), any(), anyBoolean(), any()))
                 .thenReturn(expected);
 
         TaskPipelineConfigDto result = service.updateTaskPipelineConfig(
@@ -119,11 +120,22 @@ class TaskStateServiceTest {
                 List.of("delay:300ms"),
                 StudentDeviceScope.OWN_DEVICE,
                 StudentDeviceScope.OWN_DEVICE,
+                false,
                 "admin"
         );
 
         ArgumentCaptor<TaskDefinition> taskCaptor = ArgumentCaptor.forClass(TaskDefinition.class);
-        verify(taskPipelineConfigService).update(taskCaptor.capture(), anyBoolean(), anyInt(), any(), any(), any(), any(), any());
+        verify(taskPipelineConfigService).update(
+                taskCaptor.capture(),
+                anyBoolean(),
+                anyInt(),
+                any(),
+                any(),
+                any(),
+                any(),
+                anyBoolean(),
+                any()
+        );
         assertThat(taskCaptor.getValue().id()).isEqualTo("task_intro");
         assertThat(taskCaptor.getValue().pipeline().slotCount()).isEqualTo(5);
         assertThat(result).isEqualTo(expected);

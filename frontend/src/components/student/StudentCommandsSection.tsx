@@ -1,19 +1,14 @@
 import { useState } from 'react';
 import type { I18nKey } from '../../i18n';
-import { formatBrightnessMeasurement, MetricIcon } from '../../app/shared';
+import { formatBrightnessMeasurement, MetricIcon, rssiBars, rssiClassName } from '../../app/shared';
 import { CloseIcon } from '../../app/shared-icons';
-import type { DeviceCommandType, StudentDeviceScope, StudentDeviceState } from '../../types';
+import type { DeviceCommandType, StudentDeviceState } from '../../types';
 
 interface StudentCommandsSectionProps {
   t: (key: I18nKey) => string;
   studentCommandWhitelist: string[];
-  commandTargetScope: StudentDeviceScope;
-  targetDeviceId: string;
-  resolvedTargetId: string;
-  targetDeviceState: StudentDeviceState | null;
-  ownDeviceId: string;
-  adminDeviceId: string;
-  onTargetDeviceIdChange: (value: string) => void;
+  deviceId: string;
+  deviceState: StudentDeviceState | null;
   isCommandBusy: (command: DeviceCommandType, on?: boolean) => boolean;
   onSendCommand: (command: DeviceCommandType, on?: boolean) => void;
 }
@@ -21,27 +16,41 @@ interface StudentCommandsSectionProps {
 export function StudentCommandsSection({
   t,
   studentCommandWhitelist,
-  commandTargetScope,
-  targetDeviceId,
-  resolvedTargetId,
-  targetDeviceState,
-  ownDeviceId,
-  adminDeviceId,
-  onTargetDeviceIdChange,
+  deviceId,
+  deviceState,
   isCommandBusy,
   onSendCommand
 }: StudentCommandsSectionProps) {
   const [counterResetModalOpen, setCounterResetModalOpen] = useState(false);
-  const trimmedOwn = ownDeviceId.trim();
-  const trimmedAdmin = adminDeviceId.trim();
-  const hasAdmin = trimmedAdmin.length > 0;
-  const hasTarget = resolvedTargetId.trim().length > 0;
+  const resolvedDeviceId = deviceId.trim();
+  const hasTarget = resolvedDeviceId.length > 0;
 
-  const online: boolean | null = targetDeviceState ? targetDeviceState.online : null;
-  const redPressed = targetDeviceState?.buttonRedPressed ?? null;
-  const blackPressed = targetDeviceState?.buttonBlackPressed ?? null;
-  const greenOn = targetDeviceState?.ledGreenOn ?? null;
-  const orangeOn = targetDeviceState?.ledOrangeOn ?? null;
+  const online: boolean | null = deviceState ? deviceState.online : null;
+  const rssi = deviceState?.rssi ?? null;
+  const redPressed = deviceState?.buttonRedPressed ?? null;
+  const blackPressed = deviceState?.buttonBlackPressed ?? null;
+  const greenOn = deviceState?.ledGreenOn ?? null;
+  const orangeOn = deviceState?.ledOrangeOn ?? null;
+  const rssiHint = online === true ? (rssi === null ? t('rssiNoData') : `${Math.round(rssi)} dBm`) : '-';
+  const bars = online === true ? rssiBars(rssi) : 0;
+
+  const renderRssiIndicator = (idSuffix: string) => (
+    <span className="rssi-tooltip-host">
+      <span
+        className={`rssi-bars ${online === true ? rssiClassName(rssi) : 'none'}`}
+        aria-label={rssiHint}
+        aria-describedby={`student-rssi-tooltip-${idSuffix}`}
+      >
+        <span className={`bar ${bars >= 1 ? 'active' : ''}`} />
+        <span className={`bar ${bars >= 2 ? 'active' : ''}`} />
+        <span className={`bar ${bars >= 3 ? 'active' : ''}`} />
+        <span className={`bar ${bars >= 4 ? 'active' : ''}`} />
+      </span>
+      <span className="rssi-tooltip" id={`student-rssi-tooltip-${idSuffix}`}>
+        {rssiHint}
+      </span>
+    </span>
+  );
 
   const redButtonClass = redPressed === null
     ? 'state-unknown'
@@ -64,20 +73,20 @@ export function StudentCommandsSection({
       ? t('statePressed')
       : t('stateReleased');
 
-  const temperature = online !== true || targetDeviceState?.temperatureC == null
+  const temperature = online !== true || deviceState?.temperatureC == null
     ? '-'
-    : `${targetDeviceState.temperatureC.toFixed(1)} °C`;
-  const humidity = online !== true || targetDeviceState?.humidityPct == null
+    : `${deviceState.temperatureC.toFixed(1)} °C`;
+  const humidity = online !== true || deviceState?.humidityPct == null
     ? '-'
-    : `${Math.round(targetDeviceState.humidityPct)} %`;
-  const brightness = online !== true || targetDeviceState?.brightness == null
+    : `${Math.round(deviceState.humidityPct)} %`;
+  const brightness = online !== true || deviceState?.brightness == null
     ? '-'
-    : formatBrightnessMeasurement(targetDeviceState.brightness);
-  const counterValue = targetDeviceState?.counterValue == null
+    : formatBrightnessMeasurement(deviceState.brightness);
+  const counterValue = deviceState?.counterValue == null
     ? '-'
-    : Number.isInteger(targetDeviceState.counterValue)
-      ? String(targetDeviceState.counterValue)
-      : targetDeviceState.counterValue.toFixed(2);
+    : Number.isInteger(deviceState.counterValue)
+      ? String(deviceState.counterValue)
+      : deviceState.counterValue.toFixed(2);
 
   const nextGreenState = greenOn === null ? true : !greenOn;
   const nextOrangeState = orangeOn === null ? true : !orangeOn;
@@ -91,51 +100,15 @@ export function StudentCommandsSection({
       <div className="panel-header student-command-header">
         <h2>{t('device')}</h2>
         <div className="student-command-header-right">
-          <span className="chip mono">{resolvedTargetId || t('stateUnknown')}</span>
+          <span className="chip mono">
+            <span>{resolvedDeviceId || t('stateUnknown')}</span>
+          </span>
           <span className={`chip ${online === true ? 'ok' : online === false ? 'warn' : ''}`}>
+            {online === true ? renderRssiIndicator('status') : null}
             {online === null ? t('stateUnknown') : online ? t('online') : t('offline')}
           </span>
         </div>
       </div>
-
-      {commandTargetScope === 'ADMIN_DEVICE' ? (
-        <p className="muted">
-          {adminDeviceId
-            ? `${t('studentCommandScopeAdmin')} (${adminDeviceId})`
-            : t('studentCommandAdminDeviceMissing')}
-        </p>
-      ) : null}
-      {commandTargetScope === 'ALL_DEVICES' ? (
-        <label className="stack">
-          <span>{t('studentCommandScopeAll')}</span>
-          <input
-            className="input mono"
-            type="text"
-            value={targetDeviceId}
-            onChange={(event) => onTargetDeviceIdChange(event.target.value)}
-            placeholder={t('studentCommandTargetDevice')}
-          />
-        </label>
-      ) : null}
-      {commandTargetScope === 'OWN_AND_ADMIN_DEVICE' ? (
-        hasAdmin ? (
-          <label className="stack">
-            <span>{t('studentCommandScopeOwnAdmin')}</span>
-            <select
-              className="input"
-              value={resolvedTargetId}
-              onChange={(event) => onTargetDeviceIdChange(event.target.value)}
-            >
-              <option value={trimmedOwn}>{`${t('studentCommandTargetOwn')} (${trimmedOwn})`}</option>
-              <option value={trimmedAdmin}>{`${t('studentCommandTargetAdmin')} (${trimmedAdmin})`}</option>
-            </select>
-          </label>
-        ) : (
-          <p className="muted">
-            {`${t('studentCommandScopeOwn')} (${trimmedOwn}) · ${t('studentCommandAdminDeviceMissing')}`}
-          </p>
-        )
-      ) : null}
 
       <div className="device-metrics-grid student-command-metrics">
         <div className="device-metric">
@@ -240,7 +213,7 @@ export function StudentCommandsSection({
               </button>
             </div>
             <p>
-              {t('counterResetDialogBody')} <strong>{resolvedTargetId || t('stateUnknown')}</strong>?
+              {t('counterResetDialogBody')} <strong>{resolvedDeviceId || t('stateUnknown')}</strong>?
             </p>
             <div className="event-modal-actions">
               <button

@@ -1,10 +1,12 @@
 package ch.marcovogt.epl.pipelinebuilder;
 
+import ch.marcovogt.epl.admin.AppSettingsService;
 import ch.marcovogt.epl.authsession.SessionPrincipal;
 import ch.marcovogt.epl.common.DeviceIdMapping;
 import ch.marcovogt.epl.eventfeedquery.FeedScenarioService;
 import ch.marcovogt.epl.eventingestionnormalization.CanonicalEventDto;
 import ch.marcovogt.epl.taskscenarioengine.PipelineTaskConfig;
+import ch.marcovogt.epl.taskscenarioengine.StudentDeviceScope;
 import ch.marcovogt.epl.taskscenarioengine.TaskDefinition;
 import ch.marcovogt.epl.taskscenarioengine.TaskStateService;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -40,6 +42,7 @@ public class PipelineStateService {
     private final PipelineObservabilityService pipelineObservabilityService;
     private final PipelineSinkExecutionService pipelineSinkExecutionService;
     private final FeedScenarioService feedScenarioService;
+    private final AppSettingsService appSettingsService;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
@@ -49,6 +52,7 @@ public class PipelineStateService {
             PipelineObservabilityService pipelineObservabilityService,
             PipelineSinkExecutionService pipelineSinkExecutionService,
             FeedScenarioService feedScenarioService,
+            AppSettingsService appSettingsService,
             ObjectMapper objectMapper
     ) {
         this.pipelineStateRepository = pipelineStateRepository;
@@ -56,6 +60,7 @@ public class PipelineStateService {
         this.pipelineObservabilityService = pipelineObservabilityService;
         this.pipelineSinkExecutionService = pipelineSinkExecutionService;
         this.feedScenarioService = feedScenarioService;
+        this.appSettingsService = appSettingsService;
         this.objectMapper = objectMapper;
         this.clock = Clock.systemUTC();
     }
@@ -304,11 +309,16 @@ public class PipelineStateService {
         );
         PipelineSinkRuntimeUpdateDto sinkRuntimeUpdate = null;
         if (projected != null && executeSinks) {
+            StudentDeviceScope sinkTargetScope = taskStateService.currentStudentCapabilities().studentCommandTargetScope();
+            String adminDeviceId = appSettingsService.getAdminDeviceId();
             PipelineSinkRuntimeSection sinkRuntime = pipelineSinkExecutionService.processProjectedEvent(
                     task.id(),
                     groupKey,
                     effective.sink(),
-                    projected
+                    projected,
+                    sinkTargetScope == null ? StudentDeviceScope.OWN_DEVICE : sinkTargetScope,
+                    groupKey,
+                    adminDeviceId
             );
             sinkRuntimeUpdate = new PipelineSinkRuntimeUpdateDto(task.id(), groupKey, sinkRuntime);
         }

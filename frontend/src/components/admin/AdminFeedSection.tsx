@@ -117,16 +117,15 @@ export function AdminFeedSection({
             <tr>
               <th>{t('feedHeaderIngestTs')}</th>
               <th>{t('feedHeaderDeviceId')}</th>
-              <th>{t('feedHeaderEventType')}</th>
+              <th>{t('feedHeaderTopic')}</th>
               <th>{feedViewMode === 'rendered' ? t('value') : t('rawPayload')}</th>
               <th>{t('category')}</th>
-              <th>{t('feedHeaderTopic')}</th>
             </tr>
           </thead>
           <tbody>
             {adminVisibleFeedCount === 0 ? (
               <tr>
-                <td colSpan={6} className="muted">
+                <td colSpan={5} className="muted">
                   {t('noEvents')}
                 </td>
               </tr>

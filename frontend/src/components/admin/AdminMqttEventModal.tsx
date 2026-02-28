@@ -29,6 +29,7 @@ interface AdminMqttEventModalProps {
   onTemplateChange: (template: MqttComposerTemplate) => void;
   onDeviceIdChange: (deviceId: string) => void;
   onDraftChange: <K extends keyof MqttEventDraft>(key: K, value: MqttEventDraft[K]) => void;
+  targetTypeOptions?: MqttComposerTargetType[];
   titleKey?: I18nKey;
   submitLabelKey?: I18nKey;
   enableLedTab?: boolean;
@@ -79,6 +80,7 @@ export function AdminMqttEventModal({
   onTemplateChange,
   onDeviceIdChange,
   onDraftChange,
+  targetTypeOptions,
   titleKey = 'sendMqttEvent',
   submitLabelKey = 'sendMqttEvent',
   enableLedTab = true,
@@ -110,16 +112,22 @@ export function AdminMqttEventModal({
     return null;
   }
 
-  const supportedTemplates = supportedMqttTemplates(draft.targetType);
-  const normalizedTemplate = normalizeMqttTemplateForTarget(draft.targetType, draft.template);
+  const defaultTargetTypes: MqttComposerTargetType[] = ['physical', 'virtual', 'custom'];
+  const allowedTargetTypes = (targetTypeOptions?.length ? targetTypeOptions : defaultTargetTypes)
+    .filter((entry, index, values) => values.indexOf(entry) === index);
+  const normalizedTargetType = allowedTargetTypes.includes(draft.targetType)
+    ? draft.targetType
+    : (allowedTargetTypes[0] ?? 'physical');
+  const supportedTemplates = supportedMqttTemplates(normalizedTargetType);
+  const normalizedTemplate = normalizeMqttTemplateForTarget(normalizedTargetType, draft.template);
   const availableDeviceIds =
-    draft.targetType === 'physical'
+    normalizedTargetType === 'physical'
       ? physicalDeviceIds
-      : draft.targetType === 'virtual'
+      : normalizedTargetType === 'virtual'
         ? virtualDeviceIds
         : [];
   const ledAvailableDeviceIds = physicalDeviceIds;
-  const showDeviceSelect = draft.targetType !== 'custom';
+  const showDeviceSelect = normalizedTargetType !== 'custom';
 
   return (
     <div className="event-modal-backdrop" onClick={onClose}>
@@ -158,7 +166,7 @@ export function AdminMqttEventModal({
           >
             {t('mqttModeRaw')}
           </button>
-          {enableLedTab ? (
+          {enableLedTab && allowedTargetTypes.includes('physical') ? (
             <button
               className={`button tiny ${activeTab === 'led' ? 'active' : 'secondary'}`}
               type="button"
@@ -248,13 +256,19 @@ export function AdminMqttEventModal({
             <span>{t('mqttTarget')}</span>
             <select
               className="input"
-              value={draft.targetType}
+              value={normalizedTargetType}
               onChange={(event) => onTargetTypeChange(event.target.value as MqttComposerTargetType)}
               disabled={busy}
             >
-              <option value="physical">{t('mqttTargetPhysical')}</option>
-              <option value="virtual">{t('mqttTargetVirtual')}</option>
-              <option value="custom">{t('mqttTargetCustom')}</option>
+              {allowedTargetTypes.includes('physical') ? (
+                <option value="physical">{t('mqttTargetPhysical')}</option>
+              ) : null}
+              {allowedTargetTypes.includes('virtual') ? (
+                <option value="virtual">{t('mqttTargetVirtual')}</option>
+              ) : null}
+              {allowedTargetTypes.includes('custom') ? (
+                <option value="custom">{t('mqttTargetCustom')}</option>
+              ) : null}
             </select>
           </label>
 

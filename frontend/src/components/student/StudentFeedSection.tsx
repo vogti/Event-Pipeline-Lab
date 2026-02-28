@@ -6,15 +6,19 @@ interface StudentFeedSectionProps {
   t: (key: I18nKey) => string;
   studentFeedPaused: boolean;
   feedViewMode: 'rendered' | 'raw';
+  showRawViewToggle?: boolean;
   onTogglePause: () => void;
   onToggleFeedViewMode: () => void;
   onClearFeed: () => void;
+  showSendEventButton?: boolean;
+  onOpenSendEventModal?: () => void;
   studentTopicFilter: string;
   onStudentTopicFilterChange: (value: string) => void;
   canFilterByTopic: boolean;
   showInternalEventsToggle: boolean;
   studentShowInternal: boolean;
   onStudentShowInternalChange: (value: boolean) => void;
+  showFeedSourceSelector?: boolean;
   studentFeedSource: StudentFeedSource;
   onStudentFeedSourceChange: (value: StudentFeedSource) => void;
   studentVisibleFeedCount: number;
@@ -25,15 +29,19 @@ export function StudentFeedSection({
   t,
   studentFeedPaused,
   feedViewMode,
+  showRawViewToggle = true,
   onTogglePause,
   onToggleFeedViewMode,
   onClearFeed,
+  showSendEventButton = false,
+  onOpenSendEventModal,
   studentTopicFilter,
   onStudentTopicFilterChange,
   canFilterByTopic,
   showInternalEventsToggle,
   studentShowInternal,
   onStudentShowInternalChange,
+  showFeedSourceSelector = true,
   studentFeedSource,
   onStudentFeedSourceChange,
   studentVisibleFeedCount,
@@ -46,12 +54,19 @@ export function StudentFeedSection({
         <button className="button secondary" type="button" onClick={onTogglePause}>
           {studentFeedPaused ? t('resume') : t('pause')}
         </button>
-        <button className="button secondary" type="button" onClick={onToggleFeedViewMode}>
-          {feedViewMode === 'rendered' ? t('switchToRawFeed') : t('switchToRenderedFeed')}
-        </button>
+        {showRawViewToggle ? (
+          <button className="button secondary" type="button" onClick={onToggleFeedViewMode}>
+            {feedViewMode === 'rendered' ? t('switchToRawFeed') : t('switchToRenderedFeed')}
+          </button>
+        ) : null}
         <button className="button secondary" type="button" onClick={onClearFeed}>
           {t('clear')}
         </button>
+        {showSendEventButton ? (
+          <button className="button ghost" type="button" onClick={onOpenSendEventModal}>
+            {t('sendMqttEvent')}
+          </button>
+        ) : null}
 
         <input
           className="input"
@@ -61,14 +76,16 @@ export function StudentFeedSection({
           disabled={!canFilterByTopic}
         />
 
-        <select
-          className="input"
-          value={studentFeedSource}
-          onChange={(event) => onStudentFeedSourceChange(event.target.value as StudentFeedSource)}
-        >
-          <option value="BEFORE_PIPELINE">{t('feedSourceBeforePipeline')}</option>
-          <option value="AFTER_PIPELINE">{t('feedSourceAfterPipeline')}</option>
-        </select>
+        {showFeedSourceSelector ? (
+          <select
+            className="input"
+            value={studentFeedSource}
+            onChange={(event) => onStudentFeedSourceChange(event.target.value as StudentFeedSource)}
+          >
+            <option value="BEFORE_PIPELINE">{t('feedSourceBeforePipeline')}</option>
+            <option value="AFTER_PIPELINE">{t('feedSourceAfterPipeline')}</option>
+          </select>
+        ) : null}
 
         {showInternalEventsToggle ? (
           <label className="checkbox-inline">
@@ -88,15 +105,14 @@ export function StudentFeedSection({
             <tr>
               <th>{t('feedHeaderIngestTs')}</th>
               <th>{t('feedHeaderDeviceId')}</th>
-              <th>{t('feedHeaderEventType')}</th>
-              <th>{feedViewMode === 'rendered' ? t('value') : t('rawPayload')}</th>
               <th>{t('feedHeaderTopic')}</th>
+              <th>{feedViewMode === 'rendered' ? t('value') : t('rawPayload')}</th>
             </tr>
           </thead>
           <tbody>
             {studentVisibleFeedCount === 0 ? (
               <tr>
-                <td colSpan={5} className="muted">
+                <td colSpan={4} className="muted">
                   {t('noEvents')}
                 </td>
               </tr>
