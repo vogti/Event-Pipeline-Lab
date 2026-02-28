@@ -43,6 +43,10 @@ function templateLabelKey(template: MqttComposerTemplate): I18nKey {
       return 'mqttTemplateCounter';
     case 'led':
       return 'mqttTemplateLed';
+    case 'temperature':
+      return 'mqttTemplateTemperature';
+    case 'humidity':
+      return 'mqttTemplateHumidity';
     case 'dht22':
       return 'mqttTemplateDht22';
     case 'ldr':
@@ -382,6 +386,38 @@ export function AdminMqttEventModal({
                   </label>
                 ) : null}
               </div>
+            ) : null}
+
+            {normalizedTemplate === 'temperature' ? (
+              <label>
+                <span>{t('mqttTemperature')}</span>
+                <input
+                  className="input"
+                  type="number"
+                  step="0.1"
+                  value={draft.temperatureC}
+                  onChange={(event) =>
+                    onDraftChange('temperatureC', Number.isFinite(event.target.valueAsNumber) ? event.target.valueAsNumber : draft.temperatureC)
+                  }
+                  disabled={busy}
+                />
+              </label>
+            ) : null}
+
+            {normalizedTemplate === 'humidity' ? (
+              <label>
+                <span>{t('mqttHumidity')}</span>
+                <input
+                  className="input"
+                  type="number"
+                  step="0.1"
+                  value={draft.humidityPct}
+                  onChange={(event) =>
+                    onDraftChange('humidityPct', Number.isFinite(event.target.valueAsNumber) ? event.target.valueAsNumber : draft.humidityPct)
+                  }
+                  disabled={busy}
+                />
+              </label>
             ) : null}
 
             {normalizedTemplate === 'dht22' ? (

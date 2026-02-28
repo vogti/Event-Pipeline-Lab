@@ -402,7 +402,8 @@ type FilterTopicTemplate =
   | 'EVENT_COUNTER'
   | 'EVENT_SENSOR'
   | 'EVENT_SENSOR_LDR'
-  | 'EVENT_SENSOR_DHT22'
+  | 'EVENT_SENSOR_TEMPERATURE'
+  | 'EVENT_SENSOR_HUMIDITY'
   | 'STATUS_ALL'
   | 'STATUS_HEARTBEAT'
   | 'STATUS_WIFI'
@@ -418,7 +419,8 @@ const FILTER_TOPIC_TEMPLATE_TO_FILTER: Record<FilterTopicTemplate, string> = {
   EVENT_COUNTER: '+/event/counter',
   EVENT_SENSOR: '+/event/sensor/#',
   EVENT_SENSOR_LDR: '+/event/sensor/ldr',
-  EVENT_SENSOR_DHT22: '+/event/sensor/dht22',
+  EVENT_SENSOR_TEMPERATURE: '+/event/sensor/temperature',
+  EVENT_SENSOR_HUMIDITY: '+/event/sensor/humidity',
   STATUS_ALL: '+/status/#',
   STATUS_HEARTBEAT: '+/status/heartbeat',
   STATUS_WIFI: '+/status/wifi',
@@ -435,12 +437,12 @@ const FILTER_TOPIC_TEMPLATE_OPTIONS: Array<{ id: FilterTopicTemplate; labelKey: 
   { id: 'EVENT_COUNTER', labelKey: 'pipelineFilterTopicTemplateEventCounter' },
   { id: 'EVENT_SENSOR', labelKey: 'pipelineFilterTopicTemplateEventSensor' },
   { id: 'EVENT_SENSOR_LDR', labelKey: 'pipelineFilterTopicTemplateEventSensorLdr' },
-  { id: 'EVENT_SENSOR_DHT22', labelKey: 'pipelineFilterTopicTemplateEventSensorDht22' },
+  { id: 'EVENT_SENSOR_TEMPERATURE', labelKey: 'pipelineFilterTopicTemplateEventSensorTemperature' },
+  { id: 'EVENT_SENSOR_HUMIDITY', labelKey: 'pipelineFilterTopicTemplateEventSensorHumidity' },
   { id: 'STATUS_ALL', labelKey: 'pipelineFilterTopicTemplateStatusAll' },
   { id: 'STATUS_HEARTBEAT', labelKey: 'pipelineFilterTopicTemplateStatusHeartbeat' },
   { id: 'STATUS_WIFI', labelKey: 'pipelineFilterTopicTemplateStatusWifi' },
-  { id: 'ACK_ALL', labelKey: 'pipelineFilterTopicTemplateAckAll' },
-  { id: 'VIRTUAL_RPC', labelKey: 'pipelineFilterTopicTemplateVirtualRpc' }
+  { id: 'ACK_ALL', labelKey: 'pipelineFilterTopicTemplateAckAll' }
 ];
 
 function extractTopicFilterFromSlotConfig(config: Record<string, unknown>): string {
@@ -458,6 +460,10 @@ function templateFromTopicFilter(filter: string): FilterTopicTemplate | null {
   const normalized = filter.trim();
   if (normalized === '+/event/button') {
     return 'EVENT_BUTTON';
+  }
+  // Backward compatibility: legacy DHT22 template now maps to temperature topic template.
+  if (normalized === '+/event/sensor/dht22') {
+    return 'EVENT_SENSOR_TEMPERATURE';
   }
   const matched = Object.entries(FILTER_TOPIC_TEMPLATE_TO_FILTER).find(([, value]) => value === normalized);
   return (matched?.[0] as FilterTopicTemplate | undefined) ?? null;
@@ -843,8 +849,9 @@ export function PipelineBuilderSection({
     const configuredFilter = extractTopicFilterFromSlotConfig(slotConfig);
     const configuredMode = slotConfig.topicMode === 'raw' ? 'raw' : 'guided';
     const matchedTemplate = templateFromTopicFilter(configuredFilter);
+    const requiresRawMode = matchedTemplate === 'VIRTUAL_RPC';
 
-    if (configuredMode === 'raw' || (configuredFilter.length > 0 && !matchedTemplate)) {
+    if (requiresRawMode || configuredMode === 'raw' || (configuredFilter.length > 0 && !matchedTemplate)) {
       setTopicFilterModalMode('raw');
       setTopicFilterModalRawValue(configuredFilter);
       setTopicFilterModalTemplate(matchedTemplate ?? 'EVENT_ALL');

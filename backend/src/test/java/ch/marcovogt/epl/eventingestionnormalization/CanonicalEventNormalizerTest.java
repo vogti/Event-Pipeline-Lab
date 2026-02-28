@@ -81,6 +81,88 @@ class CanonicalEventNormalizerTest {
     }
 
     @Test
+    void shouldRewriteRpcTemperatureTopicToCanonicalTemperatureTopic() {
+        String topic = "epld01/events/rpc";
+        byte[] payload = """
+                {
+                  "method":"NotifyStatus",
+                  "params":{
+                    "temperature:100":{"value":23.4}
+                  }
+                }
+                """.getBytes(StandardCharsets.UTF_8);
+
+        NormalizedEvent normalized = normalizer.normalize(topic, payload, Instant.parse("2026-02-25T10:00:03Z"));
+
+        assertThat(normalized.event().getEventType()).isEqualTo("sensor.temperature");
+        assertThat(normalized.event().getTopic()).isEqualTo("epld01/event/sensor/temperature");
+    }
+
+    @Test
+    void shouldRewriteRpcHumidityTopicToCanonicalHumidityTopic() {
+        String topic = "epld01/events/rpc";
+        byte[] payload = """
+                {
+                  "method":"NotifyStatus",
+                  "params":{
+                    "humidity:100":{"value":57.8}
+                  }
+                }
+                """.getBytes(StandardCharsets.UTF_8);
+
+        NormalizedEvent normalized = normalizer.normalize(topic, payload, Instant.parse("2026-02-25T10:00:03Z"));
+
+        assertThat(normalized.event().getEventType()).isEqualTo("sensor.humidity");
+        assertThat(normalized.event().getTopic()).isEqualTo("epld01/event/sensor/humidity");
+    }
+
+    @Test
+    void shouldNormalizeDht22TopicToTemperatureWhenPayloadContainsTemperature() {
+        String topic = "epld01/event/sensor/dht22";
+        byte[] payload = """
+                {
+                  "temperature":21.6
+                }
+                """.getBytes(StandardCharsets.UTF_8);
+
+        NormalizedEvent normalized = normalizer.normalize(topic, payload, Instant.parse("2026-02-25T10:00:03Z"));
+
+        assertThat(normalized.event().getEventType()).isEqualTo("sensor.temperature");
+        assertThat(normalized.event().getTopic()).isEqualTo("epld01/event/sensor/temperature");
+    }
+
+    @Test
+    void shouldNormalizeDht22TopicToHumidityWhenPayloadContainsHumidity() {
+        String topic = "epld01/event/sensor/dht22";
+        byte[] payload = """
+                {
+                  "humidity":58.2
+                }
+                """.getBytes(StandardCharsets.UTF_8);
+
+        NormalizedEvent normalized = normalizer.normalize(topic, payload, Instant.parse("2026-02-25T10:00:03Z"));
+
+        assertThat(normalized.event().getEventType()).isEqualTo("sensor.humidity");
+        assertThat(normalized.event().getTopic()).isEqualTo("epld01/event/sensor/humidity");
+    }
+
+    @Test
+    void shouldDefaultDht22TopicToTemperatureWhenPayloadContainsBothValues() {
+        String topic = "epld01/event/sensor/dht22";
+        byte[] payload = """
+                {
+                  "temperature":22.1,
+                  "humidity":49.9
+                }
+                """.getBytes(StandardCharsets.UTF_8);
+
+        NormalizedEvent normalized = normalizer.normalize(topic, payload, Instant.parse("2026-02-25T10:00:03Z"));
+
+        assertThat(normalized.event().getEventType()).isEqualTo("sensor.temperature");
+        assertThat(normalized.event().getTopic()).isEqualTo("epld01/event/sensor/temperature");
+    }
+
+    @Test
     void shouldUseTopicDeviceIdForRpcTopicEvenWhenPayloadContainsVirtualDeviceId() {
         String topic = "epld01/events/rpc";
         byte[] payload = """

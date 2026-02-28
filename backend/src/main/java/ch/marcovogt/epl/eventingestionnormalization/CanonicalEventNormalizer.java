@@ -129,7 +129,7 @@ public class CanonicalEventNormalizer {
             return "sensor.ldr.voltage";
         }
         if (topic.contains("/event/sensor/dht22")) {
-            return "sensor.dht22.reading";
+            return normalizeDht22Event(payloadNode);
         }
         if (topic.contains("/status/heartbeat")) {
             return "status.heartbeat";
@@ -199,6 +199,12 @@ public class CanonicalEventNormalizer {
                 }
                 return resolvedDeviceId + "/event/button/" + buttonName;
             }
+            if (lowerEventType.startsWith("sensor.temperature")) {
+                return resolvedDeviceId + "/event/sensor/temperature";
+            }
+            if (lowerEventType.startsWith("sensor.humidity")) {
+                return resolvedDeviceId + "/event/sensor/humidity";
+            }
         }
 
         if (!normalized.endsWith("/events/rpc")) {
@@ -215,9 +221,13 @@ public class CanonicalEventNormalizer {
         if (lowerEventType.equals("sensor.ldr.voltage")) {
             return resolvedDeviceId + "/event/sensor/ldr";
         }
-        if (lowerEventType.startsWith("sensor.temperature")
-                || lowerEventType.startsWith("sensor.humidity")
-                || lowerEventType.startsWith("sensor.dht22")) {
+        if (lowerEventType.startsWith("sensor.temperature")) {
+            return resolvedDeviceId + "/event/sensor/temperature";
+        }
+        if (lowerEventType.startsWith("sensor.humidity")) {
+            return resolvedDeviceId + "/event/sensor/humidity";
+        }
+        if (lowerEventType.startsWith("sensor.dht22")) {
             return resolvedDeviceId + "/event/sensor/dht22";
         }
         if (lowerEventType.equals("led.green.state_changed")) {
@@ -261,6 +271,82 @@ public class CanonicalEventNormalizer {
         }
 
         return "button." + button + "." + action;
+    }
+
+    private String normalizeDht22Event(JsonNode payloadNode) {
+        boolean hasTemperature = hasNumericValue(
+                payloadNode.at("/temperature"),
+                payloadNode.at("/temp"),
+                payloadNode.at("/tC"),
+                payloadNode.at("/temperatureC"),
+                payloadNode.at("/params/temperature:100/value"),
+                payloadNode.at("/params/temperature:100/tC")
+        );
+        boolean hasHumidity = hasNumericValue(
+                payloadNode.at("/humidity"),
+                payloadNode.at("/rh"),
+                payloadNode.at("/humidityPct"),
+                payloadNode.at("/params/humidity:100/value"),
+                payloadNode.at("/params/humidity:100/rh")
+        );
+
+        if (hasTemperature && !hasHumidity) {
+            return "sensor.temperature";
+        }
+        if (hasHumidity && !hasTemperature) {
+            return "sensor.humidity";
+        }
+
+        String metricHint = safe(text(payloadNode, "metric"));
+        if (metricHint.contains("temp")) {
+            return "sensor.temperature";
+        }
+        if (metricHint.contains("humid")) {
+            return "sensor.humidity";
+        }
+
+        String typeHint = safe(text(payloadNode, "type"));
+        if (typeHint.contains("temp")) {
+            return "sensor.temperature";
+        }
+        if (typeHint.contains("humid")) {
+            return "sensor.humidity";
+        }
+
+        if (hasTemperature) {
+            return "sensor.temperature";
+        }
+        if (hasHumidity) {
+            return "sensor.humidity";
+        }
+        return "sensor.temperature";
+    }
+
+    private boolean hasNumericValue(JsonNode... nodes) {
+        if (nodes == null) {
+            return false;
+        }
+        for (JsonNode node : nodes) {
+            if (node == null || node.isMissingNode() || node.isNull()) {
+                continue;
+            }
+            if (node.isNumber()) {
+                return true;
+            }
+            if (node.isTextual()) {
+                String text = node.asText();
+                if (text == null || text.isBlank()) {
+                    continue;
+                }
+                try {
+                    Double.parseDouble(text.trim());
+                    return true;
+                } catch (NumberFormatException ignored) {
+                    // ignore non-numeric text values
+                }
+            }
+        }
+        return false;
     }
 
     private String normalizeRpcNotification(JsonNode payloadNode) {

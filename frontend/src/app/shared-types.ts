@@ -77,6 +77,9 @@ export type MqttComposerTemplate =
   | 'button'
   | 'counter'
   | 'led'
+  | 'temperature'
+  | 'humidity'
+  // Legacy value, kept for compatibility with old drafts/configs.
   | 'dht22'
   | 'ldr'
   | 'heartbeat'

@@ -9,7 +9,8 @@ const PHYSICAL_TEMPLATES: MqttComposerTemplate[] = [
   'button',
   'counter',
   'led',
-  'dht22',
+  'temperature',
+  'humidity',
   'ldr',
   'heartbeat',
   'wifi',
@@ -20,7 +21,8 @@ const VIRTUAL_TEMPLATES: MqttComposerTemplate[] = [
   'button',
   'counter',
   'led',
-  'dht22',
+  'temperature',
+  'humidity',
   'ldr',
   'custom'
 ];
@@ -72,6 +74,10 @@ function topicForTemplate(draft: MqttEventDraft, deviceId: string): string {
       const channel = draft.ledColor === 'green' ? 0 : 1;
       return `${prefix}/command/switch:${channel}`;
     }
+    case 'temperature':
+      return `${prefix}/event/sensor/temperature`;
+    case 'humidity':
+      return `${prefix}/event/sensor/humidity`;
     case 'dht22':
       return `${prefix}/event/sensor/dht22`;
     case 'ldr':
@@ -126,6 +132,28 @@ function virtualPayload(draft: MqttEventDraft, nowTsSeconds: number): string {
     });
   }
 
+  if (draft.template === 'temperature') {
+    const temperature = Number(draft.temperatureC.toFixed(1));
+    return toJson({
+      ...base,
+      params: {
+        ts: nowTsSeconds,
+        'temperature:100': { tC: temperature, value: temperature }
+      }
+    });
+  }
+
+  if (draft.template === 'humidity') {
+    const humidity = Number(draft.humidityPct.toFixed(1));
+    return toJson({
+      ...base,
+      params: {
+        ts: nowTsSeconds,
+        'humidity:100': { rh: humidity, value: humidity }
+      }
+    });
+  }
+
   if (draft.template === 'dht22') {
     const temperature = Number(draft.temperatureC.toFixed(1));
     const humidity = Number(draft.humidityPct.toFixed(1));
@@ -172,6 +200,20 @@ function physicalPayload(draft: MqttEventDraft, nowTsSeconds: number): string {
 
   if (draft.template === 'led') {
     return draft.ledOn ? 'on' : 'off';
+  }
+
+  if (draft.template === 'temperature') {
+    return toJson({
+      temperature: Number(draft.temperatureC.toFixed(1)),
+      ts: nowTsSeconds
+    });
+  }
+
+  if (draft.template === 'humidity') {
+    return toJson({
+      humidity: Number(draft.humidityPct.toFixed(1)),
+      ts: nowTsSeconds
+    });
   }
 
   if (draft.template === 'dht22') {
@@ -229,6 +271,9 @@ export function normalizeMqttTemplateForTarget(
   targetType: MqttComposerTargetType,
   template: MqttComposerTemplate
 ): MqttComposerTemplate {
+  if (template === 'dht22') {
+    template = 'temperature';
+  }
   const allowed = supportedMqttTemplates(targetType);
   if (allowed.includes(template)) {
     return template;
