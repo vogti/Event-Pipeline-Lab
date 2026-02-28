@@ -708,7 +708,10 @@ public class PipelineStateService {
         LinkedHashSet<String> usedIds = new LinkedHashSet<>();
         usedIds.add(PipelineSinkLibrary.EVENT_FEED_ID);
         usedIds.add(PipelineSinkLibrary.VIRTUAL_SIGNAL_ID);
+        usedIds.add(PipelineSinkLibrary.SHOW_PAYLOAD_ID);
+        usedIds.add(PipelineSinkLibrary.LEGACY_LAST_PAYLOAD_ID);
         int sendEventIndex = 1;
+        boolean includeShowPayload = false;
 
         for (PipelineSinkNode node : candidates) {
             if (node == null) {
@@ -730,6 +733,18 @@ public class PipelineStateService {
                 sendEventIndex += 1;
                 continue;
             }
+
+            if (PipelineSinkLibrary.SHOW_PAYLOAD.equals(sinkType)) {
+                includeShowPayload = true;
+            }
+        }
+
+        if (includeShowPayload) {
+            normalized.add(new PipelineSinkNode(
+                    PipelineSinkLibrary.SHOW_PAYLOAD_ID,
+                    PipelineSinkLibrary.SHOW_PAYLOAD,
+                    Map.of()
+            ));
         }
 
         normalized.add(new PipelineSinkNode(
@@ -814,6 +829,8 @@ public class PipelineStateService {
             String sinkType = PipelineSinkLibrary.normalizeType(node.type());
             if (PipelineSinkLibrary.SEND_EVENT.equals(sinkType)) {
                 targets.add("DEVICE_CONTROL");
+            } else if (PipelineSinkLibrary.SHOW_PAYLOAD.equals(sinkType)) {
+                targets.add("SHOW_PAYLOAD");
             } else if (PipelineSinkLibrary.VIRTUAL_SIGNAL.equals(sinkType)) {
                 targets.add("VIRTUAL_SIGNAL");
             }

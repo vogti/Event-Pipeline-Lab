@@ -172,13 +172,18 @@ function normalizePipelineSinkNodes(nodes: PipelineSinkNode[] | null | undefined
       config: {}
     }
   ];
-  const usedIds = new Set<string>(['event-feed', 'virtual-signal']);
+  const usedIds = new Set<string>(['event-feed', 'virtual-signal', 'show-payload', 'last-payload']);
   let sendIndex = 1;
+  let includeShowPayload = false;
   for (const node of normalized) {
     if (!node || typeof node.type !== 'string') {
       continue;
     }
     const type = node.type.trim().toUpperCase();
+    if (type === 'SHOW_PAYLOAD' || type === 'LAST_PAYLOAD') {
+      includeShowPayload = true;
+      continue;
+    }
     if (type !== 'SEND_EVENT' && type !== 'DEVICE_CONTROL') {
       continue;
     }
@@ -196,6 +201,13 @@ function normalizePipelineSinkNodes(nodes: PipelineSinkNode[] | null | undefined
       id: sinkId,
       type: 'SEND_EVENT',
       config: node.config ?? {}
+    });
+  }
+  if (includeShowPayload) {
+    result.push({
+      id: 'show-payload',
+      type: 'SHOW_PAYLOAD',
+      config: {}
     });
   }
   result.push({
@@ -221,10 +233,20 @@ function withNormalizedPipelineSinkSection(sink: PipelineSinkSection): PipelineS
 
 function addPipelineSinkNode(
   sink: PipelineSinkSection,
-  sinkType: 'SEND_EVENT' | 'VIRTUAL_SIGNAL'
+  sinkType: 'SEND_EVENT' | 'VIRTUAL_SIGNAL' | 'SHOW_PAYLOAD'
 ): PipelineSinkSection {
   if (sinkType === 'VIRTUAL_SIGNAL') {
     return withNormalizedPipelineSinkSection(sink);
+  }
+  if (sinkType === 'SHOW_PAYLOAD') {
+    const current = normalizePipelineSinkNodes(sink.nodes);
+    if (current.some((node) => node.type === 'SHOW_PAYLOAD' || node.type === 'LAST_PAYLOAD')) {
+      return withNormalizedPipelineSinkSection(sink);
+    }
+    return withNormalizedPipelineSinkSection({
+      ...sink,
+      nodes: [...current, { id: 'show-payload', type: 'SHOW_PAYLOAD', config: {} }]
+    });
   }
   const current = normalizePipelineSinkNodes(sink.nodes);
   let sendIndex = 1;
@@ -2091,7 +2113,7 @@ export default function App() {
     });
   }, []);
 
-  const addStudentPipelineSink = useCallback((sinkType: 'SEND_EVENT' | 'VIRTUAL_SIGNAL') => {
+  const addStudentPipelineSink = useCallback((sinkType: 'SEND_EVENT' | 'VIRTUAL_SIGNAL' | 'SHOW_PAYLOAD') => {
     setStudentPipelineSinkDraft((previous) => {
       if (!previous) {
         return previous;
@@ -2456,7 +2478,7 @@ export default function App() {
     });
   }, []);
 
-  const addAdminPipelineSink = useCallback((sinkType: 'SEND_EVENT' | 'VIRTUAL_SIGNAL') => {
+  const addAdminPipelineSink = useCallback((sinkType: 'SEND_EVENT' | 'VIRTUAL_SIGNAL' | 'SHOW_PAYLOAD') => {
     setAdminPipelineDraft((previous) => {
       if (!previous) {
         return previous;

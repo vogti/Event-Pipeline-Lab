@@ -40,7 +40,7 @@ interface PipelineBuilderSectionProps {
   onChangeSlotBlock: (slotIndex: number, blockType: string) => void;
   onChangeSlotConfig?: (slotIndex: number, key: string, value: unknown) => void;
   onInputModeChange?: (nextMode: string) => void;
-  onAddSink?: (sinkType: 'SEND_EVENT' | 'VIRTUAL_SIGNAL') => void;
+  onAddSink?: (sinkType: 'SEND_EVENT' | 'VIRTUAL_SIGNAL' | 'SHOW_PAYLOAD') => void;
   onRemoveSink?: (sinkId: string) => void;
   onConfigureSendEventSink?: (sinkId: string, config: Record<string, unknown>) => void;
   sendEventTargetTypeOptions?: MqttComposerTargetType[];
@@ -167,12 +167,15 @@ function buildDisplaySlots(processing: PipelineProcessingSection): PipelineProce
   });
 }
 
-type PipelineSinkType = 'EVENT_FEED' | 'SEND_EVENT' | 'VIRTUAL_SIGNAL';
+type PipelineSinkType = 'EVENT_FEED' | 'SEND_EVENT' | 'VIRTUAL_SIGNAL' | 'SHOW_PAYLOAD';
 
 function normalizeSinkType(raw: string): PipelineSinkType {
   const normalized = raw.trim().toUpperCase();
   if (normalized === 'SEND_EVENT' || normalized === 'DEVICE_CONTROL') {
     return 'SEND_EVENT';
+  }
+  if (normalized === 'SHOW_PAYLOAD' || normalized === 'LAST_PAYLOAD') {
+    return 'SHOW_PAYLOAD';
   }
   if (normalized === 'VIRTUAL_SIGNAL') {
     return 'VIRTUAL_SIGNAL';
@@ -188,13 +191,18 @@ function normalizeSinkNodes(nodes: PipelineSinkNode[] | null | undefined): Pipel
       config: {}
     }
   ];
-  const usedIds = new Set<string>(['event-feed', 'virtual-signal']);
+  const usedIds = new Set<string>(['event-feed', 'virtual-signal', 'show-payload', 'last-payload']);
   let sendIndex = 1;
+  let includeShowPayload = false;
   for (const node of nodes ?? []) {
     if (!node || typeof node.type !== 'string') {
       continue;
     }
     const type = normalizeSinkType(node.type);
+    if (type === 'SHOW_PAYLOAD') {
+      includeShowPayload = true;
+      continue;
+    }
     if (type !== 'SEND_EVENT') {
       continue;
     }
@@ -212,6 +220,13 @@ function normalizeSinkNodes(nodes: PipelineSinkNode[] | null | undefined): Pipel
       id: sinkId,
       type: 'SEND_EVENT',
       config: node.config ?? {}
+    });
+  }
+  if (includeShowPayload) {
+    result.push({
+      id: 'show-payload',
+      type: 'SHOW_PAYLOAD',
+      config: {}
     });
   }
   result.push({
@@ -265,6 +280,9 @@ function sinkDisplayNameKey(type: PipelineSinkType): I18nKey {
   if (type === 'SEND_EVENT') {
     return 'pipelineSinkSendEvent';
   }
+  if (type === 'SHOW_PAYLOAD') {
+    return 'pipelineSinkShowPayload';
+  }
   if (type === 'VIRTUAL_SIGNAL') {
     return 'pipelineSinkVirtualSignal';
   }
@@ -300,6 +318,9 @@ function processingBlockDocBodyKey(blockType: string): I18nKey {
 function sinkDocBodyKey(type: PipelineSinkType): I18nKey {
   if (type === 'SEND_EVENT') {
     return 'pipelineDocSinkSendEventBody';
+  }
+  if (type === 'SHOW_PAYLOAD') {
+    return 'pipelineDocSinkShowPayloadBody';
   }
   if (type === 'VIRTUAL_SIGNAL') {
     return 'pipelineDocSinkVirtualSignalBody';
@@ -1021,7 +1042,10 @@ export function PipelineBuilderSection({
   const sinkRuntimeById = new Map(
     (view.sinkRuntime?.nodes ?? []).map((node) => [node.sinkId, node])
   );
-  const availableSinkTypes: Array<'SEND_EVENT'> = ['SEND_EVENT'];
+  const hasShowPayloadSink = sinkNodes.some((node) => normalizeSinkType(String(node.type)) === 'SHOW_PAYLOAD');
+  const availableSinkTypes: Array<'SEND_EVENT' | 'SHOW_PAYLOAD'> = hasShowPayloadSink
+    ? ['SEND_EVENT']
+    : ['SEND_EVENT', 'SHOW_PAYLOAD'];
 
   const setSinkDraftField = <K extends keyof MqttEventDraft>(key: K, value: MqttEventDraft[K]) => {
     setSinkDraft((previous) => ({
@@ -1679,6 +1703,7 @@ export function PipelineBuilderSection({
             const runtimeNode = sinkRuntimeById.get(sinkNode.id);
             const receivedCount = runtimeNode?.receivedCount ?? 0;
             const lastReceivedAt = runtimeNode?.lastReceivedAt ?? null;
+            const lastPayloadPreview = (runtimeNode?.lastPayloadPreview ?? '').trim();
             const sendTopic = readSinkString(sinkNode.config ?? {}, 'topic');
             const sinkLabel = t(sinkDisplayNameKey(sinkType));
             return (
@@ -1741,7 +1766,6 @@ export function PipelineBuilderSection({
                     </div>
                     <p className="muted">
                       {t('pipelineSinkCounterLabel')}: {receivedCount}
-                      {lastReceivedAt ? ` | ${formatTs(lastReceivedAt)}` : ''}
                     </p>
                     {onResetSinkCounter ? (
                       <button
@@ -1753,6 +1777,13 @@ export function PipelineBuilderSection({
                         {t('pipelineSinkResetCounter')}
                       </button>
                     ) : null}
+                  </div>
+                ) : null}
+
+                {sinkType === 'SHOW_PAYLOAD' ? (
+                  <div className="pipeline-sink-details">
+                    <p className="muted">{t('pipelineSinkShowPayloadHint')}</p>
+                    <p className="muted mono">{lastPayloadPreview.length > 0 ? lastPayloadPreview : '-'}</p>
                   </div>
                 ) : null}
               </article>

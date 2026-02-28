@@ -441,9 +441,9 @@
 }
 
 .pipeline-sink-board {
-  display: flex;
+  display: grid;
   gap: 0.55rem;
-  overflow-x: auto;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   padding-bottom: 0.1rem;
 }
 
@@ -453,8 +453,13 @@
   border-radius: 10px;
   display: grid;
   gap: 0.35rem;
-  min-width: 220px;
+  min-width: 0;
   padding: 0.5rem;
+}
+
+.pipeline-sink-node .mono {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .pipeline-sink-node-header {

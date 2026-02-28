@@ -257,7 +257,7 @@ export interface PipelineSinkSection {
 
 export interface PipelineSinkNode {
   id: string;
-  type: 'EVENT_FEED' | 'SEND_EVENT' | 'VIRTUAL_SIGNAL' | string;
+  type: 'EVENT_FEED' | 'SEND_EVENT' | 'VIRTUAL_SIGNAL' | 'SHOW_PAYLOAD' | 'LAST_PAYLOAD' | string;
   config: Record<string, unknown>;
 }
 
@@ -266,6 +266,7 @@ export interface PipelineSinkRuntimeNode {
   sinkType: string;
   receivedCount: number;
   lastReceivedAt: TimestampValue;
+  lastPayloadPreview?: string | null;
 }
 
 export interface PipelineSinkRuntimeSection {

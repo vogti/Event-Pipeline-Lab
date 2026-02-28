@@ -6,6 +6,7 @@ public record PipelineSinkRuntimeNodeDto(
         String sinkId,
         String sinkType,
         long receivedCount,
-        Instant lastReceivedAt
+        Instant lastReceivedAt,
+        String lastPayloadPreview
 ) {
 }

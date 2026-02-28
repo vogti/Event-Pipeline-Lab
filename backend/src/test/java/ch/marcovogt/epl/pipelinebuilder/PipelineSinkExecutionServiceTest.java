@@ -180,6 +180,40 @@ class PipelineSinkExecutionServiceTest {
         verify(mqttCommandPublisher, never()).publishCustom(anyString(), anyString(), anyInt(), anyBoolean());
     }
 
+    @Test
+    void showPayloadSinkShouldStoreCappedPayloadPreview() {
+        PipelineSinkSection sinkSection = new PipelineSinkSection(
+                List.of(new PipelineSinkNode(
+                        "show-payload",
+                        "SHOW_PAYLOAD",
+                        Map.of()
+                )),
+                List.of(),
+                "goal"
+        );
+
+        CanonicalEventDto inputEvent = event(
+                "event-4",
+                "epld01/event/button/black",
+                "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJ"
+        );
+
+        PipelineSinkRuntimeSection runtime = service.processProjectedEvent(
+                "task_intro",
+                "epld01",
+                sinkSection,
+                inputEvent
+        );
+
+        PipelineSinkRuntimeNodeDto node = runtime.nodes().stream()
+                .filter(candidate -> "show-payload".equals(candidate.sinkId()))
+                .findFirst()
+                .orElseThrow();
+        org.assertj.core.api.Assertions.assertThat(node.sinkType()).isEqualTo("SHOW_PAYLOAD");
+        org.assertj.core.api.Assertions.assertThat(node.lastPayloadPreview()).isEqualTo("abcdefghijklmnopqrstuvwxyz0123456789ABCD");
+        org.assertj.core.api.Assertions.assertThat(node.lastPayloadPreview()).hasSize(40);
+    }
+
     private CanonicalEventDto event(String idSeed, String topic, String payloadJson) {
         return new CanonicalEventDto(
                 UUID.nameUUIDFromBytes(idSeed.getBytes(java.nio.charset.StandardCharsets.UTF_8)),

@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 public class PipelineSinkExecutionService {
 
     private static final Logger log = LoggerFactory.getLogger(PipelineSinkExecutionService.class);
+    private static final int SHOW_PAYLOAD_PREVIEW_MAX_LENGTH = 40;
 
     private final ObjectProvider<MqttCommandPublisher> mqttCommandPublisherProvider;
     private final Clock clock;
@@ -93,6 +94,7 @@ public class PipelineSinkExecutionService {
             SinkRuntimeState state = stateFor(taskId, groupKey, sinkId);
             state.receivedCount += 1L;
             state.lastReceivedAt = now;
+            state.lastPayloadPreview = previewPayload(inputPayload(event));
 
             if (PipelineSinkLibrary.SEND_EVENT.equals(sinkType)) {
                 publishSendEventSink(sink, event, targetScope, ownerGroupKey, adminDeviceId);
@@ -325,7 +327,8 @@ public class PipelineSinkExecutionService {
                     sinkId,
                     sinkType,
                     state == null ? 0L : state.receivedCount,
-                    state == null ? null : state.lastReceivedAt
+                    state == null ? null : state.lastReceivedAt,
+                    state == null ? null : state.lastPayloadPreview
             ));
         }
 
@@ -369,11 +372,30 @@ public class PipelineSinkExecutionService {
         return new PipelineSinkRuntimeSection(List.of());
     }
 
+    private String inputPayload(CanonicalEventDto event) {
+        if (event == null || event.payloadJson() == null) {
+            return "";
+        }
+        return event.payloadJson();
+    }
+
+    private String previewPayload(String payload) {
+        if (payload == null) {
+            return "";
+        }
+        String trimmed = payload.trim();
+        if (trimmed.length() <= SHOW_PAYLOAD_PREVIEW_MAX_LENGTH) {
+            return trimmed;
+        }
+        return trimmed.substring(0, SHOW_PAYLOAD_PREVIEW_MAX_LENGTH);
+    }
+
     private record SendEventConfig(String topic, String payload, int qos, boolean retained) {
     }
 
     private static final class SinkRuntimeState {
         private long receivedCount;
         private Instant lastReceivedAt;
+        private String lastPayloadPreview;
     }
 }
