@@ -98,6 +98,7 @@ class SystemDataTransferServiceTest {
                 .put("defaultLanguageMode", "EN")
                 .put("timeFormat24h", true)
                 .put("studentVirtualDeviceVisible", true)
+                .put("virtualDeviceTopicMode", "OWN_TOPIC")
                 .put("updatedAt", "2026-02-26T10:00:00Z")
                 .put("updatedBy", "admin");
 
@@ -156,6 +157,7 @@ class SystemDataTransferServiceTest {
         appSettings.setDefaultLanguageMode(LanguageMode.EN);
         appSettings.setTimeFormat24h(true);
         appSettings.setStudentVirtualDeviceVisible(true);
+        appSettings.setVirtualDeviceTopicMode(VirtualDeviceTopicMode.OWN_TOPIC);
         appSettings.setUpdatedAt(Instant.parse("2026-02-26T10:00:00Z"));
         appSettings.setUpdatedBy("admin");
         when(appSettingsRepository.findAll(any(Sort.class))).thenReturn(List.of(appSettings));
@@ -189,6 +191,7 @@ class SystemDataTransferServiceTest {
                                   "defaultLanguageMode":"EN",
                                   "timeFormat24h":true,
                                   "studentVirtualDeviceVisible":true,
+                                  "virtualDeviceTopicMode":"OWN_TOPIC",
                                   "updatedAt":"2026-02-26T10:00:00Z",
                                   "updatedBy":"admin"
                                 }]

@@ -28,6 +28,10 @@ public class AppSettings {
     @Column(name = "admin_device_id", length = 64)
     private String adminDeviceId;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "virtual_device_topic_mode", nullable = false, length = 32)
+    private VirtualDeviceTopicMode virtualDeviceTopicMode;
+
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
@@ -72,6 +76,14 @@ public class AppSettings {
 
     public void setAdminDeviceId(String adminDeviceId) {
         this.adminDeviceId = adminDeviceId;
+    }
+
+    public VirtualDeviceTopicMode getVirtualDeviceTopicMode() {
+        return virtualDeviceTopicMode;
+    }
+
+    public void setVirtualDeviceTopicMode(VirtualDeviceTopicMode virtualDeviceTopicMode) {
+        this.virtualDeviceTopicMode = virtualDeviceTopicMode;
     }
 
     public Instant getUpdatedAt() {

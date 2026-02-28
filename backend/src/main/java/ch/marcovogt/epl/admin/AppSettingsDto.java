@@ -7,6 +7,7 @@ public record AppSettingsDto(
         boolean timeFormat24h,
         boolean studentVirtualDeviceVisible,
         String adminDeviceId,
+        VirtualDeviceTopicMode virtualDeviceTopicMode,
         Instant updatedAt,
         String updatedBy
 ) {
@@ -16,6 +17,7 @@ public record AppSettingsDto(
                 settings.isTimeFormat24h(),
                 settings.isStudentVirtualDeviceVisible(),
                 settings.getAdminDeviceId(),
+                settings.getVirtualDeviceTopicMode(),
                 settings.getUpdatedAt(),
                 settings.getUpdatedBy()
         );

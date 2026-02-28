@@ -43,6 +43,7 @@ import type {
   PresenceUser,
   TaskDefinitionPayload,
   TaskInfo,
+  VirtualDeviceTopicMode,
   WsEnvelope
 } from '../types';
 
@@ -73,6 +74,7 @@ interface UseRealtimeSyncParams {
   setAdminSettingsDraftTimeFormat24h: Dispatch<SetStateAction<boolean>>;
   setAdminSettingsDraftVirtualVisible: Dispatch<SetStateAction<boolean>>;
   setAdminSettingsDraftAdminDeviceId: Dispatch<SetStateAction<string | null>>;
+  setAdminSettingsDraftVirtualDeviceTopicMode: Dispatch<SetStateAction<VirtualDeviceTopicMode>>;
   setDefaultLanguageMode: Dispatch<SetStateAction<LanguageMode>>;
   setTimeFormat24h: Dispatch<SetStateAction<boolean>>;
   setFeedScenarioConfig: Dispatch<SetStateAction<FeedScenarioConfig | null>>;
@@ -116,6 +118,7 @@ export function useRealtimeSync({
   setAdminSettingsDraftTimeFormat24h,
   setAdminSettingsDraftVirtualVisible,
   setAdminSettingsDraftAdminDeviceId,
+  setAdminSettingsDraftVirtualDeviceTopicMode,
   setDefaultLanguageMode,
   setTimeFormat24h,
   setFeedScenarioConfig,
@@ -547,6 +550,7 @@ export function useRealtimeSync({
         setAdminSettingsDraftTimeFormat24h(settings.timeFormat24h);
         setAdminSettingsDraftVirtualVisible(settings.studentVirtualDeviceVisible);
         setAdminSettingsDraftAdminDeviceId(settings.adminDeviceId);
+        setAdminSettingsDraftVirtualDeviceTopicMode(settings.virtualDeviceTopicMode);
         setDefaultLanguageMode(settings.defaultLanguageMode);
         setTimeFormat24h(settings.timeFormat24h);
       },

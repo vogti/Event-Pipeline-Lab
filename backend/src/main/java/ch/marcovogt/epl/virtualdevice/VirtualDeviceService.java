@@ -2,6 +2,9 @@ package ch.marcovogt.epl.virtualdevice;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import ch.marcovogt.epl.admin.AppSettingsService;
+import ch.marcovogt.epl.admin.VirtualDeviceTopicMode;
+import ch.marcovogt.epl.common.DeviceIdMapping;
 import ch.marcovogt.epl.mqttgateway.MqttGatewayClient;
 import java.time.Clock;
 import java.time.Instant;
@@ -29,16 +32,19 @@ public class VirtualDeviceService {
     private static final String DEFAULT_IP_ADDRESS = "virtual";
 
     private final VirtualDeviceStateRepository virtualDeviceStateRepository;
+    private final AppSettingsService appSettingsService;
     private final MqttGatewayClient mqttGatewayClient;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
     public VirtualDeviceService(
             VirtualDeviceStateRepository virtualDeviceStateRepository,
+            AppSettingsService appSettingsService,
             MqttGatewayClient mqttGatewayClient,
             ObjectMapper objectMapper
     ) {
         this.virtualDeviceStateRepository = virtualDeviceStateRepository;
+        this.appSettingsService = appSettingsService;
         this.mqttGatewayClient = mqttGatewayClient;
         this.objectMapper = objectMapper;
         this.clock = Clock.systemUTC();
@@ -230,7 +236,7 @@ public class VirtualDeviceService {
         params.put("ts", now.toEpochMilli() / 1000.0);
 
         mqttGatewayClient.publish(
-                state.getDeviceId() + "/events/rpc",
+                resolvePublishTopic(state),
                 toJson(Map.of(
                         "deviceId", state.getDeviceId(),
                         "groupKey", state.getGroupKey(),
@@ -240,6 +246,18 @@ public class VirtualDeviceService {
                 1,
                 false
         );
+    }
+
+    private String resolvePublishTopic(VirtualDeviceState state) {
+        VirtualDeviceTopicMode topicMode = appSettingsService.getVirtualDeviceTopicMode();
+        if (topicMode == VirtualDeviceTopicMode.PHYSICAL_TOPIC) {
+            String physicalDeviceId = DeviceIdMapping.physicalDeviceIdForVirtual(state.getDeviceId())
+                    .orElseGet(() -> state.getGroupKey() == null ? "" : state.getGroupKey().trim());
+            if (!physicalDeviceId.isBlank()) {
+                return physicalDeviceId + "/events/rpc";
+            }
+        }
+        return state.getDeviceId() + "/events/rpc";
     }
 
     private String toJson(Object payload) {

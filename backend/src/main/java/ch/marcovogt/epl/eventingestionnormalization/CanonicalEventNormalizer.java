@@ -84,18 +84,31 @@ public class CanonicalEventNormalizer {
             return segments[0];
         }
 
-        String payloadDeviceId = text(payloadNode, "deviceId");
-        if (payloadDeviceId != null && !payloadDeviceId.isBlank()) {
+        String payloadDeviceId = normalizeDeviceId(text(payloadNode, "deviceId"));
+        if (payloadDeviceId != null) {
             return payloadDeviceId;
         }
 
-        String payloadDeviceName = text(payloadNode.at("/device/name"));
-        if (payloadDeviceName != null
-                && (payloadDeviceName.startsWith("epld") || payloadDeviceName.startsWith("eplvd"))) {
+        String payloadDeviceName = normalizeDeviceId(text(payloadNode.at("/device/name")));
+        if (payloadDeviceName != null) {
             return payloadDeviceName;
         }
 
         return null;
+    }
+
+    private String normalizeDeviceId(String rawDeviceId) {
+        if (rawDeviceId == null) {
+            return null;
+        }
+        String normalized = rawDeviceId.trim();
+        if (normalized.isBlank()) {
+            return null;
+        }
+        if (!(normalized.startsWith("epld") || normalized.startsWith("eplvd"))) {
+            return null;
+        }
+        return normalized;
     }
 
     private String determineEventType(String topic, JsonNode payloadNode) {

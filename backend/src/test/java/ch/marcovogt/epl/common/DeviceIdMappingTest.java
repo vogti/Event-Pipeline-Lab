@@ -17,6 +17,8 @@ class DeviceIdMappingTest {
         assertThat(DeviceIdMapping.virtualDeviceIdForGroup("epld10")).contains("eplvd10");
         assertThat(DeviceIdMapping.virtualDeviceIdForGroup("epld11")).contains("eplvd11");
         assertThat(DeviceIdMapping.virtualDeviceIdForGroup("epld00")).isEmpty();
+        assertThat(DeviceIdMapping.physicalDeviceIdForVirtual("eplvd10")).contains("epld10");
+        assertThat(DeviceIdMapping.physicalDeviceIdForVirtual("epld10")).isEmpty();
     }
 
     @Test

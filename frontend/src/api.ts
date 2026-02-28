@@ -28,6 +28,7 @@ import type {
   PipelineView,
   StudentBootstrap,
   TaskInfo,
+  VirtualDeviceTopicMode,
   VirtualDeviceState
 } from './types';
 
@@ -521,7 +522,8 @@ export const api = {
     defaultLanguageMode: LanguageMode,
     timeFormat24h: boolean,
     studentVirtualDeviceVisible: boolean,
-    adminDeviceId: string | null
+    adminDeviceId: string | null,
+    virtualDeviceTopicMode: VirtualDeviceTopicMode
   ): Promise<AppSettings> {
     return request<AppSettings>(
       '/api/admin/settings',
@@ -531,7 +533,8 @@ export const api = {
           defaultLanguageMode,
           timeFormat24h,
           studentVirtualDeviceVisible,
-          adminDeviceId
+          adminDeviceId,
+          virtualDeviceTopicMode
         })
       },
       token

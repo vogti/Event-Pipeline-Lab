@@ -602,6 +602,7 @@ function sameAppSettings(a: AppSettings, b: AppSettings): boolean {
     a.timeFormat24h === b.timeFormat24h &&
     a.studentVirtualDeviceVisible === b.studentVirtualDeviceVisible &&
     a.adminDeviceId === b.adminDeviceId &&
+    a.virtualDeviceTopicMode === b.virtualDeviceTopicMode &&
     a.updatedAt === b.updatedAt &&
     a.updatedBy === b.updatedBy
   );

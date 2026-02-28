@@ -1,6 +1,7 @@
 export type AppRole = 'ADMIN' | 'STUDENT';
 
 export type LanguageMode = 'DE' | 'EN' | 'BROWSER_EN_FALLBACK';
+export type VirtualDeviceTopicMode = 'OWN_TOPIC' | 'PHYSICAL_TOPIC';
 
 export type EventCategory =
   | 'BUTTON'
@@ -152,6 +153,7 @@ export interface AppSettings {
   timeFormat24h: boolean;
   studentVirtualDeviceVisible: boolean;
   adminDeviceId: string | null;
+  virtualDeviceTopicMode: VirtualDeviceTopicMode;
   updatedAt: TimestampValue;
   updatedBy: string;
 }

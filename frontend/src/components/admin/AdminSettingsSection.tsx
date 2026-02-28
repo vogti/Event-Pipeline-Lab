@@ -1,6 +1,6 @@
 import type { I18nKey } from '../../i18n';
 import { AdminIcon } from '../../app/shared-icons';
-import type { LanguageMode } from '../../types';
+import type { LanguageMode, VirtualDeviceTopicMode } from '../../types';
 
 interface AdminSettingsSectionProps {
   t: (key: I18nKey) => string;
@@ -8,12 +8,14 @@ interface AdminSettingsSectionProps {
   timeFormat24h: boolean;
   studentVirtualDeviceVisible: boolean;
   adminDeviceId: string | null;
+  virtualDeviceTopicMode: VirtualDeviceTopicMode;
   physicalDeviceOptions: string[];
   busy: boolean;
   onModeChange: (mode: LanguageMode) => void;
   onTimeFormat24hChange: (value: boolean) => void;
   onStudentVirtualDeviceVisibleChange: (value: boolean) => void;
   onAdminDeviceIdChange: (value: string | null) => void;
+  onVirtualDeviceTopicModeChange: (mode: VirtualDeviceTopicMode) => void;
   onSave: () => void;
 }
 
@@ -23,12 +25,14 @@ export function AdminSettingsSection({
   timeFormat24h,
   studentVirtualDeviceVisible,
   adminDeviceId,
+  virtualDeviceTopicMode,
   physicalDeviceOptions,
   busy,
   onModeChange,
   onTimeFormat24hChange,
   onStudentVirtualDeviceVisibleChange,
   onAdminDeviceIdChange,
+  onVirtualDeviceTopicModeChange,
   onSave
 }: AdminSettingsSectionProps) {
   const adminDeviceOptions =
@@ -69,6 +73,17 @@ export function AdminSettingsSection({
           onChange={(event) => onStudentVirtualDeviceVisibleChange(event.target.checked)}
         />
         <span>{t('virtualVisibleToStudents')}</span>
+      </label>
+      <label>
+        <span>{t('virtualDeviceTopicModeLabel')}</span>
+        <select
+          className="input"
+          value={virtualDeviceTopicMode}
+          onChange={(event) => onVirtualDeviceTopicModeChange(event.target.value as VirtualDeviceTopicMode)}
+        >
+          <option value="OWN_TOPIC">{t('virtualDeviceTopicModeOwn')}</option>
+          <option value="PHYSICAL_TOPIC">{t('virtualDeviceTopicModePhysical')}</option>
+        </select>
       </label>
       <label>
         <span className="icon-inline-label">

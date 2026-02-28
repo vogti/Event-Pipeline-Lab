@@ -5,6 +5,7 @@ interface StudentVirtualDeviceSectionProps {
   t: (key: I18nKey) => string;
   deviceId: string;
   patch: VirtualDevicePatch;
+  mirrorModeActive: boolean;
   onSetField: <K extends keyof VirtualDevicePatch>(field: K, value: VirtualDevicePatch[K]) => void;
 }
 
@@ -12,6 +13,7 @@ export function StudentVirtualDeviceSection({
   t,
   deviceId,
   patch,
+  mirrorModeActive,
   onSetField
 }: StudentVirtualDeviceSectionProps) {
   const temperature = Number.isFinite(patch.temperatureC) ? patch.temperatureC ?? 0 : 0;
@@ -25,6 +27,8 @@ export function StudentVirtualDeviceSection({
         <h2>{t('virtualDevice')}</h2>
         <span className="chip virtual-device-id-label mono">{deviceId}</span>
       </div>
+
+      {mirrorModeActive ? <p className="muted">{t('virtualDeviceMirrorModeNote')}</p> : null}
 
       <div className="virtual-button-row">
         <button

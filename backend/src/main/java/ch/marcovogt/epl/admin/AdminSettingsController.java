@@ -56,6 +56,7 @@ public class AdminSettingsController {
                 body.timeFormat24h(),
                 body.studentVirtualDeviceVisible(),
                 body.adminDeviceId(),
+                body.virtualDeviceTopicMode(),
                 principal.username()
         );
         deviceDiscoveryProvisioningService.reconcileForCurrentSettings();
@@ -67,7 +68,8 @@ public class AdminSettingsController {
                         "defaultLanguageMode", settings.getDefaultLanguageMode().name(),
                         "timeFormat24h", settings.isTimeFormat24h(),
                         "studentVirtualDeviceVisible", settings.isStudentVirtualDeviceVisible(),
-                        "adminDeviceId", settings.getAdminDeviceId() == null ? "" : settings.getAdminDeviceId()
+                        "adminDeviceId", settings.getAdminDeviceId() == null ? "" : settings.getAdminDeviceId(),
+                        "virtualDeviceTopicMode", settings.getVirtualDeviceTopicMode().name()
                 )
         );
 

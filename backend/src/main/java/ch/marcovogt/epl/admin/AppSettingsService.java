@@ -19,6 +19,7 @@ public class AppSettingsService {
     private final Clock clock;
     private volatile Boolean studentVirtualVisibleCache;
     private volatile String adminDeviceIdCache;
+    private volatile VirtualDeviceTopicMode virtualDeviceTopicModeCache;
 
     public AppSettingsService(AppSettingsRepository appSettingsRepository) {
         this.appSettingsRepository = appSettingsRepository;
@@ -35,12 +36,18 @@ public class AppSettingsService {
                     created.setTimeFormat24h(true);
                     created.setStudentVirtualDeviceVisible(true);
                     created.setAdminDeviceId(null);
+                    created.setVirtualDeviceTopicMode(VirtualDeviceTopicMode.OWN_TOPIC);
                     created.setUpdatedAt(Instant.now(clock));
                     created.setUpdatedBy("system");
                     return appSettingsRepository.save(created);
                 });
+        if (settings.getVirtualDeviceTopicMode() == null) {
+            settings.setVirtualDeviceTopicMode(VirtualDeviceTopicMode.OWN_TOPIC);
+            settings = appSettingsRepository.save(settings);
+        }
         studentVirtualVisibleCache = settings.isStudentVirtualDeviceVisible();
         adminDeviceIdCache = settings.getAdminDeviceId();
+        virtualDeviceTopicModeCache = settings.getVirtualDeviceTopicMode();
         return settings;
     }
 
@@ -50,6 +57,7 @@ public class AppSettingsService {
             Boolean timeFormat24h,
             Boolean studentVirtualDeviceVisible,
             String adminDeviceId,
+            VirtualDeviceTopicMode virtualDeviceTopicMode,
             String actor
     ) {
         AppSettings settings = getOrCreate();
@@ -61,11 +69,15 @@ public class AppSettingsService {
             settings.setStudentVirtualDeviceVisible(studentVirtualDeviceVisible);
         }
         settings.setAdminDeviceId(normalizeAdminDeviceId(adminDeviceId));
+        if (virtualDeviceTopicMode != null) {
+            settings.setVirtualDeviceTopicMode(virtualDeviceTopicMode);
+        }
         settings.setUpdatedAt(Instant.now(clock));
         settings.setUpdatedBy(actor);
         AppSettings saved = appSettingsRepository.save(settings);
         studentVirtualVisibleCache = saved.isStudentVirtualDeviceVisible();
         adminDeviceIdCache = saved.getAdminDeviceId();
+        virtualDeviceTopicModeCache = saved.getVirtualDeviceTopicMode();
         return saved;
     }
 
@@ -83,6 +95,14 @@ public class AppSettingsService {
             return cached;
         }
         return getOrCreate().getAdminDeviceId();
+    }
+
+    public VirtualDeviceTopicMode getVirtualDeviceTopicMode() {
+        VirtualDeviceTopicMode cached = virtualDeviceTopicModeCache;
+        if (cached != null) {
+            return cached;
+        }
+        return getOrCreate().getVirtualDeviceTopicMode();
     }
 
     public boolean isAdminDevice(String deviceId) {

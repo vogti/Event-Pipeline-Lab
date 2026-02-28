@@ -79,4 +79,26 @@ class CanonicalEventNormalizerTest {
         assertThat(normalized.event().getEventType()).isEqualTo("status.mqtt");
         assertThat(normalized.event().getTopic()).isEqualTo("epld01/status/mqtt");
     }
+
+    @Test
+    void shouldUseTopicDeviceIdForRpcTopicEvenWhenPayloadContainsVirtualDeviceId() {
+        String topic = "epld01/events/rpc";
+        byte[] payload = """
+                {
+                  "deviceId":"eplvd01",
+                  "groupKey":"epld01",
+                  "method":"NotifyStatus",
+                  "params":{
+                    "input:0":{"state":true}
+                  }
+                }
+                """.getBytes(StandardCharsets.UTF_8);
+
+        NormalizedEvent normalized = normalizer.normalize(topic, payload, Instant.parse("2026-02-25T10:00:04Z"));
+
+        assertThat(normalized.event().getDeviceId()).isEqualTo("epld01");
+        assertThat(normalized.event().getGroupKey()).isEqualTo("epld01");
+        assertThat(normalized.event().getTopic()).isEqualTo("epld01/event/button/red");
+        assertThat(normalized.event().getEventType()).isEqualTo("button.red.press");
+    }
 }

@@ -463,12 +463,24 @@ public class SystemDataTransferService {
     }
 
     private long replaceAppSettings(JsonNode payload) {
-        List<AppSettings> rows = readRows(payload, APP_SETTINGS_LIST, SystemDataPart.APP_SETTINGS);
+        List<AppSettings> rows = readRows(payload, APP_SETTINGS_LIST, SystemDataPart.APP_SETTINGS)
+                .stream()
+                .peek(this::normalizeImportedAppSettings)
+                .toList();
         appSettingsRepository.deleteAllInBatch();
         if (!rows.isEmpty()) {
             appSettingsRepository.saveAll(rows);
         }
         return rows.size();
+    }
+
+    private void normalizeImportedAppSettings(AppSettings settings) {
+        if (settings == null) {
+            return;
+        }
+        if (settings.getVirtualDeviceTopicMode() == null) {
+            settings.setVirtualDeviceTopicMode(VirtualDeviceTopicMode.OWN_TOPIC);
+        }
     }
 
     private long replaceTaskState(JsonNode payload) {

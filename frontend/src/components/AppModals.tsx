@@ -15,6 +15,7 @@ interface AppModalsProps {
   virtualControlDeviceId: string | null;
   selectedAdminVirtualDevice: VirtualDeviceState | null;
   virtualControlPatch: VirtualDevicePatch | null;
+  virtualMirrorModeActive: boolean;
   onCloseVirtualControlModal: () => void;
   onSetModalVirtualField: (field: keyof VirtualDevicePatch, value: boolean | number) => void;
   resetEventsModalOpen: boolean;
@@ -46,6 +47,7 @@ export function AppModals({
   virtualControlDeviceId,
   selectedAdminVirtualDevice,
   virtualControlPatch,
+  virtualMirrorModeActive,
   onCloseVirtualControlModal,
   onSetModalVirtualField,
   resetEventsModalOpen,
@@ -144,6 +146,7 @@ export function AppModals({
             <p className="muted">
               {t('groupConfig')}: {selectedAdminVirtualDevice.groupKey}
             </p>
+            {virtualMirrorModeActive ? <p className="muted">{t('virtualDeviceMirrorModeNote')}</p> : null}
 
             <div className="virtual-button-row">
               <button

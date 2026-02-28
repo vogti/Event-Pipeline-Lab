@@ -22,6 +22,7 @@ import type {
   SystemDataImportVerifyResponse,
   SystemDataPart,
   TimestampValue,
+  VirtualDeviceTopicMode,
   VirtualDeviceState
 } from './types';
 import { type I18nKey, type Language, resolveLanguageFromMode, taskDescription, taskTitle, tr } from './i18n';
@@ -107,7 +108,6 @@ import { StudentOnboardingSection } from './components/student/StudentOnboarding
 import { StudentOverviewSection } from './components/student/StudentOverviewSection';
 import { StudentGroupConfigSection } from './components/student/StudentGroupConfigSection';
 import { StudentPresenceSection } from './components/student/StudentPresenceSection';
-import { StudentCapabilitiesSection } from './components/student/StudentCapabilitiesSection';
 import { StudentCommandsSection } from './components/student/StudentCommandsSection';
 import { StudentVirtualDeviceSection } from './components/student/StudentVirtualDeviceSection';
 import { AppModals } from './components/AppModals';
@@ -410,6 +410,8 @@ export default function App() {
   const [adminSettingsDraftTimeFormat24h, setAdminSettingsDraftTimeFormat24h] = useState(true);
   const [adminSettingsDraftVirtualVisible, setAdminSettingsDraftVirtualVisible] = useState(true);
   const [adminSettingsDraftAdminDeviceId, setAdminSettingsDraftAdminDeviceId] = useState<string | null>(null);
+  const [adminSettingsDraftVirtualDeviceTopicMode, setAdminSettingsDraftVirtualDeviceTopicMode] =
+    useState<VirtualDeviceTopicMode>('OWN_TOPIC');
   const [adminDeviceSnapshots, setAdminDeviceSnapshots] = useState<Record<string, DeviceTelemetrySnapshot>>({});
   const [adminDeviceIpById, setAdminDeviceIpById] = useState<Record<string, string>>({});
   const [adminPipeline, setAdminPipeline] = useState<PipelineView | null>(null);
@@ -692,6 +694,7 @@ export default function App() {
     setAdminSettingsDraftTimeFormat24h(true);
     setAdminSettingsDraftVirtualVisible(true);
     setAdminSettingsDraftAdminDeviceId(null);
+    setAdminSettingsDraftVirtualDeviceTopicMode('OWN_TOPIC');
     setAdminDeviceSnapshots({});
     setAdminDeviceIpById({});
     setAdminPipeline(null);
@@ -913,6 +916,7 @@ export default function App() {
     setAdminSettingsDraftTimeFormat24h(settings.timeFormat24h);
     setAdminSettingsDraftVirtualVisible(settings.studentVirtualDeviceVisible);
     setAdminSettingsDraftAdminDeviceId(settings.adminDeviceId);
+    setAdminSettingsDraftVirtualDeviceTopicMode(settings.virtualDeviceTopicMode);
     setDefaultLanguageMode(settings.defaultLanguageMode);
     setTimeFormat24h(settings.timeFormat24h);
     setAdminSystemStatus(systemStatus);
@@ -1593,6 +1597,7 @@ export default function App() {
     setAdminSettingsDraftTimeFormat24h,
     setAdminSettingsDraftVirtualVisible,
     setAdminSettingsDraftAdminDeviceId,
+    setAdminSettingsDraftVirtualDeviceTopicMode,
     setDefaultLanguageMode,
     setTimeFormat24h,
     setFeedScenarioConfig,
@@ -2619,7 +2624,8 @@ export default function App() {
         adminSettingsDraftMode,
         adminSettingsDraftTimeFormat24h,
         adminSettingsDraftVirtualVisible,
-        adminSettingsDraftAdminDeviceId
+        adminSettingsDraftAdminDeviceId,
+        adminSettingsDraftVirtualDeviceTopicMode
       );
       setAdminData((previous) => {
         if (!previous) {
@@ -2635,6 +2641,7 @@ export default function App() {
       setAdminSettingsDraftTimeFormat24h(updated.timeFormat24h);
       setAdminSettingsDraftVirtualVisible(updated.studentVirtualDeviceVisible);
       setAdminSettingsDraftAdminDeviceId(updated.adminDeviceId);
+      setAdminSettingsDraftVirtualDeviceTopicMode(updated.virtualDeviceTopicMode);
       pushToast(t('settingsUpdated'));
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
@@ -3144,6 +3151,7 @@ export default function App() {
       setAdminSettingsDraftTimeFormat24h(settings.timeFormat24h);
       setAdminSettingsDraftVirtualVisible(settings.studentVirtualDeviceVisible);
       setAdminSettingsDraftAdminDeviceId(settings.adminDeviceId);
+      setAdminSettingsDraftVirtualDeviceTopicMode(settings.virtualDeviceTopicMode);
       setDefaultLanguageMode(settings.defaultLanguageMode);
       setTimeFormat24h(settings.timeFormat24h);
       setAdminSystemStatus((previous) => (sameAdminSystemStatus(previous, systemStatus) ? previous : systemStatus));
@@ -4294,11 +4302,6 @@ export default function App() {
               formatTs={formatTs}
             />
 
-            <StudentCapabilitiesSection
-              t={t}
-              capabilities={studentData.capabilities}
-            />
-
             {studentData.capabilities.canSendDeviceCommands ? (
               <StudentCommandsSection
                 t={t}
@@ -4332,6 +4335,7 @@ export default function App() {
                 t={t}
                 deviceId={studentData.virtualDevice.deviceId}
                 patch={studentVirtualPatch}
+                mirrorModeActive={studentData.settings.virtualDeviceTopicMode === 'PHYSICAL_TOPIC'}
                 onSetField={setStudentVirtualField}
               />
             ) : null}
@@ -4402,12 +4406,14 @@ export default function App() {
                   timeFormat24h={adminSettingsDraftTimeFormat24h}
                   studentVirtualDeviceVisible={adminSettingsDraftVirtualVisible}
                   adminDeviceId={adminSettingsDraftAdminDeviceId}
+                  virtualDeviceTopicMode={adminSettingsDraftVirtualDeviceTopicMode}
                   physicalDeviceOptions={adminData.devices.map((device) => device.deviceId)}
                   busy={busyKey === 'admin-settings'}
                   onModeChange={setAdminSettingsDraftMode}
                   onTimeFormat24hChange={setAdminSettingsDraftTimeFormat24h}
                   onStudentVirtualDeviceVisibleChange={setAdminSettingsDraftVirtualVisible}
                   onAdminDeviceIdChange={setAdminSettingsDraftAdminDeviceId}
+                  onVirtualDeviceTopicModeChange={setAdminSettingsDraftVirtualDeviceTopicMode}
                   onSave={saveAdminSettings}
                 />
               ) : null}
@@ -4634,6 +4640,7 @@ export default function App() {
         virtualControlDeviceId={virtualControlDeviceId}
         selectedAdminVirtualDevice={selectedAdminVirtualDevice}
         virtualControlPatch={virtualControlPatch}
+        virtualMirrorModeActive={adminData?.settings.virtualDeviceTopicMode === 'PHYSICAL_TOPIC'}
         onCloseVirtualControlModal={closeVirtualControlModal}
         onSetModalVirtualField={setModalVirtualField}
         resetEventsModalOpen={resetEventsModalOpen}

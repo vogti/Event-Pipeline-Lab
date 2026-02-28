@@ -48,6 +48,10 @@ public final class DeviceIdMapping {
         return Optional.of("eplvd" + matcher.group(1));
     }
 
+    public static Optional<String> physicalDeviceIdForVirtual(String deviceId) {
+        return parseVirtualSuffix(deviceId).map(suffix -> "epld" + suffix);
+    }
+
     private static Optional<String> parsePhysicalSuffix(String deviceId) {
         if (deviceId == null) {
             return Optional.empty();
