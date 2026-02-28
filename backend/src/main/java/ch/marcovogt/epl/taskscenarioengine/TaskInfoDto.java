@@ -6,6 +6,8 @@ public record TaskInfoDto(
         String titleEn,
         String descriptionDe,
         String descriptionEn,
+        String activeDescriptionDe,
+        String activeDescriptionEn,
         boolean active,
         boolean lecturerMode,
         boolean deletable
@@ -18,6 +20,8 @@ public record TaskInfoDto(
                 definition.titleEn(),
                 definition.descriptionDe(),
                 definition.descriptionEn(),
+                definition.activeDescriptionDe(),
+                definition.activeDescriptionEn(),
                 active,
                 lecturerMode,
                 !lecturerMode

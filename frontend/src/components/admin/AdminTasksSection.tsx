@@ -10,6 +10,8 @@ interface TaskDetailsDraft {
   titleEn: string;
   descriptionDe: string;
   descriptionEn: string;
+  activeDescriptionDe: string;
+  activeDescriptionEn: string;
 }
 
 interface CreateTaskDraft extends TaskDetailsDraft {
@@ -50,7 +52,9 @@ function emptyTaskDetailsDraft(): TaskDetailsDraft {
     titleDe: '',
     titleEn: '',
     descriptionDe: '',
-    descriptionEn: ''
+    descriptionEn: '',
+    activeDescriptionDe: '',
+    activeDescriptionEn: ''
   };
 }
 
@@ -60,6 +64,8 @@ function emptyCreateTaskDraft(templateTaskId: string): CreateTaskDraft {
     titleEn: '',
     descriptionDe: '',
     descriptionEn: '',
+    activeDescriptionDe: '',
+    activeDescriptionEn: '',
     templateTaskId
   };
 }
@@ -137,7 +143,9 @@ export function AdminTasksSection({
         titleDe: task.titleDe,
         titleEn: task.titleEn,
         descriptionDe: task.descriptionDe,
-        descriptionEn: task.descriptionEn
+        descriptionEn: task.descriptionEn,
+        activeDescriptionDe: task.activeDescriptionDe,
+        activeDescriptionEn: task.activeDescriptionEn
       });
     } else {
       setDetailsDraft(emptyTaskDetailsDraft());
@@ -298,6 +306,30 @@ export function AdminTasksSection({
                   value={detailsDraft.descriptionEn}
                   onChange={(event) =>
                     setDetailsDraft((previous) => ({ ...previous, descriptionEn: event.target.value }))
+                  }
+                  rows={3}
+                />
+              </label>
+
+              <label className="stack pipeline-field">
+                <span>{t('activeDescriptionDe')}</span>
+                <textarea
+                  className="input textarea"
+                  value={detailsDraft.activeDescriptionDe}
+                  onChange={(event) =>
+                    setDetailsDraft((previous) => ({ ...previous, activeDescriptionDe: event.target.value }))
+                  }
+                  rows={3}
+                />
+              </label>
+
+              <label className="stack pipeline-field">
+                <span>{t('activeDescriptionEn')}</span>
+                <textarea
+                  className="input textarea"
+                  value={detailsDraft.activeDescriptionEn}
+                  onChange={(event) =>
+                    setDetailsDraft((previous) => ({ ...previous, activeDescriptionEn: event.target.value }))
                   }
                   rows={3}
                 />
@@ -535,6 +567,30 @@ export function AdminTasksSection({
               value={createTaskDraft.descriptionEn}
               onChange={(event) =>
                 setCreateTaskDraft((previous) => ({ ...previous, descriptionEn: event.target.value }))
+              }
+              rows={3}
+            />
+          </label>
+
+          <label className="stack pipeline-field">
+            <span>{t('activeDescriptionDe')}</span>
+            <textarea
+              className="input textarea"
+              value={createTaskDraft.activeDescriptionDe}
+              onChange={(event) =>
+                setCreateTaskDraft((previous) => ({ ...previous, activeDescriptionDe: event.target.value }))
+              }
+              rows={3}
+            />
+          </label>
+
+          <label className="stack pipeline-field">
+            <span>{t('activeDescriptionEn')}</span>
+            <textarea
+              className="input textarea"
+              value={createTaskDraft.activeDescriptionEn}
+              onChange={(event) =>
+                setCreateTaskDraft((previous) => ({ ...previous, activeDescriptionEn: event.target.value }))
               }
               rows={3}
             />

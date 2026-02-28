@@ -29,6 +29,12 @@ public class TaskDefinitionState {
     @Column(name = "description_en", nullable = false, columnDefinition = "text")
     private String descriptionEn;
 
+    @Column(name = "active_description_de", nullable = false, columnDefinition = "text")
+    private String activeDescriptionDe;
+
+    @Column(name = "active_description_en", nullable = false, columnDefinition = "text")
+    private String activeDescriptionEn;
+
     @Column(name = "student_capabilities_json", columnDefinition = "text")
     private String studentCapabilitiesJson;
 
@@ -90,6 +96,22 @@ public class TaskDefinitionState {
 
     public void setDescriptionEn(String descriptionEn) {
         this.descriptionEn = descriptionEn;
+    }
+
+    public String getActiveDescriptionDe() {
+        return activeDescriptionDe;
+    }
+
+    public void setActiveDescriptionDe(String activeDescriptionDe) {
+        this.activeDescriptionDe = activeDescriptionDe;
+    }
+
+    public String getActiveDescriptionEn() {
+        return activeDescriptionEn;
+    }
+
+    public void setActiveDescriptionEn(String activeDescriptionEn) {
+        this.activeDescriptionEn = activeDescriptionEn;
     }
 
     public String getStudentCapabilitiesJson() {

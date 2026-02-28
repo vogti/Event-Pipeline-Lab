@@ -50,6 +50,8 @@ public class TaskCatalog {
                         "Intro: Own Events",
                         "Nur eigene Gruppenereignisse, keine Befehle.",
                         "Only own group events, no commands.",
+                        "Nur eigene Gruppenereignisse, keine Befehle.",
+                        "Only own group events, no commands.",
                         new TaskCapabilities(
                                 false,
                                 false,
@@ -84,6 +86,8 @@ public class TaskCatalog {
                         "task_room_view",
                         "Raumsicht: Alle Ereignisse",
                         "Room View: All Events",
+                        "Alle Gruppenereignisse sichtbar, Analyse mit Filtern.",
+                        "All group events visible, analysis with filters.",
                         "Alle Gruppenereignisse sichtbar, Analyse mit Filtern.",
                         "All group events visible, analysis with filters.",
                         new TaskCapabilities(
@@ -122,6 +126,8 @@ public class TaskCatalog {
                         "Device Commands",
                         "Eigene Geräte steuern (LED, Counter-Reset).",
                         "Control own devices (LED, counter reset).",
+                        "Eigene Geräte steuern (LED, Counter-Reset).",
+                        "Control own devices (LED, counter reset).",
                         new TaskCapabilities(
                                 false,
                                 true,
@@ -156,6 +162,8 @@ public class TaskCatalog {
                         "task_lecturer_mode",
                         "Dozierendenmodus",
                         "Lecturer Mode",
+                        "Dozierende steuern Input/Sink live; Studierende arbeiten im mittleren Processing-Bereich.",
+                        "Lecturer controls input/sink live while students work in the processing section.",
                         "Dozierende steuern Input/Sink live; Studierende arbeiten im mittleren Processing-Bereich.",
                         "Lecturer controls input/sink live while students work in the processing section.",
                         new TaskCapabilities(

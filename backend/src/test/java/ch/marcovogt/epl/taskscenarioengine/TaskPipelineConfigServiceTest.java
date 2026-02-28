@@ -193,6 +193,8 @@ class TaskPipelineConfigServiceTest {
                 "Task",
                 "Description",
                 "Description",
+                "Description",
+                "Description",
                 new TaskCapabilities(
                         false,
                         false,
@@ -227,6 +229,8 @@ class TaskPipelineConfigServiceTest {
                 "task_test",
                 "Task",
                 "Task",
+                "Description",
+                "Description",
                 "Description",
                 "Description",
                 new TaskCapabilities(

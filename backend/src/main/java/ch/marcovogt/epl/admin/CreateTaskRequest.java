@@ -8,6 +8,8 @@ public record CreateTaskRequest(
         @NotBlank String titleEn,
         @NotBlank String descriptionDe,
         @NotBlank String descriptionEn,
+        @NotBlank String activeDescriptionDe,
+        @NotBlank String activeDescriptionEn,
         String templateTaskId
 ) {
 }

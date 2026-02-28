@@ -541,6 +541,8 @@ function sameTaskInfo(a: TaskInfo, b: TaskInfo): boolean {
     a.titleEn === b.titleEn &&
     a.descriptionDe === b.descriptionDe &&
     a.descriptionEn === b.descriptionEn &&
+    a.activeDescriptionDe === b.activeDescriptionDe &&
+    a.activeDescriptionEn === b.activeDescriptionEn &&
     a.active === b.active &&
     a.lecturerMode === b.lecturerMode &&
     a.deletable === b.deletable
@@ -823,12 +825,19 @@ function extractTaskInfo(payload: unknown): TaskInfo | null {
     return null;
   }
 
+  const activeDescriptionDe =
+    typeof data.activeDescriptionDe === 'string' ? data.activeDescriptionDe : data.descriptionDe;
+  const activeDescriptionEn =
+    typeof data.activeDescriptionEn === 'string' ? data.activeDescriptionEn : data.descriptionEn;
+
   return {
     id: data.id,
     titleDe: data.titleDe,
     titleEn: data.titleEn,
     descriptionDe: data.descriptionDe,
     descriptionEn: data.descriptionEn,
+    activeDescriptionDe,
+    activeDescriptionEn,
     active: typeof data.active === 'boolean' ? data.active : true,
     lecturerMode: typeof data.lecturerMode === 'boolean' ? data.lecturerMode : false,
     deletable:

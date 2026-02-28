@@ -147,6 +147,8 @@ class PipelineStateServiceTest {
                 "Intro",
                 "Desc",
                 "Desc",
+                "Desc",
+                "Desc",
                 new TaskCapabilities(
                         false,
                         true,

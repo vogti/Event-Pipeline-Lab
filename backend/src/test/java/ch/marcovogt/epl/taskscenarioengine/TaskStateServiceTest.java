@@ -257,6 +257,8 @@ class TaskStateServiceTest {
                 "New Task",
                 "Beschreibung",
                 "Description",
+                "Aktive Beschreibung",
+                "Active description",
                 "task_intro",
                 "admin"
         );

@@ -148,6 +148,8 @@ public class AdminTaskController {
                 body.titleEn(),
                 body.descriptionDe(),
                 body.descriptionEn(),
+                body.activeDescriptionDe(),
+                body.activeDescriptionEn(),
                 principal.username()
         );
 
@@ -176,6 +178,8 @@ public class AdminTaskController {
                 body.titleEn(),
                 body.descriptionDe(),
                 body.descriptionEn(),
+                body.activeDescriptionDe(),
+                body.activeDescriptionEn(),
                 body.templateTaskId(),
                 principal.username()
         );

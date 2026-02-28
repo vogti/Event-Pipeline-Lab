@@ -26,7 +26,15 @@ import type {
   VirtualDeviceTopicMode,
   VirtualDeviceState
 } from './types';
-import { type I18nKey, type Language, resolveLanguageFromMode, taskDescription, taskTitle, tr } from './i18n';
+import {
+  type I18nKey,
+  type Language,
+  resolveLanguageFromMode,
+  taskActiveDescription,
+  taskDescription,
+  taskTitle,
+  tr
+} from './i18n';
 import {
   TOKEN_STORAGE_KEY,
   MAX_FEED_EVENTS,
@@ -2629,7 +2637,14 @@ export default function App() {
 
   const saveAdminTaskDetails = async (
     taskId: string,
-    details: { titleDe: string; titleEn: string; descriptionDe: string; descriptionEn: string }
+    details: {
+      titleDe: string;
+      titleEn: string;
+      descriptionDe: string;
+      descriptionEn: string;
+      activeDescriptionDe: string;
+      activeDescriptionEn: string;
+    }
   ) => {
     if (!token) {
       return;
@@ -2640,14 +2655,18 @@ export default function App() {
       titleDe: details.titleDe.trim(),
       titleEn: details.titleEn.trim(),
       descriptionDe: details.descriptionDe.trim(),
-      descriptionEn: details.descriptionEn.trim()
+      descriptionEn: details.descriptionEn.trim(),
+      activeDescriptionDe: details.activeDescriptionDe.trim(),
+      activeDescriptionEn: details.activeDescriptionEn.trim()
     };
     if (
       !payload.taskId ||
       !payload.titleDe ||
       !payload.titleEn ||
       !payload.descriptionDe ||
-      !payload.descriptionEn
+      !payload.descriptionEn ||
+      !payload.activeDescriptionDe ||
+      !payload.activeDescriptionEn
     ) {
       setErrorMessage(t('invalidInput'));
       return;
@@ -2683,6 +2702,8 @@ export default function App() {
     titleEn: string;
     descriptionDe: string;
     descriptionEn: string;
+    activeDescriptionDe: string;
+    activeDescriptionEn: string;
     templateTaskId: string;
   }) => {
     if (!token) {
@@ -2694,13 +2715,17 @@ export default function App() {
       titleEn: draft.titleEn.trim(),
       descriptionDe: draft.descriptionDe.trim(),
       descriptionEn: draft.descriptionEn.trim(),
+      activeDescriptionDe: draft.activeDescriptionDe.trim(),
+      activeDescriptionEn: draft.activeDescriptionEn.trim(),
       templateTaskId: draft.templateTaskId.trim() || null
     };
     if (
       !payload.titleDe ||
       !payload.titleEn ||
       !payload.descriptionDe ||
-      !payload.descriptionEn
+      !payload.descriptionEn ||
+      !payload.activeDescriptionDe ||
+      !payload.activeDescriptionEn
     ) {
       setErrorMessage(t('invalidInput'));
       return;
@@ -4816,7 +4841,7 @@ export default function App() {
             <StudentOverviewSection
               t={t}
               taskTitle={taskTitle(studentData.activeTask, language)}
-              taskDescription={taskDescription(studentData.activeTask, language)}
+              taskDescription={taskActiveDescription(studentData.activeTask, language)}
             />
 
             {studentData.capabilities.canSendDeviceCommands ? (

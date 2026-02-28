@@ -359,6 +359,8 @@ const messages = {
     titleEn: 'Titel (EN)',
     descriptionDe: 'Beschreibung (DE)',
     descriptionEn: 'Beschreibung (EN)',
+    activeDescriptionDe: 'Beschreibung sichtbar für Studierende (DE)',
+    activeDescriptionEn: 'Beschreibung sichtbar für Studierende (EN)',
     taskTemplate: 'Vorlage',
     taskCreated: 'Aufgabe erstellt',
     taskDeleted: 'Aufgabe gelöscht',
@@ -856,6 +858,8 @@ const messages = {
     titleEn: 'Title (EN)',
     descriptionDe: 'Description (DE)',
     descriptionEn: 'Description (EN)',
+    activeDescriptionDe: 'Description visible to students (DE)',
+    activeDescriptionEn: 'Description visible to students (EN)',
     taskTemplate: 'Template',
     taskCreated: 'Task created',
     taskDeleted: 'Task deleted',
@@ -1011,6 +1015,10 @@ export function taskTitle(task: TaskInfo, language: Language): string {
 
 export function taskDescription(task: TaskInfo, language: Language): string {
   return language === 'de' ? task.descriptionDe : task.descriptionEn;
+}
+
+export function taskActiveDescription(task: TaskInfo, language: Language): string {
+  return language === 'de' ? task.activeDescriptionDe : task.activeDescriptionEn;
 }
 
 export function resolveLanguageFromMode(

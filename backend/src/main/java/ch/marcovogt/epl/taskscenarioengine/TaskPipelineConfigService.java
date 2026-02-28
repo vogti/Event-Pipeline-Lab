@@ -77,6 +77,8 @@ public class TaskPipelineConfigService {
                 definition.titleEn(),
                 definition.descriptionDe(),
                 definition.descriptionEn(),
+                definition.activeDescriptionDe(),
+                definition.activeDescriptionEn(),
                 definition.studentCapabilities(),
                 overridden
         );

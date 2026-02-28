@@ -150,6 +150,8 @@ public class TaskStateService {
             state.setTitleEn(definition.titleEn());
             state.setDescriptionDe(definition.descriptionDe());
             state.setDescriptionEn(definition.descriptionEn());
+            state.setActiveDescriptionDe(definition.activeDescriptionDe());
+            state.setActiveDescriptionEn(definition.activeDescriptionEn());
             state.setStudentCapabilitiesJson(null);
             state.setPipelineJson(null);
             state.setDeleted(true);
@@ -245,6 +247,8 @@ public class TaskStateService {
             String titleEn,
             String descriptionDe,
             String descriptionEn,
+            String activeDescriptionDe,
+            String activeDescriptionEn,
             String actor
     ) {
         String normalizedTaskId = normalizeTaskId(taskId);
@@ -259,6 +263,8 @@ public class TaskStateService {
         state.setTitleEn(normalizeRequiredText(titleEn, "titleEn"));
         state.setDescriptionDe(normalizeRequiredText(descriptionDe, "descriptionDe"));
         state.setDescriptionEn(normalizeRequiredText(descriptionEn, "descriptionEn"));
+        state.setActiveDescriptionDe(normalizeRequiredText(activeDescriptionDe, "activeDescriptionDe"));
+        state.setActiveDescriptionEn(normalizeRequiredText(activeDescriptionEn, "activeDescriptionEn"));
         state.setDeleted(false);
         if (state.isCustomTask()) {
             state.setStudentCapabilitiesJson(serializeJson(baseline.studentCapabilities()));
@@ -282,6 +288,8 @@ public class TaskStateService {
             String titleEn,
             String descriptionDe,
             String descriptionEn,
+            String activeDescriptionDe,
+            String activeDescriptionEn,
             String templateTaskId,
             String actor
     ) {
@@ -303,6 +311,8 @@ public class TaskStateService {
         state.setTitleEn(normalizeRequiredText(titleEn, "titleEn"));
         state.setDescriptionDe(normalizeRequiredText(descriptionDe, "descriptionDe"));
         state.setDescriptionEn(normalizeRequiredText(descriptionEn, "descriptionEn"));
+        state.setActiveDescriptionDe(normalizeRequiredText(activeDescriptionDe, "activeDescriptionDe"));
+        state.setActiveDescriptionEn(normalizeRequiredText(activeDescriptionEn, "activeDescriptionEn"));
         state.setStudentCapabilitiesJson(serializeJson(template.studentCapabilities()));
         state.setPipelineJson(serializeJson(template.pipeline()));
         state.setDeleted(false);
@@ -503,6 +513,8 @@ public class TaskStateService {
                 nonBlankOrDefault(state.getTitleEn(), base.titleEn()),
                 nonBlankOrDefault(state.getDescriptionDe(), base.descriptionDe()),
                 nonBlankOrDefault(state.getDescriptionEn(), base.descriptionEn()),
+                nonBlankOrDefault(state.getActiveDescriptionDe(), base.activeDescriptionDe()),
+                nonBlankOrDefault(state.getActiveDescriptionEn(), base.activeDescriptionEn()),
                 base.studentCapabilities(),
                 base.pipeline()
         );
@@ -521,6 +533,14 @@ public class TaskStateService {
                 nonBlankOrDefault(state.getTitleEn(), id),
                 nonBlankOrDefault(state.getDescriptionDe(), id),
                 nonBlankOrDefault(state.getDescriptionEn(), id),
+                nonBlankOrDefault(
+                        state.getActiveDescriptionDe(),
+                        nonBlankOrDefault(state.getDescriptionDe(), id)
+                ),
+                nonBlankOrDefault(
+                        state.getActiveDescriptionEn(),
+                        nonBlankOrDefault(state.getDescriptionEn(), id)
+                ),
                 capabilities,
                 pipeline
         );

@@ -341,6 +341,8 @@ export const api = {
       titleEn: string;
       descriptionDe: string;
       descriptionEn: string;
+      activeDescriptionDe: string;
+      activeDescriptionEn: string;
     }
   ): Promise<TaskInfo> {
     return request<TaskInfo>(
@@ -361,6 +363,8 @@ export const api = {
       titleEn: string;
       descriptionDe: string;
       descriptionEn: string;
+      activeDescriptionDe: string;
+      activeDescriptionEn: string;
       templateTaskId?: string | null;
     }
   ): Promise<TaskInfo> {

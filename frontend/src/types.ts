@@ -37,6 +37,8 @@ export interface TaskInfo {
   titleEn: string;
   descriptionDe: string;
   descriptionEn: string;
+  activeDescriptionDe: string;
+  activeDescriptionEn: string;
   active: boolean;
   lecturerMode: boolean;
   deletable: boolean;
@@ -430,5 +432,7 @@ export interface TaskDefinitionPayload {
   titleEn: string;
   descriptionDe: string;
   descriptionEn: string;
+  activeDescriptionDe: string;
+  activeDescriptionEn: string;
   studentCapabilities?: TaskCapabilities;
 }

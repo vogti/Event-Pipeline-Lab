@@ -144,6 +144,8 @@ public class RealtimeSyncService {
                 definition.titleEn(),
                 definition.descriptionDe(),
                 definition.descriptionEn(),
+                definition.activeDescriptionDe(),
+                definition.activeDescriptionEn(),
                 currentStudentCapabilities,
                 definition.pipeline()
         );
