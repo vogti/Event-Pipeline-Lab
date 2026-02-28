@@ -89,6 +89,7 @@ export interface PresenceUser {
 export interface CanonicalEvent {
   id: string;
   deviceId: string;
+  source?: string | null;
   topic: string;
   eventType: string;
   category: EventCategory;

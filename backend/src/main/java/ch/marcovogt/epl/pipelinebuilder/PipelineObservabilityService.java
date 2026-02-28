@@ -165,6 +165,7 @@ public class PipelineObservabilityService {
         return new CanonicalEventDto(
                 event.id(),
                 runtimeEvent.deviceId,
+                runtimeEvent.source,
                 runtimeEvent.topic,
                 runtimeEvent.eventType,
                 runtimeEvent.category,
@@ -1194,6 +1195,7 @@ public class PipelineObservabilityService {
         private final String traceId;
         private final String sourceEventId;
         private final String deviceId;
+        private final String source;
         private final String topic;
         private String eventType;
         private final EventCategory category;
@@ -1207,6 +1209,7 @@ public class PipelineObservabilityService {
                 String traceId,
                 String sourceEventId,
                 String deviceId,
+                String source,
                 String topic,
                 String eventType,
                 EventCategory category,
@@ -1219,6 +1222,7 @@ public class PipelineObservabilityService {
             this.traceId = traceId;
             this.sourceEventId = sourceEventId;
             this.deviceId = deviceId;
+            this.source = source;
             this.topic = topic;
             this.eventType = eventType;
             this.category = category;
@@ -1234,6 +1238,7 @@ public class PipelineObservabilityService {
                     UUID.randomUUID().toString(),
                     event.id() == null ? null : event.id().toString(),
                     event.deviceId(),
+                    event.source(),
                     event.topic(),
                     event.eventType(),
                     event.category(),
@@ -1251,6 +1256,7 @@ public class PipelineObservabilityService {
                     traceId,
                     sourceEventId,
                     deviceId,
+                    source,
                     topic,
                     eventType,
                     category,

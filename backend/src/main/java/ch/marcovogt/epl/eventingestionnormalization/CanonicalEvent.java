@@ -20,6 +20,9 @@ public class CanonicalEvent {
     @Column(name = "device_id", nullable = false, length = 128)
     private String deviceId;
 
+    @Column(name = "source", length = 128)
+    private String source;
+
     @Column(nullable = false, length = 256)
     private String topic;
 
@@ -74,6 +77,14 @@ public class CanonicalEvent {
 
     public void setDeviceId(String deviceId) {
         this.deviceId = deviceId;
+    }
+
+    public String getSource() {
+        return source;
+    }
+
+    public void setSource(String source) {
+        this.source = source;
     }
 
     public String getTopic() {

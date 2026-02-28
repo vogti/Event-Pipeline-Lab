@@ -28,6 +28,8 @@ public class MqttGatewayClient implements SmartLifecycle {
     private final MqttGatewayProperties properties;
     private final EventIngestionService eventIngestionService;
     private final AdminWebSocketBroadcaster webSocketBroadcaster;
+    private final PublishSourceContext publishSourceContext;
+    private final PublishedEventSourceTracker publishedEventSourceTracker;
 
     private final ScheduledExecutorService reconnectExecutor = Executors.newSingleThreadScheduledExecutor();
     private final AtomicBoolean reconnectScheduled = new AtomicBoolean(false);
@@ -39,11 +41,15 @@ public class MqttGatewayClient implements SmartLifecycle {
     public MqttGatewayClient(
             MqttGatewayProperties properties,
             EventIngestionService eventIngestionService,
-            AdminWebSocketBroadcaster webSocketBroadcaster
+            AdminWebSocketBroadcaster webSocketBroadcaster,
+            PublishSourceContext publishSourceContext,
+            PublishedEventSourceTracker publishedEventSourceTracker
     ) {
         this.properties = properties;
         this.eventIngestionService = eventIngestionService;
         this.webSocketBroadcaster = webSocketBroadcaster;
+        this.publishSourceContext = publishSourceContext;
+        this.publishedEventSourceTracker = publishedEventSourceTracker;
     }
 
     @Override
@@ -102,6 +108,10 @@ public class MqttGatewayClient implements SmartLifecycle {
         }
 
         try {
+            String source = publishSourceContext.currentSource();
+            if (source != null && !source.isBlank()) {
+                publishedEventSourceTracker.register(topic, payload, source);
+            }
             client.publish(topic, payload.getBytes(StandardCharsets.UTF_8), qos, retained);
             log.info("MQTT publish topic={} qos={} retained={}", topic, qos, retained);
         } catch (MqttException ex) {

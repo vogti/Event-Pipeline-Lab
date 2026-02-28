@@ -58,6 +58,7 @@ public class CanonicalEventNormalizer {
         CanonicalEvent event = new CanonicalEvent();
         event.setId(UUID.randomUUID());
         event.setDeviceId(deviceId);
+        event.setSource(deviceId);
         event.setTopic(canonicalTopic);
         event.setEventType(eventType);
         event.setCategory(category);
@@ -163,11 +164,23 @@ public class CanonicalEventNormalizer {
         if (topic.contains("/command/counter/reset")) {
             return "command.counter.reset";
         }
+        if (topic.contains("/command/switch:0")) {
+            return "command.led.green";
+        }
+        if (topic.contains("/command/switch:1")) {
+            return "command.led.orange";
+        }
         if (topic.contains("/command/switch:")) {
-            return "simple_control.command";
+            return "command.led.changed";
+        }
+        if (topic.contains("/status/switch:0")) {
+            return "led.green.state_changed";
+        }
+        if (topic.contains("/status/switch:1")) {
+            return "led.orange.state_changed";
         }
         if (topic.contains("/status/switch:")) {
-            return "simple_control.status";
+            return "led.state_changed";
         }
         if (topic.endsWith("/rpc")) {
             if (payloadNode.has("method")) {
@@ -230,6 +243,21 @@ public class CanonicalEventNormalizer {
             }
             if (lowerEventType.startsWith("sensor.humidity")) {
                 return canonicalTopicDeviceId + "/event/sensor/humidity";
+            }
+            if (lowerEventType.equals("command.led.green")) {
+                return canonicalTopicDeviceId + "/command/led/green";
+            }
+            if (lowerEventType.equals("command.led.orange")) {
+                return canonicalTopicDeviceId + "/command/led/orange";
+            }
+            if (lowerEventType.equals("command.counter.reset")) {
+                return canonicalTopicDeviceId + "/command/counter/reset";
+            }
+            if (lowerEventType.equals("led.green.state_changed")) {
+                return canonicalTopicDeviceId + "/event/led/green";
+            }
+            if (lowerEventType.equals("led.orange.state_changed")) {
+                return canonicalTopicDeviceId + "/event/led/orange";
             }
         }
 
@@ -480,7 +508,13 @@ public class CanonicalEventNormalizer {
                 || category == EventCategory.ACK
                 || topic.startsWith("epl/probe/")
                 || eventType.startsWith("rpc.")
-                || eventType.startsWith("simple_control.");
+                || eventType.startsWith("simple_control.")
+                || eventType.startsWith("device.online")
+                || eventType.startsWith("device.offline")
+                || eventType.startsWith("status.system")
+                || topic.endsWith("/online")
+                || topic.endsWith("/offline")
+                || topic.contains("/status/system");
     }
 
     private Instant extractDeviceTimestamp(JsonNode payloadNode) {

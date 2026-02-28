@@ -15,6 +15,7 @@ import ch.marcovogt.epl.deviceregistryhealth.StudentDeviceStateDto;
 import ch.marcovogt.epl.eventfeedquery.EventFeedStage;
 import ch.marcovogt.epl.eventfeedquery.EventFeedService;
 import ch.marcovogt.epl.mqttgateway.MqttCommandPublisher;
+import ch.marcovogt.epl.mqttgateway.PublishSourceContext;
 import ch.marcovogt.epl.realtimewebsocket.RealtimeSyncService;
 import ch.marcovogt.epl.taskscenarioengine.StudentDeviceScope;
 import ch.marcovogt.epl.taskscenarioengine.TaskCapabilities;
@@ -46,6 +47,7 @@ public class StudentController {
     private final AuthService authService;
     private final AppSettingsService appSettingsService;
     private final MqttCommandPublisher mqttCommandPublisher;
+    private final PublishSourceContext publishSourceContext;
     private final RealtimeSyncService realtimeSyncService;
     private final VirtualDeviceService virtualDeviceService;
     private final DeviceTelemetryService deviceTelemetryService;
@@ -58,6 +60,7 @@ public class StudentController {
             AuthService authService,
             AppSettingsService appSettingsService,
             MqttCommandPublisher mqttCommandPublisher,
+            PublishSourceContext publishSourceContext,
             RealtimeSyncService realtimeSyncService,
             VirtualDeviceService virtualDeviceService,
             DeviceTelemetryService deviceTelemetryService
@@ -69,6 +72,7 @@ public class StudentController {
         this.authService = authService;
         this.appSettingsService = appSettingsService;
         this.mqttCommandPublisher = mqttCommandPublisher;
+        this.publishSourceContext = publishSourceContext;
         this.realtimeSyncService = realtimeSyncService;
         this.virtualDeviceService = virtualDeviceService;
         this.deviceTelemetryService = deviceTelemetryService;
@@ -160,7 +164,8 @@ public class StudentController {
             throw AuthExceptions.forbidden();
         }
 
-        publish(body.command(), targetDeviceId, body.on());
+        String source = studentPublishSource(principal);
+        publishSourceContext.runWithSource(source, () -> publish(body.command(), targetDeviceId, body.on()));
     }
 
     @PostMapping("/events/publish")
@@ -193,8 +198,12 @@ public class StudentController {
         if (!isAllowedCommandTarget(targetScope, targetDeviceId, principal.groupKey(), adminDeviceId)) {
             throw AuthExceptions.forbidden();
         }
+        String source = studentPublishSource(principal);
         try {
-            mqttCommandPublisher.publishCustom(topic, payload, qos, retained);
+            publishSourceContext.runWithSource(
+                    source,
+                    () -> mqttCommandPublisher.publishCustom(topic, payload, qos, retained)
+            );
         } catch (IllegalArgumentException ex) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
         }
@@ -286,5 +295,16 @@ public class StudentController {
             }
             case OWN_DEVICE -> studentGroupKey != null && studentGroupKey.equalsIgnoreCase(targetDeviceId);
         };
+    }
+
+    private String studentPublishSource(SessionPrincipal principal) {
+        if (principal == null) {
+            return null;
+        }
+        String displayName = principal.displayName();
+        if (displayName != null && !displayName.isBlank()) {
+            return displayName.trim();
+        }
+        return principal.username();
     }
 }

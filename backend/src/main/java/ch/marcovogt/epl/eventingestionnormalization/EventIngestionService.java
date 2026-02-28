@@ -10,8 +10,10 @@ import ch.marcovogt.epl.pipelinebuilder.PipelineLogModeService;
 import ch.marcovogt.epl.pipelinebuilder.PipelineObservabilityUpdateDto;
 import ch.marcovogt.epl.pipelinebuilder.PipelineSinkRuntimeUpdateDto;
 import ch.marcovogt.epl.pipelinebuilder.PipelineStateService;
+import ch.marcovogt.epl.mqttgateway.PublishedEventSourceTracker;
 import ch.marcovogt.epl.realtimewebsocket.AdminWebSocketBroadcaster;
 import ch.marcovogt.epl.realtimewebsocket.RealtimeSyncService;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import org.slf4j.Logger;
@@ -33,6 +35,7 @@ public class EventIngestionService {
     private final RealtimeSyncService realtimeSyncService;
     private final PipelineStateService pipelineStateService;
     private final PipelineLogModeService pipelineLogModeService;
+    private final PublishedEventSourceTracker publishedEventSourceTracker;
     private final Clock clock;
 
     public EventIngestionService(
@@ -44,7 +47,8 @@ public class EventIngestionService {
             AdminWebSocketBroadcaster adminWebSocketBroadcaster,
             RealtimeSyncService realtimeSyncService,
             PipelineStateService pipelineStateService,
-            PipelineLogModeService pipelineLogModeService
+            PipelineLogModeService pipelineLogModeService,
+            PublishedEventSourceTracker publishedEventSourceTracker
     ) {
         this.canonicalEventNormalizer = canonicalEventNormalizer;
         this.canonicalEventRepository = canonicalEventRepository;
@@ -55,6 +59,7 @@ public class EventIngestionService {
         this.realtimeSyncService = realtimeSyncService;
         this.pipelineStateService = pipelineStateService;
         this.pipelineLogModeService = pipelineLogModeService;
+        this.publishedEventSourceTracker = publishedEventSourceTracker;
         this.clock = Clock.systemUTC();
     }
 
@@ -62,6 +67,10 @@ public class EventIngestionService {
     public CanonicalEventDto ingest(String topic, byte[] payloadBytes) {
         Instant ingestTs = Instant.now(clock);
         NormalizedEvent normalizedEvent = canonicalEventNormalizer.normalize(topic, payloadBytes, ingestTs);
+        String actorSource = publishedEventSourceTracker.consume(topic, new String(payloadBytes, StandardCharsets.UTF_8));
+        if (actorSource != null && !actorSource.isBlank()) {
+            normalizedEvent.event().setSource(actorSource);
+        }
 
         CanonicalEvent saved = canonicalEventRepository.save(normalizedEvent.event());
         CanonicalEventDto eventDto = CanonicalEventDto.from(saved);

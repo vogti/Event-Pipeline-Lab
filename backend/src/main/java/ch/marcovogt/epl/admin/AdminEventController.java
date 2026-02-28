@@ -8,6 +8,7 @@ import ch.marcovogt.epl.common.EventCategory;
 import ch.marcovogt.epl.eventfeedquery.EventFeedService;
 import ch.marcovogt.epl.eventingestionnormalization.CanonicalEventDto;
 import ch.marcovogt.epl.mqttgateway.MqttCommandPublisher;
+import ch.marcovogt.epl.mqttgateway.PublishSourceContext;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -33,17 +34,20 @@ public class AdminEventController {
     private final EventFeedService eventFeedService;
     private final RequestAuth requestAuth;
     private final MqttCommandPublisher mqttCommandPublisher;
+    private final PublishSourceContext publishSourceContext;
     private final AdminAuditLogger adminAuditLogger;
 
     public AdminEventController(
             EventFeedService eventFeedService,
             RequestAuth requestAuth,
             MqttCommandPublisher mqttCommandPublisher,
+            PublishSourceContext publishSourceContext,
             AdminAuditLogger adminAuditLogger
     ) {
         this.eventFeedService = eventFeedService;
         this.requestAuth = requestAuth;
         this.mqttCommandPublisher = mqttCommandPublisher;
+        this.publishSourceContext = publishSourceContext;
         this.adminAuditLogger = adminAuditLogger;
     }
 
@@ -79,7 +83,10 @@ public class AdminEventController {
         boolean retained = body.resolvedRetained();
 
         try {
-            mqttCommandPublisher.publishCustom(topic, payload, qos, retained);
+            publishSourceContext.runWithSource(
+                    principal.username(),
+                    () -> mqttCommandPublisher.publishCustom(topic, payload, qos, retained)
+            );
         } catch (IllegalArgumentException ex) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
         }

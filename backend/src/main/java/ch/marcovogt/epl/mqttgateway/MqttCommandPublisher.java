@@ -17,7 +17,6 @@ public class MqttCommandPublisher {
     public void publishLedGreen(String deviceId, boolean on) {
         mqttGatewayClient.publish("epld/" + deviceId + "/cmd/led/green", on ? "on" : "off", 1, false);
         mqttGatewayClient.publish(deviceId + "/command/led/green", on ? "on" : "off", 1, false);
-        mqttGatewayClient.publish(deviceId + "/command/switch:0", on ? "on" : "off", 1, false);
         publishRpc(
                 deviceId,
                 "Switch.Set",
@@ -28,7 +27,6 @@ public class MqttCommandPublisher {
     public void publishLedOrange(String deviceId, boolean on) {
         mqttGatewayClient.publish("epld/" + deviceId + "/cmd/led/orange", on ? "on" : "off", 1, false);
         mqttGatewayClient.publish(deviceId + "/command/led/orange", on ? "on" : "off", 1, false);
-        mqttGatewayClient.publish(deviceId + "/command/switch:1", on ? "on" : "off", 1, false);
         publishRpc(
                 deviceId,
                 "Switch.Set",

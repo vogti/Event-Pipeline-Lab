@@ -219,14 +219,61 @@ class CanonicalEventNormalizerTest {
     }
 
     @Test
-    void shouldKeepSimpleControlCommandEventsInternal() {
+    void shouldNormalizeSimpleControlSwitchCommandTopicToCanonicalLedCommand() {
         String topic = "epld01/command/switch:0";
         byte[] payload = "\"on\"".getBytes(StandardCharsets.UTF_8);
 
         NormalizedEvent normalized = normalizer.normalize(topic, payload, Instant.parse("2026-02-28T15:00:02Z"));
 
-        assertThat(normalized.event().getEventType()).isEqualTo("simple_control.command");
+        assertThat(normalized.event().getTopic()).isEqualTo("epld01/command/led/green");
+        assertThat(normalized.event().getEventType()).isEqualTo("command.led.green");
         assertThat(normalized.event().getCategory()).isEqualTo(EventCategory.COMMAND);
+        assertThat(normalized.event().isInternal()).isFalse();
+    }
+
+    @Test
+    void shouldNormalizeSimpleControlSwitchStatusTopicToCanonicalLedStatus() {
+        String topic = "epld01/status/switch:1";
+        byte[] payload = "{\"output\":false}".getBytes(StandardCharsets.UTF_8);
+
+        NormalizedEvent normalized = normalizer.normalize(topic, payload, Instant.parse("2026-02-28T15:00:03Z"));
+
+        assertThat(normalized.event().getTopic()).isEqualTo("epld01/event/led/orange");
+        assertThat(normalized.event().getEventType()).isEqualTo("led.orange.state_changed");
+        assertThat(normalized.event().getCategory()).isEqualTo(EventCategory.STATUS);
+        assertThat(normalized.event().isInternal()).isFalse();
+    }
+
+    @Test
+    void shouldMarkOnlineEventsAsInternal() {
+        String topic = "epld01/online";
+        byte[] payload = "true".getBytes(StandardCharsets.UTF_8);
+
+        NormalizedEvent normalized = normalizer.normalize(topic, payload, Instant.parse("2026-02-28T15:00:04Z"));
+
+        assertThat(normalized.event().getTopic()).isEqualTo("epld01/online");
+        assertThat(normalized.event().getEventType()).isEqualTo("device.online.changed");
+        assertThat(normalized.event().getCategory()).isEqualTo(EventCategory.STATUS);
+        assertThat(normalized.event().isInternal()).isTrue();
+    }
+
+    @Test
+    void shouldMarkStatusSystemEventsAsInternal() {
+        String topic = "epld01/events/rpc";
+        byte[] payload = """
+                {
+                  "method":"NotifyStatus",
+                  "params":{
+                    "sys":{"uptime":123}
+                  }
+                }
+                """.getBytes(StandardCharsets.UTF_8);
+
+        NormalizedEvent normalized = normalizer.normalize(topic, payload, Instant.parse("2026-02-28T15:00:05Z"));
+
+        assertThat(normalized.event().getTopic()).isEqualTo("epld01/status/system");
+        assertThat(normalized.event().getEventType()).isEqualTo("status.system");
+        assertThat(normalized.event().getCategory()).isEqualTo(EventCategory.STATUS);
         assertThat(normalized.event().isInternal()).isTrue();
     }
 }

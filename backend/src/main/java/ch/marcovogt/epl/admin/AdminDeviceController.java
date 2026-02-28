@@ -8,6 +8,7 @@ import ch.marcovogt.epl.authsession.SessionPrincipal;
 import ch.marcovogt.epl.deviceregistryhealth.DeviceStatusDto;
 import ch.marcovogt.epl.deviceregistryhealth.DeviceStatusService;
 import ch.marcovogt.epl.mqttgateway.MqttCommandPublisher;
+import ch.marcovogt.epl.mqttgateway.PublishSourceContext;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -28,19 +29,22 @@ public class AdminDeviceController {
     private final RequestAuth requestAuth;
     private final AuthService authService;
     private final AdminAuditLogger adminAuditLogger;
+    private final PublishSourceContext publishSourceContext;
 
     public AdminDeviceController(
             DeviceStatusService deviceStatusService,
             MqttCommandPublisher mqttCommandPublisher,
             RequestAuth requestAuth,
             AuthService authService,
-            AdminAuditLogger adminAuditLogger
+            AdminAuditLogger adminAuditLogger,
+            PublishSourceContext publishSourceContext
     ) {
         this.deviceStatusService = deviceStatusService;
         this.mqttCommandPublisher = mqttCommandPublisher;
         this.requestAuth = requestAuth;
         this.authService = authService;
         this.adminAuditLogger = adminAuditLogger;
+        this.publishSourceContext = publishSourceContext;
     }
 
     @GetMapping
@@ -85,12 +89,14 @@ public class AdminDeviceController {
             @Valid @RequestBody DeviceCommandRequest command
     ) {
         SessionPrincipal principal = requestAuth.requireRole(request, AppRole.ADMIN);
-        switch (command.command()) {
-            case LED_GREEN -> mqttCommandPublisher.publishLedGreen(deviceId, command.on() != null && command.on());
-            case LED_ORANGE -> mqttCommandPublisher.publishLedOrange(deviceId, command.on() != null && command.on());
-            case COUNTER_RESET -> mqttCommandPublisher.publishCounterReset(deviceId);
-            default -> throw new IllegalArgumentException("Unsupported command: " + command.command());
-        }
+        publishSourceContext.runWithSource(principal.username(), () -> {
+            switch (command.command()) {
+                case LED_GREEN -> mqttCommandPublisher.publishLedGreen(deviceId, command.on() != null && command.on());
+                case LED_ORANGE -> mqttCommandPublisher.publishLedOrange(deviceId, command.on() != null && command.on());
+                case COUNTER_RESET -> mqttCommandPublisher.publishCounterReset(deviceId);
+                default -> throw new IllegalArgumentException("Unsupported command: " + command.command());
+            }
+        });
 
         adminAuditLogger.logAction(
                 "admin.device.command",

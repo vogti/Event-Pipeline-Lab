@@ -4299,6 +4299,14 @@ export default function App() {
     [language, timeFormat24h]
   );
 
+  const eventSourceLabel = useCallback((event: CanonicalEvent): string => {
+    const source = event.source?.trim();
+    if (source) {
+      return source;
+    }
+    return event.deviceId;
+  }, []);
+
   const selectedEventFields = useMemo<Array<[string, string]>>(() => {
     if (!selectedEvent) {
       return [];
@@ -4306,6 +4314,7 @@ export default function App() {
 
     return [
       [t('eventFieldId'), selectedEvent.id],
+      [t('eventFieldSource'), eventSourceLabel(selectedEvent)],
       [t('eventFieldDeviceId'), selectedEvent.deviceId],
       [t('eventFieldTopic'), selectedEvent.topic],
       [t('eventFieldEventType'), selectedEvent.eventType],
@@ -4320,7 +4329,7 @@ export default function App() {
       [t('eventFieldSequenceNo'), selectedEvent.sequenceNo == null ? '-' : String(selectedEvent.sequenceNo)],
       [t('eventFieldScenarioFlags'), selectedEvent.scenarioFlags]
     ];
-  }, [formatTs, selectedEvent, t]);
+  }, [eventSourceLabel, formatTs, selectedEvent, t]);
 
   const selectedEventRawJson = useMemo(() => {
     if (!selectedEvent) {
@@ -4370,7 +4379,7 @@ export default function App() {
         }}
       >
         <td>{formatTs(eventItem.ingestTs)}</td>
-        <td>{eventItem.deviceId}</td>
+        <td>{eventSourceLabel(eventItem)}</td>
         <td className="mono">{eventItem.topic}</td>
         <td className="mono raw-cell">
           {studentFeedViewMode === 'rendered'
@@ -4379,7 +4388,7 @@ export default function App() {
         </td>
       </tr>
     ));
-  }, [formatTs, recentFeedEventIds, studentFeedValues, studentFeedViewMode, studentVisibleFeed]);
+  }, [eventSourceLabel, formatTs, recentFeedEventIds, studentFeedValues, studentFeedViewMode, studentVisibleFeed]);
 
   const adminDeviceCards = useMemo(() => {
     const adminDevices = adminData?.devices;
@@ -4734,7 +4743,7 @@ export default function App() {
         }}
       >
         <td>{formatTs(eventItem.ingestTs)}</td>
-        <td>{eventItem.deviceId}</td>
+        <td>{eventSourceLabel(eventItem)}</td>
         <td className="mono">{eventItem.topic}</td>
         <td className="mono raw-cell">
           {feedViewMode === 'rendered'
@@ -4744,7 +4753,7 @@ export default function App() {
         <td>{eventItem.category}</td>
       </tr>
     ));
-  }, [adminFeedValues, adminVisibleFeed, feedViewMode, formatTs, recentFeedEventIds]);
+  }, [adminFeedValues, adminVisibleFeed, eventSourceLabel, feedViewMode, formatTs, recentFeedEventIds]);
 
   return (
     <div className="app-shell">
