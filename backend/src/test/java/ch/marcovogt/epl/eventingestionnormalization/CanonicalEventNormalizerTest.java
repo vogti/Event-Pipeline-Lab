@@ -219,6 +219,20 @@ class CanonicalEventNormalizerTest {
     }
 
     @Test
+    void shouldTreatPlainLedCommandPayloadAsValid() {
+        String topic = "epld01/command/led/green";
+        byte[] payload = "on".getBytes(StandardCharsets.UTF_8);
+
+        NormalizedEvent normalized = normalizer.normalize(topic, payload, Instant.parse("2026-02-28T15:00:01Z"));
+
+        assertThat(normalized.event().isValid()).isTrue();
+        assertThat(normalized.event().getValidationErrors()).isNull();
+        assertThat(normalized.event().getPayloadJson()).contains("\"raw\":\"on\"");
+        assertThat(normalized.event().getPayloadJson()).contains("\"value\":\"on\"");
+        assertThat(normalized.event().getEventType()).isEqualTo("command.led.green");
+    }
+
+    @Test
     void shouldNormalizeSimpleControlSwitchCommandTopicToCanonicalLedCommand() {
         String topic = "epld01/command/switch:0";
         byte[] payload = "\"on\"".getBytes(StandardCharsets.UTF_8);

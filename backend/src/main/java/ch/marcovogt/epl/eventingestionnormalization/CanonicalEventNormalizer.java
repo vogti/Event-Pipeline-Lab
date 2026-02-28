@@ -9,6 +9,7 @@ import ch.marcovogt.epl.common.EventCategory;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -28,16 +29,22 @@ public class CanonicalEventNormalizer {
     public NormalizedEvent normalize(String topic, byte[] payloadBytes, Instant ingestTs) {
         List<String> errors = new ArrayList<>();
         boolean valid = true;
+        String rawPayload = payloadBytes == null ? "" : new String(payloadBytes, StandardCharsets.UTF_8);
 
         JsonNode payloadNode;
         try {
             payloadNode = objectMapper.readTree(payloadBytes);
         } catch (Exception ex) {
-            valid = false;
-            errors.add("payload-not-json: " + ex.getMessage());
-            ObjectNode rawNode = objectMapper.createObjectNode();
-            rawNode.put("raw", new String(payloadBytes, StandardCharsets.UTF_8));
-            payloadNode = rawNode;
+            JsonNode fallbackNode = parseKnownPlainPayload(topic, rawPayload);
+            if (fallbackNode != null) {
+                payloadNode = fallbackNode;
+            } else {
+                valid = false;
+                errors.add("payload-not-json: " + ex.getMessage());
+                ObjectNode rawNode = objectMapper.createObjectNode();
+                rawNode.put("raw", rawPayload);
+                payloadNode = rawNode;
+            }
         }
 
         String deviceId = extractDeviceId(topic, payloadNode);
@@ -638,5 +645,51 @@ public class CanonicalEventNormalizer {
         } catch (JsonProcessingException ex) {
             return "{}";
         }
+    }
+
+    private JsonNode parseKnownPlainPayload(String topic, String rawPayload) {
+        if (!isLedCommandTopic(topic)) {
+            return null;
+        }
+
+        String normalized = normalizeControlToken(rawPayload);
+        if (normalized == null) {
+            return null;
+        }
+        if (!Arrays.asList("on", "off", "true", "false", "1", "0", "pressed", "released", "press", "release")
+                .contains(normalized)) {
+            return null;
+        }
+
+        ObjectNode node = objectMapper.createObjectNode();
+        node.put("raw", rawPayload == null ? "" : rawPayload);
+        node.put("value", normalized);
+        return node;
+    }
+
+    private boolean isLedCommandTopic(String topic) {
+        if (topic == null || topic.isBlank()) {
+            return false;
+        }
+        String normalizedTopic = topic.toLowerCase(Locale.ROOT);
+        return normalizedTopic.contains("/command/led/")
+                || normalizedTopic.contains("/cmd/led/")
+                || normalizedTopic.contains("/command/switch:0")
+                || normalizedTopic.contains("/command/switch:1");
+    }
+
+    private String normalizeControlToken(String rawPayload) {
+        if (rawPayload == null) {
+            return null;
+        }
+        String trimmed = rawPayload.trim();
+        if (trimmed.isBlank()) {
+            return null;
+        }
+        if (trimmed.startsWith("\"") && trimmed.endsWith("\"") && trimmed.length() >= 2) {
+            trimmed = trimmed.substring(1, trimmed.length() - 1);
+        }
+        String normalized = trimmed.trim().toLowerCase(Locale.ROOT);
+        return normalized.isBlank() ? null : normalized;
     }
 }
