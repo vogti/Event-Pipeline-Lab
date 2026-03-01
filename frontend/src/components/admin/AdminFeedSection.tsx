@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
 import type { I18nKey } from '../../i18n';
 import type { AdminFeedSource } from '../../app/shared-types';
-import type { EventCategory } from '../../types';
 
 interface AdminFeedSectionProps {
   t: (key: I18nKey) => string;
@@ -13,11 +12,6 @@ interface AdminFeedSectionProps {
   onOpenSendEventModal: () => void;
   adminTopicFilter: string;
   onAdminTopicFilterChange: (value: string) => void;
-  adminDeviceFilter: string;
-  onAdminDeviceFilterChange: (value: string) => void;
-  adminCategoryFilter: EventCategory | 'ALL';
-  onAdminCategoryFilterChange: (value: EventCategory | 'ALL') => void;
-  categoryOptions: Array<EventCategory | 'ALL'>;
   adminIncludeInternal: boolean;
   onAdminIncludeInternalChange: (value: boolean) => void;
   adminFeedSource: AdminFeedSource;
@@ -36,11 +30,6 @@ export function AdminFeedSection({
   onOpenSendEventModal,
   adminTopicFilter,
   onAdminTopicFilterChange,
-  adminDeviceFilter,
-  onAdminDeviceFilterChange,
-  adminCategoryFilter,
-  onAdminCategoryFilterChange,
-  categoryOptions,
   adminIncludeInternal,
   onAdminIncludeInternalChange,
   adminFeedSource,
@@ -62,7 +51,7 @@ export function AdminFeedSection({
           {t('clear')}
         </button>
         <button className="button ghost" type="button" onClick={onOpenSendEventModal}>
-          {t('sendMqttEvent')}
+          {t('publishEvent')}
         </button>
 
         <input
@@ -71,25 +60,6 @@ export function AdminFeedSection({
           value={adminTopicFilter}
           onChange={(event) => onAdminTopicFilterChange(event.target.value)}
         />
-
-        <input
-          className="input"
-          placeholder={t('device')}
-          value={adminDeviceFilter}
-          onChange={(event) => onAdminDeviceFilterChange(event.target.value)}
-        />
-
-        <select
-          className="input"
-          value={adminCategoryFilter}
-          onChange={(event) => onAdminCategoryFilterChange(event.target.value as EventCategory | 'ALL')}
-        >
-          {categoryOptions.map((category) => (
-            <option key={category} value={category}>
-              {category}
-            </option>
-          ))}
-        </select>
 
         <label className="checkbox-inline">
           <input
@@ -119,13 +89,12 @@ export function AdminFeedSection({
               <th>{t('feedHeaderDeviceId')}</th>
               <th>{t('feedHeaderTopic')}</th>
               <th>{feedViewMode === 'rendered' ? t('value') : t('rawPayload')}</th>
-              <th>{t('category')}</th>
             </tr>
           </thead>
           <tbody>
             {adminVisibleFeedCount === 0 ? (
               <tr>
-                <td colSpan={5} className="muted">
+                <td colSpan={4} className="muted">
                   {t('noEvents')}
                 </td>
               </tr>

@@ -5,7 +5,6 @@ import type {
   AuthMe,
   CanonicalEvent,
   DeviceCommandType,
-  EventCategory,
   ExternalStreamSource,
   FeedScenarioConfig,
   LanguageMode,
@@ -40,7 +39,6 @@ import {
   TOKEN_STORAGE_KEY,
   MAX_FEED_EVENTS,
   isAdminFeedHotPage,
-  CATEGORY_OPTIONS,
   createSystemDataPartSelection,
   selectedSystemDataParts,
   systemDataPartLabel,
@@ -641,8 +639,6 @@ export default function App() {
   const [adminStreamSources, setAdminStreamSources] = useState<ExternalStreamSource[]>([]);
   const [adminStreamSourceEndpointDrafts, setAdminStreamSourceEndpointDrafts] = useState<Record<string, string>>({});
   const [adminTopicFilter, setAdminTopicFilter] = useState('');
-  const [adminCategoryFilter, setAdminCategoryFilter] = useState<EventCategory | 'ALL'>('ALL');
-  const [adminDeviceFilter, setAdminDeviceFilter] = useState('');
   const [adminIncludeInternal, setAdminIncludeInternal] = useState(false);
   const [adminFeedSource, setAdminFeedSource] = useState<AdminFeedSource>('AFTER_DISTURBANCES');
   const [adminFeedPaused, setAdminFeedPaused] = useState(false);
@@ -1024,8 +1020,6 @@ export default function App() {
     setAdminStreamSources([]);
     setAdminStreamSourceEndpointDrafts({});
     setAdminTopicFilter('');
-    setAdminCategoryFilter('ALL');
-    setAdminDeviceFilter('');
     setAdminIncludeInternal(false);
     setAdminFeedSource('AFTER_DISTURBANCES');
     setAdminFeedPaused(false);
@@ -4425,23 +4419,9 @@ export default function App() {
         return false;
       }
 
-      if (adminCategoryFilter !== 'ALL' && event.category !== adminCategoryFilter) {
-        return false;
-      }
-
-      if (adminDeviceFilter.trim().length > 0 && event.deviceId !== adminDeviceFilter.trim()) {
-        return false;
-      }
-
       return feedMatchesTopic(event, adminTopicFilter);
     });
-  }, [
-    adminCategoryFilter,
-    adminDeviceFilter,
-    adminFeedSourceEvents,
-    adminIncludeInternal,
-    adminTopicFilter
-  ]);
+  }, [adminFeedSourceEvents, adminIncludeInternal, adminTopicFilter]);
 
   const studentFeedValues = useMemo(() => {
     const values = new Map<string, string>();
@@ -5072,7 +5052,6 @@ export default function App() {
             ? (adminFeedValues.get(eventItem.id) ?? '')
             : eventItem.payloadJson}
         </td>
-        <td>{eventItem.category}</td>
       </tr>
     ));
   }, [adminFeedValues, adminVisibleFeed, eventSourceLabel, feedViewMode, formatTs, recentFeedEventIds]);
@@ -5486,11 +5465,6 @@ export default function App() {
                   onOpenSendEventModal={openMqttEventModal}
                   adminTopicFilter={adminTopicFilter}
                   onAdminTopicFilterChange={setAdminTopicFilter}
-                  adminDeviceFilter={adminDeviceFilter}
-                  onAdminDeviceFilterChange={setAdminDeviceFilter}
-                  adminCategoryFilter={adminCategoryFilter}
-                  onAdminCategoryFilterChange={setAdminCategoryFilter}
-                  categoryOptions={CATEGORY_OPTIONS}
                   adminIncludeInternal={adminIncludeInternal}
                   onAdminIncludeInternalChange={setAdminIncludeInternal}
                   adminFeedSource={adminFeedSource}
