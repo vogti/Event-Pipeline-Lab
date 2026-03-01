@@ -1,4 +1,5 @@
 import type { I18nKey } from '../../i18n';
+import { displayPipelineBlockType } from '../../app/pipeline-block-labels';
 import type { TaskInfo, TaskPipelineConfig, TimestampValue } from '../../types';
 
 interface PipelineTaskConfigSectionProps {
@@ -92,7 +93,7 @@ export function PipelineTaskConfigSection({
                     checked={config.allowedProcessingBlocks.includes(block)}
                     onChange={(event) => onToggleAllowedBlock(block, event.target.checked)}
                   />
-                  <span className="mono">{block}</span>
+                  <span className="mono">{displayPipelineBlockType(block)}</span>
                 </label>
               ))}
             </div>

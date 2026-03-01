@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { I18nKey } from '../../i18n';
+import { displayPipelineBlockType } from '../../app/pipeline-block-labels';
 import type {
   PipelineBlockObservability,
   PipelineObservability,
@@ -215,7 +216,7 @@ export function PipelineObservabilitySection({
               return (
                 <tr key={`${block.slotIndex}:${block.blockType}`}>
                   <td>{block.slotIndex + 1}</td>
-                  <td className="mono">{block.blockType}</td>
+                  <td className="mono">{displayPipelineBlockType(block.blockType)}</td>
                   <td>{block.inCount}</td>
                   <td>{block.outCount}</td>
                   <td>{block.dropCount}</td>
@@ -248,7 +249,7 @@ export function PipelineObservabilitySection({
           <header className="pipeline-sample-header">
             <h5>
               {t('pipelineInspect')} - {t('pipelineSlot')} {expandedBlock.slotIndex + 1} (
-              {expandedBlock.blockType})
+              {displayPipelineBlockType(expandedBlock.blockType)})
             </h5>
             <div className="pipeline-sample-actions">
               <select

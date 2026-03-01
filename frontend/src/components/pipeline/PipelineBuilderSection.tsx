@@ -6,6 +6,7 @@ import {
   normalizeMqttTemplateForTarget,
   resolveMqttDeviceId
 } from '../../app/mqtt-composer';
+import { displayPipelineBlockType } from '../../app/pipeline-block-labels';
 import type {
   MqttComposerMode,
   MqttComposerTargetType,
@@ -1207,7 +1208,7 @@ export function PipelineBuilderSection({
 
   const openProcessingBlockInfo = (blockType: string) => {
     setBlockInfoModal({
-      title: blockType.trim().toUpperCase(),
+      title: displayPipelineBlockType(blockType),
       bodyKey: processingBlockDocBodyKey(blockType)
     });
   };
@@ -1414,7 +1415,7 @@ export function PipelineBuilderSection({
                       <div className="pipeline-flow-node-header">
                         <div className="pipeline-node-title-wrap">
                           <strong className="mono pipeline-node-label">
-                            {isEmpty ? t('pipelineDropBlockHint') : slot.blockType}
+                            {isEmpty ? t('pipelineDropBlockHint') : displayPipelineBlockType(slot.blockType)}
                           </strong>
                           {!isEmpty ? (
                             <button
@@ -1447,7 +1448,7 @@ export function PipelineBuilderSection({
                           <span>{t('pipelineDeviceScope')}</span>
                           {isTaskScopeLocked ? (
                             <p className="muted">
-                              {slotDeviceScopeLabel(t, slot.config?.deviceScope)} | {t('pipelineTaskScopeFixed')}
+                              {slotDeviceScopeLabel(t, slot.config?.deviceScope)}
                             </p>
                           ) : (
                             <select
@@ -1652,7 +1653,7 @@ export function PipelineBuilderSection({
                     onDragEnd={() => setDragOverSlotIndex(null)}
                     onClick={() => placeInFirstAvailableSlot(blockType)}
                   >
-                    <span className="mono">{blockType}</span>
+                    <span className="mono">{displayPipelineBlockType(blockType)}</span>
                   </button>
                 ))}
               </div>
@@ -1852,7 +1853,7 @@ export function PipelineBuilderSection({
 
               <div className="pipeline-inspector-overview">
                 <span className="chip">#{inspectorSlot.index + 1}</span>
-                <span className="chip mono">{inspectorBlock.blockType}</span>
+                <span className="chip mono">{displayPipelineBlockType(inspectorBlock.blockType)}</span>
                 <span className="chip">{t('pipelineMetricIn')}: {inspectorInCount}</span>
                 <span className="chip">{t('pipelineMetricOut')}: {inspectorOutCount}</span>
                 <span className="chip warn">{t('pipelineMetricDrop')}: {inspectorDropCount}</span>

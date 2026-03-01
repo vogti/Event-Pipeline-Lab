@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { I18nKey } from '../../i18n';
+import { displayPipelineBlockType } from '../../app/pipeline-block-labels';
 import type { StudentDeviceScope, TaskInfo, TaskPipelineConfig } from '../../types';
 import { ArrowDownIcon, ArrowUpIcon, CloseIcon } from '../../app/shared-icons';
 import { PipelineScenarioEditor } from '../pipeline/PipelineScenarioEditor';
@@ -374,16 +375,16 @@ export function AdminTasksSection({
                   <span>{t('pipelineAllowedBlocks')}</span>
                   <div className="pipeline-block-checks">
                     {editingTaskConfig.availableProcessingBlocks.map((block) => (
-                      <label key={block} className="checkbox-inline">
-                        <input
-                          type="checkbox"
-                          checked={editingTaskConfig.allowedProcessingBlocks.includes(block)}
-                          onChange={(event) => onToggleAllowedBlock(block, event.target.checked)}
-                        />
-                        <span className="mono">{block}</span>
-                      </label>
-                    ))}
-                  </div>
+                        <label key={block} className="checkbox-inline">
+                          <input
+                            type="checkbox"
+                            checked={editingTaskConfig.allowedProcessingBlocks.includes(block)}
+                            onChange={(event) => onToggleAllowedBlock(block, event.target.checked)}
+                          />
+                          <span className="mono">{displayPipelineBlockType(block)}</span>
+                        </label>
+                      ))}
+                    </div>
                 </div>
 
                 <button
