@@ -329,8 +329,6 @@ function sinkDocBodyKey(type: PipelineSinkType): I18nKey {
   return 'pipelineDocSinkEventFeedBody';
 }
 
-type SampleViewMode = 'rendered' | 'raw';
-
 function parseJson(value: string | null | undefined): unknown {
   if (!value) {
     return null;
@@ -395,19 +393,48 @@ function diffTopLevelKeys(inputValue: unknown, outputValue: unknown): {
 
 function selectBlockSample(
   selectedBySlot: Record<number, string>,
-  block: PipelineBlockObservability
+  block: PipelineBlockObservability,
+  samplesOverride?: PipelineSampleEvent[]
 ): PipelineSampleEvent | null {
-  if (block.samples.length === 0) {
+  const samples = samplesOverride ?? block.samples;
+  if (samples.length === 0) {
     return null;
   }
   const selectedTrace = selectedBySlot[block.slotIndex];
   if (selectedTrace) {
-    const matched = block.samples.find((sample) => sample.traceId === selectedTrace);
+    const matched = samples.find((sample) => sample.traceId === selectedTrace);
     if (matched) {
       return matched;
     }
   }
-  return block.samples[block.samples.length - 1] ?? null;
+  return samples[samples.length - 1] ?? null;
+}
+
+function normalizeSampleInputEventType(sample: PipelineSampleEvent): string {
+  const raw = sample.inputEventType ?? '';
+  const atIndex = raw.indexOf('@');
+  return (atIndex >= 0 ? raw.slice(0, atIndex) : raw).trim().toLowerCase();
+}
+
+function isInternalSample(sample: PipelineSampleEvent): boolean {
+  if (sample.internal === true) {
+    return true;
+  }
+  const inputEventType = normalizeSampleInputEventType(sample);
+  const topic = (sample.topic ?? '').trim().toLowerCase();
+  return inputEventType.startsWith('device.online')
+    || inputEventType.startsWith('device.offline')
+    || inputEventType.startsWith('status.system')
+    || topic.endsWith('/online')
+    || topic.endsWith('/offline')
+    || topic.includes('/status/system');
+}
+
+function nonInternalMetricValue(value: number | undefined): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  return 0;
 }
 
 type FilterTopicWizardMode = 'guided' | 'raw';
@@ -685,8 +712,7 @@ export function PipelineBuilderSection({
   formatTs
 }: PipelineBuilderSectionProps) {
   const [dragOverSlotIndex, setDragOverSlotIndex] = useState<number | null>(null);
-  const [expandedObservabilitySlot, setExpandedObservabilitySlot] = useState<number | null>(null);
-  const [sampleViewMode, setSampleViewMode] = useState<SampleViewMode>('rendered');
+  const [inspectorModalSlotIndex, setInspectorModalSlotIndex] = useState<number | null>(null);
   const [selectedTraceBySlot, setSelectedTraceBySlot] = useState<Record<number, string>>({});
   const [topicFilterModalSlotIndex, setTopicFilterModalSlotIndex] = useState<number | null>(null);
   const [topicFilterModalMode, setTopicFilterModalMode] = useState<FilterTopicWizardMode>('guided');
@@ -766,11 +792,47 @@ export function PipelineBuilderSection({
     typeof logReplayMaxRecords === 'number'
   );
   const processingSlots = buildDisplaySlots(processing);
+  const processingSlotByIndex = new Map(processingSlots.map((slot) => [slot.index, slot]));
   const libraryBlockOptions = blockOptions.filter((entry) => entry !== 'NONE');
   const observabilityBySlot = new Map<number, PipelineBlockObservability>();
   for (const block of view.observability?.blocks ?? []) {
     observabilityBySlot.set(block.slotIndex, block);
   }
+  const inspectorBlock = inspectorModalSlotIndex === null
+    ? null
+    : (observabilityBySlot.get(inspectorModalSlotIndex) ?? null);
+  const inspectorSlot = inspectorModalSlotIndex === null
+    ? null
+    : (processingSlotByIndex.get(inspectorModalSlotIndex) ?? null);
+  const inspectorSamples = inspectorBlock
+    ? (simplifiedView
+      ? inspectorBlock.samples.filter((sample) => !isInternalSample(sample))
+      : inspectorBlock.samples)
+    : [];
+  const inspectorSelectedSample = inspectorBlock
+    ? selectBlockSample(selectedTraceBySlot, inspectorBlock, inspectorSamples)
+    : null;
+  const inspectorParsedInput = inspectorSelectedSample ? parseJson(inspectorSelectedSample.inputPayloadJson) : null;
+  const inspectorParsedOutput = inspectorSelectedSample ? parseJson(inspectorSelectedSample.outputPayloadJson) : null;
+  const inspectorDiff = inspectorSelectedSample
+    ? diffTopLevelKeys(inspectorParsedInput, inspectorParsedOutput)
+    : null;
+  const inspectorInCount = inspectorBlock == null
+    ? 0
+    : (simplifiedView ? nonInternalMetricValue(inspectorBlock.nonInternalInCount) : inspectorBlock.inCount);
+  const inspectorOutCount = inspectorBlock == null
+    ? 0
+    : (simplifiedView ? nonInternalMetricValue(inspectorBlock.nonInternalOutCount) : inspectorBlock.outCount);
+  const inspectorDropCount = inspectorBlock == null
+    ? 0
+    : (simplifiedView ? nonInternalMetricValue(inspectorBlock.nonInternalDropCount) : inspectorBlock.dropCount);
+  const inspectorErrorCount = inspectorBlock == null
+    ? 0
+    : (simplifiedView ? nonInternalMetricValue(inspectorBlock.nonInternalErrorCount) : inspectorBlock.errorCount);
+  const inspectorOutputPayload = inspectorSelectedSample?.outputPayloadJson ?? '';
+  const inspectorOutputMissingBecauseDropped = Boolean(
+    inspectorSelectedSample?.dropped && inspectorOutputPayload.trim().length === 0
+  );
 
   const setSlotBlockType = (slotIndex: number, nextBlockType: string) => {
     if (!view.permissions.processingEditable) {
@@ -866,6 +928,14 @@ export function PipelineBuilderSection({
     const targetBlockType = processingSlots[slotIndex]?.blockType ?? 'NONE';
     setSlotBlockType(slotIndex, sourceBlockType);
     setSlotBlockType(sourceSlotIndex, targetBlockType);
+  };
+
+  const openInspectorModal = (slotIndex: number) => {
+    setInspectorModalSlotIndex(slotIndex);
+  };
+
+  const closeInspectorModal = () => {
+    setInspectorModalSlotIndex(null);
   };
 
   const openTopicFilterModal = (slotIndex: number, slotConfig: Record<string, unknown>) => {
@@ -1293,13 +1363,31 @@ export function PipelineBuilderSection({
                   : [];
                 const slotDeviceScope = normalizeSlotDeviceScope(slot.config.deviceScope);
                 const slotObservability = !isEmpty ? (observabilityBySlot.get(slot.index) ?? null) : null;
-                const inspectorExpanded = expandedObservabilitySlot === slot.index;
-                const selectedSample = slotObservability
-                  ? selectBlockSample(selectedTraceBySlot, slotObservability)
-                  : null;
-                const parsedInput = selectedSample ? parseJson(selectedSample.inputPayloadJson) : null;
-                const parsedOutput = selectedSample ? parseJson(selectedSample.outputPayloadJson) : null;
-                const diff = selectedSample ? diffTopLevelKeys(parsedInput, parsedOutput) : null;
+                const slotSamples = slotObservability
+                  ? (simplifiedView
+                    ? slotObservability.samples.filter((sample) => !isInternalSample(sample))
+                    : slotObservability.samples)
+                  : [];
+                const displayInCount = slotObservability == null
+                  ? 0
+                  : (simplifiedView
+                    ? nonInternalMetricValue(slotObservability.nonInternalInCount)
+                    : slotObservability.inCount);
+                const displayOutCount = slotObservability == null
+                  ? 0
+                  : (simplifiedView
+                    ? nonInternalMetricValue(slotObservability.nonInternalOutCount)
+                    : slotObservability.outCount);
+                const displayDropCount = slotObservability == null
+                  ? 0
+                  : (simplifiedView
+                    ? nonInternalMetricValue(slotObservability.nonInternalDropCount)
+                    : slotObservability.dropCount);
+                const displayErrorCount = slotObservability == null
+                  ? 0
+                  : (simplifiedView
+                    ? nonInternalMetricValue(slotObservability.nonInternalErrorCount)
+                    : slotObservability.errorCount);
                 return (
                   <Fragment key={slot.index}>
                     {slot.index > 0 ? (
@@ -1513,11 +1601,11 @@ export function PipelineBuilderSection({
                       {slotObservability ? (
                         <>
                           <div className="pipeline-slot-observability-summary">
-                            <span className="chip">{t('pipelineMetricIn')}: {slotObservability.inCount}</span>
-                            <span className="chip">{t('pipelineMetricOut')}: {slotObservability.outCount}</span>
-                            <span className="chip warn">{t('pipelineMetricDrop')}: {slotObservability.dropCount}</span>
-                            {!simplifiedView || slotObservability.errorCount > 0 ? (
-                              <span className="chip">{t('pipelineMetricErrors')}: {slotObservability.errorCount}</span>
+                            <span className="chip">{t('pipelineMetricIn')}: {displayInCount}</span>
+                            <span className="chip">{t('pipelineMetricOut')}: {displayOutCount}</span>
+                            <span className="chip warn">{t('pipelineMetricDrop')}: {displayDropCount}</span>
+                            {!simplifiedView || displayErrorCount > 0 ? (
+                              <span className="chip">{t('pipelineMetricErrors')}: {displayErrorCount}</span>
                             ) : null}
                             {simplifiedView ? (
                               <span className="chip">{t('pipelineMetricLatency')}: {slotObservability.latencyP50Ms.toFixed(2)} ms</span>
@@ -1534,93 +1622,10 @@ export function PipelineBuilderSection({
                           <button
                             type="button"
                             className="button tiny secondary"
-                            onClick={() =>
-                              setExpandedObservabilitySlot(inspectorExpanded ? null : slot.index)}
+                            onClick={() => openInspectorModal(slot.index)}
                           >
-                            {inspectorExpanded ? t('hide') : `${t('pipelineInspect')} (${slotObservability.samples.length})`}
+                            {`${t('pipelineInspect')} (${slotSamples.length})`}
                           </button>
-                          {inspectorExpanded ? (
-                            <div className="pipeline-slot-sample-panel">
-                              <div className="pipeline-sample-header">
-                                <h5>{t('pipelineInspect')}</h5>
-                                <div className="pipeline-sample-actions">
-                                  <select
-                                    className="input"
-                                    value={selectedSample?.traceId ?? ''}
-                                    onChange={(event) =>
-                                      setSelectedTraceBySlot((previous) => ({
-                                        ...previous,
-                                        [slot.index]: event.target.value
-                                      }))
-                                    }
-                                  >
-                                    {slotObservability.samples.length === 0 ? (
-                                      <option value="">{t('pipelineNoSamples')}</option>
-                                    ) : null}
-                                    {slotObservability.samples.map((sample) => (
-                                      <option key={sample.traceId} value={sample.traceId}>
-                                        {sample.traceId.slice(0, 8)} - {formatTs(sample.ingestTs)}
-                                      </option>
-                                    ))}
-                                  </select>
-                                  <button
-                                    type="button"
-                                    className="button tiny secondary"
-                                    onClick={() =>
-                                      setSampleViewMode((previous) => (previous === 'rendered' ? 'raw' : 'rendered'))}
-                                  >
-                                    {sampleViewMode === 'rendered' ? t('switchToRawEvent') : t('switchToRenderedEvent')}
-                                  </button>
-                                </div>
-                              </div>
-                              {selectedSample ? (
-                                <>
-                                  <p className="muted">
-                                    Trace: <span className="mono">{selectedSample.traceId}</span> | {t('eventFieldIngestTs')}:{' '}
-                                    {formatTs(selectedSample.ingestTs)} | {t('device')}: {selectedSample.deviceId} |{' '}
-                                    {t('feedHeaderTopic')}: <span className="mono">{selectedSample.topic}</span>
-                                    {selectedSample.dropped
-                                      ? ` | ${t('pipelineDropped')}: ${selectedSample.dropReason ?? '-'}`
-                                      : ''}
-                                  </p>
-                                  {sampleViewMode === 'raw' ? (
-                                    <div className="pipeline-sample-grid">
-                                      <div>
-                                        <h6>{t('pipelineInput')}</h6>
-                                        <pre className="json-box">{selectedSample.inputPayloadJson}</pre>
-                                      </div>
-                                      <div>
-                                        <h6>{t('pipelineOutput')}</h6>
-                                        <pre className="json-box">{selectedSample.outputPayloadJson ?? ''}</pre>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <>
-                                      <div className="pipeline-sample-grid">
-                                        <div>
-                                          <h6>{t('pipelineInput')}</h6>
-                                          <pre className="json-box">{prettyJson(parsedInput)}</pre>
-                                        </div>
-                                        <div>
-                                          <h6>{t('pipelineOutput')}</h6>
-                                          <pre className="json-box">{prettyJson(parsedOutput)}</pre>
-                                        </div>
-                                      </div>
-                                      {diff ? (
-                                        <div className="pipeline-diff-grid">
-                                          <span className="chip ok">{t('pipelineDiffAdded')}: {diff.added.join(', ') || '-'}</span>
-                                          <span className="chip warn">{t('pipelineDiffChanged')}: {diff.changed.join(', ') || '-'}</span>
-                                          <span className="chip">{t('pipelineDiffRemoved')}: {diff.removed.join(', ') || '-'}</span>
-                                        </div>
-                                      ) : null}
-                                    </>
-                                  )}
-                                </>
-                              ) : (
-                                <p className="muted">{t('pipelineNoSamples')}</p>
-                              )}
-                            </div>
-                          ) : null}
                         </>
                       ) : null}
                     </div>
@@ -1827,6 +1832,128 @@ export function PipelineBuilderSection({
         ) : null}
         {!view.permissions.sinkEditable ? <p className="muted">{t('pipelineReadOnlyTask')}</p> : null}
       </article>
+
+      {inspectorModalSlotIndex !== null && inspectorBlock !== null && inspectorSlot !== null ? (
+        <ModalPortal>
+          <div className="event-modal-backdrop" onClick={closeInspectorModal}>
+            <div className="event-modal pipeline-inspector-modal" onClick={(event) => event.stopPropagation()}>
+              <div className="panel-header">
+                <h2>{t('pipelineInspect')}</h2>
+                <button
+                  className="modal-close-button"
+                  type="button"
+                  onClick={closeInspectorModal}
+                  aria-label={t('close')}
+                  title={t('close')}
+                >
+                  <CloseIcon />
+                </button>
+              </div>
+
+              <div className="pipeline-inspector-overview">
+                <span className="chip">#{inspectorSlot.index + 1}</span>
+                <span className="chip mono">{inspectorBlock.blockType}</span>
+                <span className="chip">{t('pipelineMetricIn')}: {inspectorInCount}</span>
+                <span className="chip">{t('pipelineMetricOut')}: {inspectorOutCount}</span>
+                <span className="chip warn">{t('pipelineMetricDrop')}: {inspectorDropCount}</span>
+                {!simplifiedView || inspectorErrorCount > 0 ? (
+                  <span className="chip">{t('pipelineMetricErrors')}: {inspectorErrorCount}</span>
+                ) : null}
+                {simplifiedView ? (
+                  <span className="chip">{t('pipelineMetricLatency')}: {inspectorBlock.latencyP50Ms.toFixed(2)} ms</span>
+                ) : (
+                  <>
+                    <span className="chip">{t('pipelineMetricLatencyP95')}: {inspectorBlock.latencyP95Ms.toFixed(2)} ms</span>
+                    <span className="chip">{t('pipelineMetricBacklog')}: {inspectorBlock.backlogDepth}</span>
+                    <span className="chip">{t('pipelineStateType')}: {inspectorBlock.stateType}</span>
+                  </>
+                )}
+              </div>
+
+              <div className="pipeline-inspector-controls">
+                <label className="stack pipeline-field pipeline-inspector-trace-select">
+                  <span>Trace</span>
+                  <select
+                    className="input"
+                    value={inspectorSelectedSample?.traceId ?? ''}
+                    onChange={(event) =>
+                      setSelectedTraceBySlot((previous) => ({
+                        ...previous,
+                        [inspectorBlock.slotIndex]: event.target.value
+                      }))
+                    }
+                  >
+                    {inspectorSamples.length === 0 ? (
+                      <option value="">{t('pipelineNoSamples')}</option>
+                    ) : null}
+                    {inspectorSamples.map((sample) => (
+                      <option key={sample.traceId} value={sample.traceId}>
+                        {sample.traceId.slice(0, 8)} - {formatTs(sample.ingestTs)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              {inspectorSelectedSample ? (
+                <div className="pipeline-inspector-body">
+                  <div className="pipeline-inspector-meta-grid">
+                    <div className="pipeline-inspector-meta-row">
+                      <span className="pipeline-inspector-meta-key">Trace</span>
+                      <span className="pipeline-inspector-meta-value mono">{inspectorSelectedSample.traceId}</span>
+                    </div>
+                    <div className="pipeline-inspector-meta-row">
+                      <span className="pipeline-inspector-meta-key">{t('eventFieldIngestTs')}</span>
+                      <span className="pipeline-inspector-meta-value">{formatTs(inspectorSelectedSample.ingestTs)}</span>
+                    </div>
+                    <div className="pipeline-inspector-meta-row">
+                      <span className="pipeline-inspector-meta-key">{t('feedHeaderDeviceId')}</span>
+                      <span className="pipeline-inspector-meta-value mono">{inspectorSelectedSample.deviceId}</span>
+                    </div>
+                    <div className="pipeline-inspector-meta-row">
+                      <span className="pipeline-inspector-meta-key">{t('feedHeaderTopic')}</span>
+                      <span className="pipeline-inspector-meta-value mono">{inspectorSelectedSample.topic}</span>
+                    </div>
+                    {inspectorSelectedSample.dropped ? (
+                      <div className="pipeline-inspector-meta-row">
+                        <span className="pipeline-inspector-meta-key">{t('pipelineDropped')}</span>
+                        <span className="pipeline-inspector-meta-value pipeline-inspector-meta-value-warn">
+                          {inspectorSelectedSample.dropReason ?? '-'}
+                        </span>
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="pipeline-sample-grid">
+                    <div className="pipeline-inspector-io-card">
+                      <h6>{t('pipelineInputShort')}</h6>
+                      <pre className="json-box">{prettyJson(inspectorParsedInput)}</pre>
+                    </div>
+                    <div className="pipeline-inspector-io-card">
+                      <h6>{t('pipelineOutput')}</h6>
+                      {inspectorOutputMissingBecauseDropped ? (
+                        <div className="pipeline-inspector-output-dropped" aria-label={t('pipelineDropped')}>
+                          <span className="pipeline-inspector-output-cross">✕</span>
+                        </div>
+                      ) : (
+                        <pre className="json-box">{prettyJson(inspectorParsedOutput)}</pre>
+                      )}
+                    </div>
+                  </div>
+                  {inspectorDiff ? (
+                    <div className="pipeline-diff-grid">
+                      <span className="chip ok">{t('pipelineDiffAdded')}: {inspectorDiff.added.join(', ') || '-'}</span>
+                      <span className="chip warn">{t('pipelineDiffChanged')}: {inspectorDiff.changed.join(', ') || '-'}</span>
+                      <span className="chip">{t('pipelineDiffRemoved')}: {inspectorDiff.removed.join(', ') || '-'}</span>
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="muted">{t('pipelineNoSamples')}</p>
+              )}
+            </div>
+          </div>
+        </ModalPortal>
+      ) : null}
 
       {topicFilterModalSlotIndex !== null ? (
         <ModalPortal>

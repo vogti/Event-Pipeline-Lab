@@ -18,6 +18,10 @@ public record PipelineBlockObservabilityDto(
         double latencyP95Ms,
         int backlogDepth,
         Map<String, Long> dropReasons,
-        List<PipelineSampleEventDto> samples
+        List<PipelineSampleEventDto> samples,
+        long nonInternalInCount,
+        long nonInternalOutCount,
+        long nonInternalDropCount,
+        long nonInternalErrorCount
 ) {
 }

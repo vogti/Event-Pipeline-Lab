@@ -445,6 +445,94 @@
   background: rgba(255, 255, 255, 0.62);
 }
 
+.pipeline-inspector-modal {
+  width: min(1120px, 100%);
+}
+
+.pipeline-inspector-overview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.pipeline-inspector-controls {
+  align-items: end;
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.pipeline-inspector-trace-select {
+  min-width: 0;
+}
+
+.pipeline-inspector-body {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.pipeline-inspector-meta-grid {
+  border: 1px solid rgba(63, 98, 122, 0.2);
+  border-radius: 10px;
+  background: rgba(239, 247, 252, 0.72);
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.5rem 0.55rem;
+}
+
+.pipeline-inspector-meta-row {
+  align-items: start;
+  display: grid;
+  gap: 0.45rem;
+  grid-template-columns: minmax(105px, 150px) minmax(0, 1fr);
+}
+
+.pipeline-inspector-meta-key {
+  color: #2b4a60;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.pipeline-inspector-meta-value {
+  color: #1f3243;
+  font-size: 0.86rem;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.pipeline-inspector-meta-value-warn {
+  color: #b53d36;
+  font-weight: 700;
+}
+
+.pipeline-inspector-io-card {
+  background: rgba(236, 246, 252, 0.75);
+  border: 1px solid rgba(65, 102, 126, 0.2);
+  border-radius: 10px;
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.45rem;
+}
+
+.pipeline-inspector-output-dropped {
+  align-items: center;
+  background: rgba(255, 238, 238, 0.8);
+  border: 1px dashed rgba(191, 67, 67, 0.45);
+  border-radius: 8px;
+  display: flex;
+  justify-content: center;
+  min-height: 8rem;
+}
+
+.pipeline-inspector-output-cross {
+  color: #b53d36;
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .pipeline-sample-header {
   align-items: center;
   display: flex;
@@ -610,6 +698,15 @@
 
   .pipeline-sample-grid {
     grid-template-columns: 1fr;
+  }
+
+  .pipeline-inspector-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .pipeline-inspector-meta-row {
+    grid-template-columns: 1fr;
+    gap: 0.18rem;
   }
 
   .pipeline-transform-row {

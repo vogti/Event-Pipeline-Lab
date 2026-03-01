@@ -11,10 +11,10 @@ public record PipelineSampleEventDto(
         String topic,
         String inputEventType,
         String outputEventType,
+        boolean internal,
         boolean dropped,
         String dropReason,
         String inputPayloadJson,
         String outputPayloadJson
 ) {
 }
-

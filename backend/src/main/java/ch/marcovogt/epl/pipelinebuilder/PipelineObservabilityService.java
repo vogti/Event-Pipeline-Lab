@@ -109,8 +109,12 @@ public class PipelineObservabilityService {
             String blockType = blockTypeAt(processing, index);
             Map<String, Object> blockConfig = slotConfigAt(processing, index);
             BlockState blockState = blockState(groupState, index, blockType);
+            boolean inputInternal = runtimeEvent.isInternal;
 
             blockState.inCount += 1L;
+            if (!inputInternal) {
+                blockState.nonInternalInCount += 1L;
+            }
             boolean sampled = shouldSample(blockState.inCount);
             long startedNs = System.nanoTime();
 
@@ -121,6 +125,10 @@ public class PipelineObservabilityService {
             } catch (Exception ex) {
                 blockState.errorCount += 1L;
                 blockState.dropCount += 1L;
+                if (!inputInternal) {
+                    blockState.nonInternalErrorCount += 1L;
+                    blockState.nonInternalDropCount += 1L;
+                }
                 incrementDropReason(blockState, "error");
                 double latencyMs = latencyMs(startedNs, blockType);
                 appendLatency(blockState, latencyMs);
@@ -137,6 +145,9 @@ public class PipelineObservabilityService {
 
             if (result.dropped) {
                 blockState.dropCount += 1L;
+                if (!inputInternal) {
+                    blockState.nonInternalDropCount += 1L;
+                }
                 incrementDropReason(blockState, result.dropReason);
                 if (sampled) {
                     appendSample(
@@ -148,8 +159,12 @@ public class PipelineObservabilityService {
                 break;
             }
 
+            RuntimeEvent emittedEvent = result.output == null ? runtimeEvent : result.output;
             blockState.outCount += 1L;
-            runtimeEvent = result.output == null ? runtimeEvent : result.output;
+            if (!emittedEvent.isInternal) {
+                blockState.nonInternalOutCount += 1L;
+            }
+            runtimeEvent = emittedEvent;
             if (sampled) {
                 appendSample(
                         blockState,
@@ -225,7 +240,11 @@ public class PipelineObservabilityService {
                     p95,
                     state.backlogDepth,
                     Map.copyOf(state.dropReasons),
-                    List.copyOf(state.samples)
+                    List.copyOf(state.samples),
+                    state.nonInternalInCount,
+                    state.nonInternalOutCount,
+                    state.nonInternalDropCount,
+                    state.nonInternalErrorCount
             ));
         }
 
@@ -1074,6 +1093,7 @@ public class PipelineObservabilityService {
                 input.topic,
                 input.eventType + "@slot" + slotIndex + ":" + blockType,
                 output == null ? null : output.eventType,
+                input.isInternal,
                 dropped,
                 dropReason,
                 truncatePayload(inputPayload),
@@ -1153,6 +1173,10 @@ public class PipelineObservabilityService {
         private long outCount;
         private long dropCount;
         private long errorCount;
+        private long nonInternalInCount;
+        private long nonInternalOutCount;
+        private long nonInternalDropCount;
+        private long nonInternalErrorCount;
         private int backlogDepth;
         private long dedupWindowMs = DEFAULT_DEDUP_WINDOW_MS;
         private long windowSizeMs = DEFAULT_WINDOW_SIZE_MS;

@@ -348,6 +348,49 @@ class PipelineObservabilityServiceTest {
     }
 
     @Test
+    void shouldTrackNonInternalCountersSeparatelyAndMarkInternalSamples() {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(0, "NONE", java.util.Map.of()))
+        );
+        CanonicalEventDto internalEvent = eventAt(
+                "obs-internal",
+                "epld01",
+                "epld01/status/system",
+                "status.system",
+                EventCategory.INTERNAL,
+                "{\"kind\":\"internal\"}",
+                null,
+                Instant.parse("2026-02-26T15:00:00Z"),
+                true
+        );
+        CanonicalEventDto externalEvent = eventAt(
+                "obs-external",
+                "epld01",
+                "epld01/event/button/black",
+                "button.black.press",
+                EventCategory.BUTTON,
+                "{\"state\":true}",
+                null,
+                Instant.parse("2026-02-26T15:00:01Z"),
+                false
+        );
+
+        service.recordEvent("task_intro", "epld01", processing, internalEvent);
+        service.recordEvent("task_intro", "epld01", processing, externalEvent);
+        PipelineBlockObservabilityDto block = service.snapshot("task_intro", "epld01", processing).blocks().get(0);
+
+        assertThat(block.inCount()).isEqualTo(2L);
+        assertThat(block.outCount()).isEqualTo(2L);
+        assertThat(block.nonInternalInCount()).isEqualTo(1L);
+        assertThat(block.nonInternalOutCount()).isEqualTo(1L);
+        assertThat(block.nonInternalDropCount()).isEqualTo(0L);
+        assertThat(block.nonInternalErrorCount()).isEqualTo(0L);
+        assertThat(block.samples()).extracting(PipelineSampleEventDto::internal).containsExactly(true, false);
+    }
+
+    @Test
     void filterDeviceLecturerScopeShouldRequireConfiguredDeviceId() {
         PipelineProcessingSection processing = new PipelineProcessingSection(
                 "CONSTRAINED",

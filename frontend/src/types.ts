@@ -294,6 +294,7 @@ export interface PipelineSampleEvent {
   topic: string;
   inputEventType: string;
   outputEventType: string | null;
+  internal?: boolean;
   dropped: boolean;
   dropReason: string | null;
   inputPayloadJson: string;
@@ -316,6 +317,10 @@ export interface PipelineBlockObservability {
   backlogDepth: number;
   dropReasons: Record<string, number>;
   samples: PipelineSampleEvent[];
+  nonInternalInCount?: number;
+  nonInternalOutCount?: number;
+  nonInternalDropCount?: number;
+  nonInternalErrorCount?: number;
 }
 
 export interface PipelineObservability {
