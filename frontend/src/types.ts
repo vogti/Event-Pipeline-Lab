@@ -180,6 +180,16 @@ export interface WebSocketSessionStats {
   total: number;
 }
 
+export interface CloudflareTunnelStatus {
+  enabled: boolean;
+  hostname: string;
+  reachable: boolean;
+  ready: boolean;
+  haConnections: number | null;
+  checkedAt: TimestampValue;
+  lastError: string | null;
+}
+
 export interface AdminSystemStatus {
   generatedAt: TimestampValue;
   eventsLast10Minutes: SystemStatusEventRatePoint[];
@@ -189,6 +199,7 @@ export interface AdminSystemStatus {
   postgresSizeBytes: number;
   storedEventCount: number;
   websocketSessions: WebSocketSessionStats;
+  cloudflareTunnel: CloudflareTunnelStatus | null;
 }
 
 export interface ResetEventsResponse {

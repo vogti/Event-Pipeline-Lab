@@ -68,6 +68,13 @@ export function SystemStatusSection({
 }: SystemStatusSectionProps) {
   const refreshBusy = busyKey === 'admin-refresh' || busyKey === 'admin-reset-events';
   const locale = language === 'de' ? 'de-CH' : 'en-US';
+  const cloudflareStatus = adminSystemStatus?.cloudflareTunnel ?? null;
+  const cloudflareConnected = cloudflareStatus?.enabled
+    ? (cloudflareStatus.reachable && (cloudflareStatus.ready || (cloudflareStatus.haConnections ?? 0) > 0))
+    : false;
+  const cloudflareStatusLabel = !cloudflareStatus?.enabled
+    ? t('cloudflareTunnelDisabled')
+    : (cloudflareConnected ? t('cloudflareTunnelConnected') : t('cloudflareTunnelDisconnected'));
 
   return (
     <section className="panel panel-animate full-width system-status-panel">
@@ -185,6 +192,47 @@ export function SystemStatusSection({
                 </div>
               </div>
               <p className="muted">{formatTs(adminSystemStatus.generatedAt)}</p>
+            </article>
+
+            <article className="system-status-card">
+              <h3>{t('cloudflareTunnel')}</h3>
+              <p className="system-status-value">
+                <span className={`system-status-pill ${cloudflareConnected ? 'ok' : 'warn'}`}>
+                  {cloudflareStatusLabel}
+                </span>
+              </p>
+              {cloudflareStatus?.enabled ? (
+                <>
+                  <div className="system-status-session-row">
+                    <span>{t('cloudflareHostname')}</span>
+                    {cloudflareStatus.hostname ? (
+                      <a
+                        className="muted mono"
+                        href={`https://${cloudflareStatus.hostname}`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {cloudflareStatus.hostname}
+                      </a>
+                    ) : (
+                      <strong>-</strong>
+                    )}
+                  </div>
+                  <div className="system-status-session-row">
+                    <span>{t('cloudflareHaConnections')}</span>
+                    <strong>{cloudflareStatus.haConnections ?? '-'}</strong>
+                  </div>
+                  <div className="system-status-session-row">
+                    <span>{t('cloudflareCheckedAt')}</span>
+                    <strong>{formatTs(cloudflareStatus.checkedAt)}</strong>
+                  </div>
+                  {cloudflareStatus.lastError ? (
+                    <p className="system-status-error">{cloudflareStatus.lastError}</p>
+                  ) : null}
+                </>
+              ) : (
+                <p className="muted">{t('cloudflareTunnelEnableHint')}</p>
+              )}
             </article>
           </div>
 

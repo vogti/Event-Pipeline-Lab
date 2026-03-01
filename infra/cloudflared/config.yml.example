@@ -1,8 +1,11 @@
 # Optional config if you prefer cloudflared config-file mode over token mode.
+# Docker Compose in this project uses token mode by default.
+# If you switch to config-file mode manually, keep metrics enabled so EPL can show tunnel status.
 tunnel: <tunnel-uuid>
 credentials-file: /etc/cloudflared/<tunnel-uuid>.json
+metrics: 0.0.0.0:2000
 
 ingress:
-  - hostname: epl.example.com
+  - hostname: epl.marcovogt.ch
     service: http://frontend:80
   - service: http_status:404

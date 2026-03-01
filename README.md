@@ -72,12 +72,21 @@ Event-Pipeline-Lab/
 2. `mosquitto`
 3. `backend`
 4. `frontend`
-5. `cloudflared` (optional, profile: `public`)
+5. `cloudflared` (optional, profile: `public`, token mode)
 
 ## Run Locally
 
 ```bash
 docker compose up --build -d
+```
+
+Run with public tunnel enabled:
+
+```bash
+export CLOUDFLARE_TUNNEL_TOKEN='<token-from-cloudflare>'
+export EPL_CLOUDFLARE_ENABLED=true
+export EPL_CLOUDFLARE_HOSTNAME=epl.marcovogt.ch
+docker compose --profile public up --build -d
 ```
 
 ## Pipeline Builder Roadmap
@@ -158,10 +167,18 @@ Notes:
 
 - Flyway migrations run automatically when backend starts.
 - Existing Postgres data is kept (no volume deletion in the commands above).
-- If you use the optional public tunnel, also update/restart it with:
+- If you use the optional public tunnel, also make sure these variables are set in the shell:
 
 ```bash
-docker compose --profile public up -d cloudflared
+export CLOUDFLARE_TUNNEL_TOKEN='<token-from-cloudflare>'
+export EPL_CLOUDFLARE_ENABLED=true
+export EPL_CLOUDFLARE_HOSTNAME=epl.marcovogt.ch
+```
+
+- Then update/restart tunnel + frontend/backend with:
+
+```bash
+docker compose --profile public up -d backend frontend cloudflared
 ```
 
 Frontend UI:
@@ -425,11 +442,79 @@ docker compose logs -f backend
 ## Cloudflare Tunnel (optional)
 
 ```bash
+export CLOUDFLARE_TUNNEL_TOKEN='<token-from-cloudflare>'
+export EPL_CLOUDFLARE_ENABLED=true
+export EPL_CLOUDFLARE_HOSTNAME=epl.marcovogt.ch
 docker compose --profile public up -d cloudflared
 ```
 
-Config file:
+### Target hostname
+
+- Public URL: [https://epl.marcovogt.ch](https://epl.marcovogt.ch)
+- Local fallback stays available at [http://localhost:5173](http://localhost:5173)
+
+### One-time Cloudflare setup (Named Tunnel)
+
+Prerequisites:
+
+- `marcovogt.ch` is managed in Cloudflare DNS.
+- `cloudflared` CLI is installed on the VM (or temporarily on a workstation with Cloudflare access).
+
+Create and route tunnel:
+
+```bash
+cloudflared tunnel login
+cloudflared tunnel create epl
+cloudflared tunnel route dns epl epl.marcovogt.ch
+cloudflared tunnel token epl
+```
+
+Copy the printed token and export it in the shell before starting compose:
+
+```bash
+export CLOUDFLARE_TUNNEL_TOKEN='<token-from-cloudflare>'
+export EPL_CLOUDFLARE_ENABLED=true
+export EPL_CLOUDFLARE_HOSTNAME=epl.marcovogt.ch
+docker compose --profile public up -d --build
+```
+
+### Operational checks
+
+```bash
+docker compose --profile public ps
+docker compose logs cloudflared --tail=80
+docker run --rm curlimages/curl:8.12.1 -sS https://epl.marcovogt.ch
+```
+
+In the EPL Admin UI (`System Status` page), a new `Cloudflare tunnel` card shows:
+
+- connection state (`connected` / `disconnected` / `disabled`)
+- hostname
+- HA connection count (from cloudflared metrics)
+- last probe timestamp and any probe error text
+
+### HTTPS / SSL certificates
+
+- Public TLS for [https://epl.marcovogt.ch](https://epl.marcovogt.ch) is terminated at Cloudflare with Cloudflare-managed certificates.
+- No additional Let's Encrypt certificate is required for the public endpoint when using Cloudflare Tunnel.
+- EPL frontend now enforces HTTPS redirect for the public hostname (`epl.marcovogt.ch`) while keeping local fallback (`http://localhost:5173`) unchanged.
+
+Quick check:
+
+```bash
+docker run --rm curlimages/curl:8.12.1 -sSI https://epl.marcovogt.ch | head -n 5
+docker run --rm curlimages/curl:8.12.1 -sSI http://epl.marcovogt.ch | head -n 5
+```
+
+Expected:
+
+- HTTPS returns `200`.
+- HTTP returns `301` redirect to `https://epl.marcovogt.ch/...`.
+
+### Optional config-file mode
+
+If you prefer config-file mode instead of token mode, use:
 
 - `infra/cloudflared/config.yml.example`
 
-Local fallback remains `http://localhost:8080`.
+Keep `metrics: 0.0.0.0:2000` enabled so tunnel status remains visible in EPL.

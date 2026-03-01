@@ -11,6 +11,7 @@ public record AdminSystemStatusResponse(
         Long ramTotalBytes,
         long postgresSizeBytes,
         long storedEventCount,
-        WebSocketSessionStats websocketSessions
+        WebSocketSessionStats websocketSessions,
+        CloudflareTunnelStatus cloudflareTunnel
 ) {
 }

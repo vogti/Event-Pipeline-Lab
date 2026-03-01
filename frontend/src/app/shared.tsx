@@ -644,7 +644,14 @@ function sameAdminSystemStatus(
     a.storedEventCount === b.storedEventCount &&
     a.websocketSessions.admin === b.websocketSessions.admin &&
     a.websocketSessions.student === b.websocketSessions.student &&
-    a.websocketSessions.total === b.websocketSessions.total
+    a.websocketSessions.total === b.websocketSessions.total &&
+    (a.cloudflareTunnel?.enabled ?? null) === (b.cloudflareTunnel?.enabled ?? null) &&
+    (a.cloudflareTunnel?.hostname ?? null) === (b.cloudflareTunnel?.hostname ?? null) &&
+    (a.cloudflareTunnel?.reachable ?? null) === (b.cloudflareTunnel?.reachable ?? null) &&
+    (a.cloudflareTunnel?.ready ?? null) === (b.cloudflareTunnel?.ready ?? null) &&
+    (a.cloudflareTunnel?.haConnections ?? null) === (b.cloudflareTunnel?.haConnections ?? null) &&
+    (a.cloudflareTunnel?.checkedAt ?? null) === (b.cloudflareTunnel?.checkedAt ?? null) &&
+    (a.cloudflareTunnel?.lastError ?? null) === (b.cloudflareTunnel?.lastError ?? null)
   );
 }
 

@@ -83,3 +83,9 @@ epl:
       topic: ${EPL_LOG_MODE_KAFKA_TOPIC:epl.events.log}
       client-id: ${EPL_LOG_MODE_KAFKA_CLIENT_ID:epl-log-mode}
       replay-default-max-records: ${EPL_LOG_MODE_KAFKA_REPLAY_DEFAULT_MAX_RECORDS:200}
+  cloudflare:
+    enabled: ${EPL_CLOUDFLARE_ENABLED:false}
+    hostname: ${EPL_CLOUDFLARE_HOSTNAME:}
+    ready-url: ${EPL_CLOUDFLARE_READY_URL:http://cloudflared:2000/ready}
+    metrics-url: ${EPL_CLOUDFLARE_METRICS_URL:http://cloudflared:2000/metrics}
+    request-timeout: ${EPL_CLOUDFLARE_REQUEST_TIMEOUT:PT2S}

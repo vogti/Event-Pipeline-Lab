@@ -35,18 +35,21 @@ public class AdminSystemStatusService {
     private final EventFeedService eventFeedService;
     private final AdminWebSocketBroadcaster adminWebSocketBroadcaster;
     private final StudentWebSocketBroadcaster studentWebSocketBroadcaster;
+    private final CloudflareTunnelStatusService cloudflareTunnelStatusService;
     private final Clock clock;
 
     public AdminSystemStatusService(
             JdbcTemplate jdbcTemplate,
             EventFeedService eventFeedService,
             AdminWebSocketBroadcaster adminWebSocketBroadcaster,
-            StudentWebSocketBroadcaster studentWebSocketBroadcaster
+            StudentWebSocketBroadcaster studentWebSocketBroadcaster,
+            CloudflareTunnelStatusService cloudflareTunnelStatusService
     ) {
         this.jdbcTemplate = jdbcTemplate;
         this.eventFeedService = eventFeedService;
         this.adminWebSocketBroadcaster = adminWebSocketBroadcaster;
         this.studentWebSocketBroadcaster = studentWebSocketBroadcaster;
+        this.cloudflareTunnelStatusService = cloudflareTunnelStatusService;
         this.clock = Clock.systemUTC();
     }
 
@@ -60,6 +63,7 @@ public class AdminSystemStatusService {
         long storedEventCount = readCanonicalEventCount();
         int adminSessions = adminWebSocketBroadcaster.activeSessionCount();
         int studentSessions = studentWebSocketBroadcaster.activeSessionCount();
+        CloudflareTunnelStatus cloudflareTunnel = cloudflareTunnelStatusService.snapshot();
 
         return new AdminSystemStatusResponse(
                 now,
@@ -69,7 +73,8 @@ public class AdminSystemStatusService {
                 metrics.ramTotalBytes(),
                 postgresSizeBytes,
                 storedEventCount,
-                new WebSocketSessionStats(adminSessions, studentSessions, adminSessions + studentSessions)
+                new WebSocketSessionStats(adminSessions, studentSessions, adminSessions + studentSessions),
+                cloudflareTunnel
         );
     }
 

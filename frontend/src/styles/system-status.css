@@ -132,6 +132,36 @@
   color: #355268;
 }
 
+.system-status-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0.26rem 0.58rem;
+}
+
+.system-status-pill.ok {
+  color: #0f5d35;
+  background: rgba(71, 196, 116, 0.18);
+  border: 1px solid rgba(45, 148, 86, 0.4);
+}
+
+.system-status-pill.warn {
+  color: #8a1f1f;
+  background: rgba(216, 79, 79, 0.14);
+  border: 1px solid rgba(191, 56, 56, 0.34);
+}
+
+.system-status-error {
+  margin: 0;
+  color: #8a1f1f;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
 .system-transfer-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

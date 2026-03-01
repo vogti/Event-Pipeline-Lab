@@ -12,4 +12,10 @@ describe('nginx upstream resilience', () => {
     expect(nginxConf).toContain('proxy_read_timeout 60s;');
     expect(nginxConf).toContain('proxy_send_timeout 60s;');
   });
+
+  it('forces https redirect for the public hostname while keeping local fallback', () => {
+    expect(nginxConf).toContain('"epl.marcovogt.ch:http" 1;');
+    expect(nginxConf).toContain('return 301 https://$host$request_uri;');
+    expect(nginxConf).toContain('proxy_set_header X-Forwarded-Proto $forwarded_proto;');
+  });
 });
