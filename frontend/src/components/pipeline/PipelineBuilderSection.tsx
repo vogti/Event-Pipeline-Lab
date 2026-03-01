@@ -74,6 +74,9 @@ interface PipelineBuilderSectionProps {
   onRestartStateLost?: () => void;
   onRestartStateRetained?: () => void;
   stateControlBusy?: boolean;
+  hideRestartControlsInSimpleMode?: boolean;
+  showViewModeToggle?: boolean;
+  onSimplifiedViewChange?: (next: boolean) => void;
   forceSinkEditable?: boolean;
   simplifiedView?: boolean;
   formatTs: (value: TimestampValue) => string;
@@ -735,6 +738,9 @@ export function PipelineBuilderSection({
   onRestartStateLost,
   onRestartStateRetained,
   stateControlBusy,
+  hideRestartControlsInSimpleMode = false,
+  showViewModeToggle = false,
+  onSimplifiedViewChange,
   forceSinkEditable = false,
   simplifiedView = false,
   formatTs
@@ -830,6 +836,9 @@ export function PipelineBuilderSection({
     typeof logReplayMaxRecords === 'number'
   );
   const sinkEditable = forceSinkEditable || view.permissions.sinkEditable;
+  const showStateResetControl = view.permissions.stateResetAllowed && !simplifiedView;
+  const showStateRestartControls = view.permissions.stateRestartAllowed
+    && !(simplifiedView && hideRestartControlsInSimpleMode);
   const processingSlots = buildDisplaySlots(processing);
   const processingSlotByIndex = new Map(processingSlots.map((slot) => [slot.index, slot]));
   const libraryBlockOptions = blockOptions.filter((entry) => entry !== 'NONE');
@@ -1574,6 +1583,25 @@ export function PipelineBuilderSection({
     <section className={`panel pipeline-builder full-width ${isTabletTouchDevice ? 'tablet-touch-mode' : ''}`}>
       <header className="panel-header">
         <h3>{title}</h3>
+        {showViewModeToggle && onSimplifiedViewChange ? (
+          <div className="pipeline-builder-actions">
+            <span className="muted">{t('pipelineViewMode')}</span>
+            <button
+              type="button"
+              className={`button tiny ${!simplifiedView ? 'active' : 'secondary'}`}
+              onClick={() => onSimplifiedViewChange(false)}
+            >
+              {t('pipelineViewModeAdvanced')}
+            </button>
+            <button
+              type="button"
+              className={`button tiny ${simplifiedView ? 'active' : 'secondary'}`}
+              onClick={() => onSimplifiedViewChange(true)}
+            >
+              {t('pipelineViewModeSimple')}
+            </button>
+          </div>
+        ) : null}
       </header>
       {contextNotice ? (
         <div className="pipeline-context-banner">
@@ -2077,9 +2105,9 @@ export function PipelineBuilderSection({
                 {view.observability?.lastRestartMode ? ` (${view.observability.lastRestartMode})` : ''}
               </p>
             ) : null}
-            {(view.permissions.stateRestartAllowed || (view.permissions.stateResetAllowed && !simplifiedView)) ? (
+            {(showStateRestartControls || showStateResetControl) ? (
               <div className="pipeline-state-controls">
-                {view.permissions.stateResetAllowed && !simplifiedView ? (
+                {showStateResetControl ? (
                   <button
                     type="button"
                     className="button tiny secondary"
@@ -2089,7 +2117,7 @@ export function PipelineBuilderSection({
                     {t('pipelineStateReset')}
                   </button>
                 ) : null}
-                {view.permissions.stateRestartAllowed ? (
+                {showStateRestartControls ? (
                   <>
                     <button
                       type="button"

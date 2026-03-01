@@ -134,6 +134,7 @@ import {
 const PIPELINE_AUTOSAVE_DEBOUNCE_MS = 650;
 const VIRTUAL_DEVICE_AUTOSAVE_DEBOUNCE_MS = 160;
 const STUDENT_PIPELINE_SIMPLIFIED_STORAGE_KEY = 'epl.student.pipeline.simplifiedView';
+const ADMIN_PIPELINE_SIMPLIFIED_STORAGE_KEY = 'epl.admin.pipeline.simplifiedView';
 const ADMIN_MQTT_SIMPLIFIED_STORAGE_KEY = 'epl.admin.mqtt.simplifiedView';
 
 function processingSectionSignature(value: PipelineProcessingSection | null | undefined): string {
@@ -709,6 +710,20 @@ export default function App() {
       return false;
     }
   });
+  const [adminPipelineSimplifiedView, setAdminPipelineSimplifiedView] = useState<boolean>(() => {
+    if (typeof window === 'undefined') {
+      return false;
+    }
+    try {
+      const stored = window.localStorage.getItem(ADMIN_PIPELINE_SIMPLIFIED_STORAGE_KEY);
+      if (stored === null) {
+        return false;
+      }
+      return stored === 'true';
+    } catch {
+      return false;
+    }
+  });
   const [nowEpochMs, setNowEpochMs] = useState<number>(() => Date.now());
   const [feedDisturbanceClockMs, setFeedDisturbanceClockMs] = useState<number>(() => Date.now());
   const [counterResetTarget, setCounterResetTarget] = useState<CounterResetTarget | null>(null);
@@ -871,6 +886,16 @@ export default function App() {
   }, [adminData]);
 
   useEffect(() => {
+    if (adminPage !== 'feed') {
+      return;
+    }
+    if (adminFeedSource !== 'AFTER_PIPELINE') {
+      return;
+    }
+    setAdminFeedSource('AFTER_DISTURBANCES');
+  }, [adminFeedSource, adminPage]);
+
+  useEffect(() => {
     if (!isAdminFeedHotPage(adminPage)) {
       return;
     }
@@ -980,6 +1005,20 @@ export default function App() {
       // Ignore storage failures; this preference is best-effort.
     }
   }, [adminMqttSimplifiedView]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    try {
+      window.localStorage.setItem(
+        ADMIN_PIPELINE_SIMPLIFIED_STORAGE_KEY,
+        adminPipelineSimplifiedView ? 'true' : 'false'
+      );
+    } catch {
+      // Ignore storage failures; this preference is best-effort.
+    }
+  }, [adminPipelineSimplifiedView]);
 
   const language = useMemo<Language>(() => {
     if (languageOverride) {
@@ -1358,6 +1397,13 @@ export default function App() {
     }
     setStudentShowInternal(false);
   }, [studentPipelineSimplifiedView, studentShowInternal]);
+
+  useEffect(() => {
+    if (!adminPipelineSimplifiedView || !adminIncludeInternal) {
+      return;
+    }
+    setAdminIncludeInternal(false);
+  }, [adminIncludeInternal, adminPipelineSimplifiedView]);
 
   useEffect(() => {
     if (studentData?.capabilities.studentSendEventEnabled) {
@@ -4448,6 +4494,7 @@ export default function App() {
   }, [studentVisibleFeed]);
 
   const studentFeedViewMode: FeedViewMode = studentPipelineSimplifiedView ? 'rendered' : feedViewMode;
+  const adminFeedViewMode: FeedViewMode = adminPipelineSimplifiedView ? 'rendered' : feedViewMode;
 
   const adminFeedValues = useMemo(() => {
     const values = new Map<string, string>();
@@ -5072,13 +5119,13 @@ export default function App() {
         <td>{eventSourceLabel(eventItem)}</td>
         <td className="mono">{eventItem.topic}</td>
         <td className="mono raw-cell">
-          {feedViewMode === 'rendered'
+          {adminFeedViewMode === 'rendered'
             ? (adminFeedValues.get(eventItem.id) ?? '')
             : eventItem.payloadJson}
         </td>
       </tr>
     ));
-  }, [adminFeedValues, adminVisibleFeed, eventSourceLabel, feedViewMode, formatTs, recentFeedEventIds]);
+  }, [adminFeedValues, adminFeedViewMode, adminVisibleFeed, eventSourceLabel, formatTs, recentFeedEventIds]);
 
   const adminPipelineFeedRows = useMemo(() => {
     if (adminPipelineVisibleFeed.length === 0) {
@@ -5106,7 +5153,7 @@ export default function App() {
         <td>{eventSourceLabel(eventItem)}</td>
         <td className="mono">{eventItem.topic}</td>
         <td className="mono raw-cell">
-          {feedViewMode === 'rendered'
+          {adminFeedViewMode === 'rendered'
             ? (adminPipelineFeedValues.get(eventItem.id) ?? '')
             : eventItem.payloadJson}
         </td>
@@ -5114,9 +5161,9 @@ export default function App() {
     ));
   }, [
     adminPipelineFeedValues,
+    adminFeedViewMode,
     adminPipelineVisibleFeed,
     eventSourceLabel,
-    feedViewMode,
     formatTs,
     recentFeedEventIds
   ]);
@@ -5133,9 +5180,12 @@ export default function App() {
         wsLabel={wsLabel}
         roleLabel={roleLabel}
         language={language}
+        showPipelineViewModeToggle={session?.role === 'ADMIN'}
+        pipelineSimplifiedView={adminPipelineSimplifiedView}
         logoutBusy={busyKey === 'logout'}
         onToggleUserMenu={() => setUserMenuOpen((open) => !open)}
         onSetLanguage={setManualLanguage}
+        onPipelineSimplifiedViewChange={setAdminPipelineSimplifiedView}
         onOpenSettings={openSettingsSection}
         onOpenAbout={openAboutModal}
         onLogout={handleLogout}
@@ -5459,6 +5509,8 @@ export default function App() {
                     void controlAdminPipelineState('RESTART_STATE_RETAINED');
                   }}
                   stateControlBusy={busyKey === 'admin-pipeline-state'}
+                  hideRestartControlsInSimpleMode
+                  simplifiedView={adminPipelineSimplifiedView}
                   forceSinkEditable
                   formatTs={formatTs}
                 />
@@ -5469,7 +5521,8 @@ export default function App() {
                   t={t}
                   title={`${t('liveFeed')} (${t('feedSourceAfterPipeline')})`}
                   adminFeedPaused={adminFeedPaused}
-                  feedViewMode={feedViewMode}
+                  feedViewMode={adminFeedViewMode}
+                  showRawViewToggle={!adminPipelineSimplifiedView}
                   onTogglePause={() => setAdminFeedPaused((value) => !value)}
                   onToggleFeedViewMode={() =>
                     setFeedViewMode((mode) => (mode === 'rendered' ? 'raw' : 'rendered'))
@@ -5478,6 +5531,7 @@ export default function App() {
                   showPublishEventButton={false}
                   adminTopicFilter={adminTopicFilter}
                   onAdminTopicFilterChange={setAdminTopicFilter}
+                  showInternalEventsToggle={!adminPipelineSimplifiedView}
                   adminIncludeInternal={adminIncludeInternal}
                   onAdminIncludeInternalChange={setAdminIncludeInternal}
                   showFeedSourceSelector={false}
@@ -5533,7 +5587,8 @@ export default function App() {
                 <AdminFeedSection
                   t={t}
                   adminFeedPaused={adminFeedPaused}
-                  feedViewMode={feedViewMode}
+                  feedViewMode={adminFeedViewMode}
+                  showRawViewToggle={!adminPipelineSimplifiedView}
                   onTogglePause={() => setAdminFeedPaused((value) => !value)}
                   onToggleFeedViewMode={() =>
                     setFeedViewMode((mode) => (mode === 'rendered' ? 'raw' : 'rendered'))
@@ -5553,10 +5608,15 @@ export default function App() {
                   onOpenSendEventModal={openMqttEventModal}
                   adminTopicFilter={adminTopicFilter}
                   onAdminTopicFilterChange={setAdminTopicFilter}
+                  showInternalEventsToggle={!adminPipelineSimplifiedView}
                   adminIncludeInternal={adminIncludeInternal}
                   onAdminIncludeInternalChange={setAdminIncludeInternal}
                   adminFeedSource={adminFeedSource}
-                  onAdminFeedSourceChange={setAdminFeedSource}
+                  onAdminFeedSourceChange={(nextSource) =>
+                    setAdminFeedSource(
+                      nextSource === 'AFTER_PIPELINE' ? 'AFTER_DISTURBANCES' : nextSource
+                    )
+                  }
                   adminVisibleFeedCount={adminVisibleFeed.length}
                   adminFeedRows={adminFeedRows}
                 />

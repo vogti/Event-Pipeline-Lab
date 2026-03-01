@@ -7,6 +7,7 @@ interface AdminFeedSectionProps {
   title?: string;
   adminFeedPaused: boolean;
   feedViewMode: 'rendered' | 'raw';
+  showRawViewToggle?: boolean;
   onTogglePause: () => void;
   onToggleFeedViewMode: () => void;
   onClearFeed: () => void;
@@ -14,6 +15,7 @@ interface AdminFeedSectionProps {
   onOpenSendEventModal?: () => void;
   adminTopicFilter: string;
   onAdminTopicFilterChange: (value: string) => void;
+  showInternalEventsToggle?: boolean;
   adminIncludeInternal: boolean;
   onAdminIncludeInternalChange: (value: boolean) => void;
   showFeedSourceSelector?: boolean;
@@ -28,6 +30,7 @@ export function AdminFeedSection({
   title,
   adminFeedPaused,
   feedViewMode,
+  showRawViewToggle = true,
   onTogglePause,
   onToggleFeedViewMode,
   onClearFeed,
@@ -35,6 +38,7 @@ export function AdminFeedSection({
   onOpenSendEventModal,
   adminTopicFilter,
   onAdminTopicFilterChange,
+  showInternalEventsToggle = true,
   adminIncludeInternal,
   onAdminIncludeInternalChange,
   showFeedSourceSelector = true,
@@ -50,9 +54,11 @@ export function AdminFeedSection({
         <button className="button secondary" type="button" onClick={onTogglePause}>
           {adminFeedPaused ? t('resume') : t('pause')}
         </button>
-        <button className="button secondary" type="button" onClick={onToggleFeedViewMode}>
-          {feedViewMode === 'rendered' ? t('switchToRawFeed') : t('switchToRenderedFeed')}
-        </button>
+        {showRawViewToggle ? (
+          <button className="button secondary" type="button" onClick={onToggleFeedViewMode}>
+            {feedViewMode === 'rendered' ? t('switchToRawFeed') : t('switchToRenderedFeed')}
+          </button>
+        ) : null}
         <button className="button secondary" type="button" onClick={onClearFeed}>
           {t('clear')}
         </button>
@@ -69,14 +75,16 @@ export function AdminFeedSection({
           onChange={(event) => onAdminTopicFilterChange(event.target.value)}
         />
 
-        <label className="checkbox-inline">
-          <input
-            type="checkbox"
-            checked={adminIncludeInternal}
-            onChange={(event) => onAdminIncludeInternalChange(event.target.checked)}
-          />
-          <span>{t('includeInternal')}</span>
-        </label>
+        {showInternalEventsToggle ? (
+          <label className="checkbox-inline">
+            <input
+              type="checkbox"
+              checked={adminIncludeInternal}
+              onChange={(event) => onAdminIncludeInternalChange(event.target.checked)}
+            />
+            <span>{t('includeInternal')}</span>
+          </label>
+        ) : null}
 
         {showFeedSourceSelector && adminFeedSource && onAdminFeedSourceChange ? (
           <select
@@ -86,7 +94,6 @@ export function AdminFeedSection({
           >
             <option value="AFTER_DISTURBANCES">{t('feedSourceAfterDisturbances')}</option>
             <option value="BEFORE_DISTURBANCES">{t('feedSourceBeforeDisturbances')}</option>
-            <option value="AFTER_PIPELINE">{t('feedSourceAfterPipeline')}</option>
           </select>
         ) : null}
       </div>

@@ -12,9 +12,12 @@ interface AppTopBarProps {
   wsLabel: string;
   roleLabel: string | null;
   language: Language;
+  showPipelineViewModeToggle?: boolean;
+  pipelineSimplifiedView?: boolean;
   logoutBusy: boolean;
   onToggleUserMenu: () => void;
   onSetLanguage: (language: Language) => void;
+  onPipelineSimplifiedViewChange?: (next: boolean) => void;
   onOpenSettings: () => void;
   onOpenAbout: () => void;
   onLogout: () => void;
@@ -30,9 +33,12 @@ export function AppTopBar({
   wsLabel,
   roleLabel,
   language,
+  showPipelineViewModeToggle = false,
+  pipelineSimplifiedView = false,
   logoutBusy,
   onToggleUserMenu,
   onSetLanguage,
+  onPipelineSimplifiedViewChange,
   onOpenSettings,
   onOpenAbout,
   onLogout
@@ -84,6 +90,28 @@ export function AppTopBar({
                     </button>
                   </div>
                 </div>
+
+                {showPipelineViewModeToggle && onPipelineSimplifiedViewChange ? (
+                  <div className="user-menu-section">
+                    <div className="user-menu-label">{t('pipelineViewMode')}</div>
+                    <div className="user-menu-actions">
+                      <button
+                        className={`button tiny ${!pipelineSimplifiedView ? 'active' : 'secondary'}`}
+                        type="button"
+                        onClick={() => onPipelineSimplifiedViewChange(false)}
+                      >
+                        {t('pipelineViewModeAdvanced')}
+                      </button>
+                      <button
+                        className={`button tiny ${pipelineSimplifiedView ? 'active' : 'secondary'}`}
+                        type="button"
+                        onClick={() => onPipelineSimplifiedViewChange(true)}
+                      >
+                        {t('pipelineViewModeSimple')}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
 
                 <button className="button secondary user-menu-link" type="button" onClick={onOpenSettings}>
                   {t('settings')}
