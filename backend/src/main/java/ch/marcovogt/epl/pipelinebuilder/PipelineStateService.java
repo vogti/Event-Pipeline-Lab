@@ -1,6 +1,7 @@
 package ch.marcovogt.epl.pipelinebuilder;
 
 import ch.marcovogt.epl.admin.AppSettingsService;
+import ch.marcovogt.epl.authsession.AuthService;
 import ch.marcovogt.epl.authsession.SessionPrincipal;
 import ch.marcovogt.epl.common.DeviceIdMapping;
 import ch.marcovogt.epl.eventfeedquery.FeedScenarioService;
@@ -40,6 +41,7 @@ public class PipelineStateService {
 
     private final PipelineStateRepository pipelineStateRepository;
     private final TaskStateService taskStateService;
+    private final AuthService authService;
     private final PipelineObservabilityService pipelineObservabilityService;
     private final PipelineSinkExecutionService pipelineSinkExecutionService;
     private final FeedScenarioService feedScenarioService;
@@ -50,6 +52,7 @@ public class PipelineStateService {
     public PipelineStateService(
             PipelineStateRepository pipelineStateRepository,
             TaskStateService taskStateService,
+            AuthService authService,
             PipelineObservabilityService pipelineObservabilityService,
             PipelineSinkExecutionService pipelineSinkExecutionService,
             FeedScenarioService feedScenarioService,
@@ -58,6 +61,7 @@ public class PipelineStateService {
     ) {
         this.pipelineStateRepository = pipelineStateRepository;
         this.taskStateService = taskStateService;
+        this.authService = authService;
         this.pipelineObservabilityService = pipelineObservabilityService;
         this.pipelineSinkExecutionService = pipelineSinkExecutionService;
         this.feedScenarioService = feedScenarioService;
@@ -272,8 +276,29 @@ public class PipelineStateService {
     }
 
     @Transactional
+    public List<PipelineEventProcessingResult> recordObservabilityAndProjectEvents(CanonicalEventDto eventDto) {
+        LinkedHashSet<String> groupKeys = resolveTargetGroupKeys(eventDto);
+        List<PipelineEventProcessingResult> results = new ArrayList<>();
+        for (String groupKey : groupKeys) {
+            PipelineEventProcessingResult result = recordObservabilityAndProjectEvent(eventDto, true, groupKey);
+            if (result != null) {
+                results.add(result);
+            }
+        }
+        return List.copyOf(results);
+    }
+
+    @Transactional
     public PipelineObservabilityUpdateDto recordObservabilityEvent(CanonicalEventDto eventDto) {
-        PipelineEventProcessingResult result = recordObservabilityAndProjectEvent(eventDto, false);
+        String resolvedGroupKey = resolveSingleGroupKey(eventDto);
+        if (resolvedGroupKey == null || resolvedGroupKey.isBlank()) {
+            return null;
+        }
+        PipelineEventProcessingResult result = recordObservabilityAndProjectEvent(
+                eventDto,
+                false,
+                normalizeGroupKey(resolvedGroupKey)
+        );
         return result == null ? null : result.observabilityUpdate();
     }
 
@@ -281,21 +306,18 @@ public class PipelineStateService {
             CanonicalEventDto eventDto,
             boolean executeSinks
     ) {
-        String resolvedGroupKey = eventDto.groupKey();
-        if (resolvedGroupKey == null || resolvedGroupKey.isBlank()) {
-            resolvedGroupKey = DeviceIdMapping.groupKeyForDevice(eventDto.deviceId()).orElse(null);
-        }
-        if (resolvedGroupKey == null || resolvedGroupKey.isBlank()) {
-            String adminDeviceId = appSettingsService.getAdminDeviceId();
-            if (adminDeviceId != null && !adminDeviceId.isBlank()) {
-                resolvedGroupKey = adminDeviceId.trim().toLowerCase();
-            }
-        }
+        String resolvedGroupKey = resolveSingleGroupKey(eventDto);
         if (resolvedGroupKey == null || resolvedGroupKey.isBlank()) {
             return null;
         }
+        return recordObservabilityAndProjectEvent(eventDto, executeSinks, normalizeGroupKey(resolvedGroupKey));
+    }
 
-        String groupKey = normalizeGroupKey(resolvedGroupKey);
+    private PipelineEventProcessingResult recordObservabilityAndProjectEvent(
+            CanonicalEventDto eventDto,
+            boolean executeSinks,
+            String groupKey
+    ) {
         TaskDefinition task = taskStateService.getActiveTask();
         PipelineTaskConfig config = task.pipeline();
         PipelineStatePayload defaults = defaultPayload(config);
@@ -340,6 +362,42 @@ public class PipelineStateService {
                 projected,
                 sinkRuntimeUpdate
         );
+    }
+
+    private LinkedHashSet<String> resolveTargetGroupKeys(CanonicalEventDto eventDto) {
+        LinkedHashSet<String> groupKeys = new LinkedHashSet<>();
+        for (String configuredGroupKey : authService.listStudentGroupKeys()) {
+            if (configuredGroupKey == null || configuredGroupKey.isBlank()) {
+                continue;
+            }
+            groupKeys.add(normalizeGroupKey(configuredGroupKey));
+        }
+        String adminDeviceId = appSettingsService.getAdminDeviceId();
+        if (adminDeviceId != null && !adminDeviceId.isBlank()) {
+            groupKeys.add(normalizeGroupKey(adminDeviceId));
+        }
+
+        if (groupKeys.isEmpty()) {
+            String resolved = resolveSingleGroupKey(eventDto);
+            if (resolved != null && !resolved.isBlank()) {
+                groupKeys.add(normalizeGroupKey(resolved));
+            }
+        }
+        return groupKeys;
+    }
+
+    private String resolveSingleGroupKey(CanonicalEventDto eventDto) {
+        String resolvedGroupKey = eventDto.groupKey();
+        if (resolvedGroupKey == null || resolvedGroupKey.isBlank()) {
+            resolvedGroupKey = DeviceIdMapping.groupKeyForDevice(eventDto.deviceId()).orElse(null);
+        }
+        if (resolvedGroupKey == null || resolvedGroupKey.isBlank()) {
+            String adminDeviceId = appSettingsService.getAdminDeviceId();
+            if (adminDeviceId != null && !adminDeviceId.isBlank()) {
+                resolvedGroupKey = adminDeviceId.trim().toLowerCase();
+            }
+        }
+        return resolvedGroupKey;
     }
 
     @Transactional

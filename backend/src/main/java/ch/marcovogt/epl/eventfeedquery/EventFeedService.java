@@ -123,7 +123,13 @@ public class EventFeedService {
                     return event.topic().toLowerCase().contains(finalTopicFilter)
                             || event.eventType().toLowerCase().contains(finalTopicFilter);
                 })
-                .filter(event -> visibleForPrincipal(event, principal, capabilities, finalRequestedDeviceId))
+                .filter(event -> visibleForPrincipal(
+                        event,
+                        principal,
+                        capabilities,
+                        finalRequestedDeviceId,
+                        stage
+                ))
                 .sorted(
                         Comparator.comparing(CanonicalEventDto::ingestTs, Comparator.nullsLast(Comparator.naturalOrder()))
                                 .reversed()
@@ -137,9 +143,17 @@ public class EventFeedService {
             CanonicalEventDto event,
             SessionPrincipal principal,
             TaskCapabilities capabilities,
-            String requestedDeviceId
+            String requestedDeviceId,
+            EventFeedStage stage
     ) {
         if (principal.role() == AppRole.ADMIN) {
+            return requestedDeviceId == null || requestedDeviceId.equals(event.deviceId());
+        }
+
+        if (stage == EventFeedStage.AFTER_PIPELINE) {
+            if (!isOwnDeviceEvent(event, principal.groupKey())) {
+                return false;
+            }
             return requestedDeviceId == null || requestedDeviceId.equals(event.deviceId());
         }
 

@@ -191,7 +191,7 @@ public class PipelineObservabilityService {
                 event.validationErrors(),
                 runtimeEvent.isInternal,
                 event.scenarioFlags(),
-                event.groupKey(),
+                groupKey,
                 event.sequenceNo()
         );
     }

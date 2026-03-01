@@ -82,27 +82,6 @@ public class RealtimeSyncService {
             return;
         }
 
-        TaskCapabilities capabilities = taskStateService.currentStudentCapabilities();
-        StudentDeviceScope scope = capabilities.studentEventVisibilityScope() == null
-                ? (capabilities.canViewRoomEvents() ? StudentDeviceScope.ALL_DEVICES : StudentDeviceScope.OWN_DEVICE)
-                : capabilities.studentEventVisibilityScope();
-        if (scope == StudentDeviceScope.ALL_DEVICES) {
-            studentBroadcaster.broadcastToAll("event.pipeline.append", eventDto);
-            return;
-        }
-
-        if (scope == StudentDeviceScope.ADMIN_DEVICE) {
-            if (isAdminDeviceEvent(eventDto)) {
-                studentBroadcaster.broadcastToAll("event.pipeline.append", eventDto);
-            }
-            return;
-        }
-
-        if (scope == StudentDeviceScope.OWN_AND_ADMIN_DEVICE && isAdminDeviceEvent(eventDto)) {
-            studentBroadcaster.broadcastToAll("event.pipeline.append", eventDto);
-            return;
-        }
-
         String groupKey = resolveGroupKey(eventDto);
         if (groupKey != null) {
             studentBroadcaster.broadcastToGroup(groupKey, "event.pipeline.append", eventDto);

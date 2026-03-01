@@ -4478,12 +4478,23 @@ export default function App() {
 
   const adminPipelineVisibleFeed = useMemo(() => {
     return adminAfterPipelineDisturbedFeedSource.filter((event) => {
+      if (
+        adminPipelineGroupKey.trim() &&
+        event.groupKey?.trim().toLowerCase() !== adminPipelineGroupKey.trim().toLowerCase()
+      ) {
+        return false;
+      }
       if (!adminIncludeInternal && (event.isInternal || isTelemetryEvent(event))) {
         return false;
       }
       return feedMatchesTopic(event, adminTopicFilter);
     });
-  }, [adminAfterPipelineDisturbedFeedSource, adminIncludeInternal, adminTopicFilter]);
+  }, [
+    adminAfterPipelineDisturbedFeedSource,
+    adminIncludeInternal,
+    adminPipelineGroupKey,
+    adminTopicFilter
+  ]);
 
   const studentFeedValues = useMemo(() => {
     const values = new Map<string, string>();

@@ -5,11 +5,16 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import ch.marcovogt.epl.authsession.AppRole;
+import ch.marcovogt.epl.authsession.AuthService;
 import ch.marcovogt.epl.authsession.SessionPrincipal;
 import ch.marcovogt.epl.admin.AppSettingsService;
+import ch.marcovogt.epl.common.EventCategory;
+import ch.marcovogt.epl.eventingestionnormalization.CanonicalEventDto;
 import ch.marcovogt.epl.eventfeedquery.FeedScenarioConfigDto;
 import ch.marcovogt.epl.eventfeedquery.FeedScenarioService;
 import ch.marcovogt.epl.taskscenarioengine.PipelineTaskConfig;
@@ -24,6 +29,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -39,6 +45,9 @@ class PipelineStateServiceTest {
 
     @Mock
     private TaskStateService taskStateService;
+
+    @Mock
+    private AuthService authService;
 
     @Mock
     private PipelineObservabilityService pipelineObservabilityService;
@@ -60,6 +69,7 @@ class PipelineStateServiceTest {
         service = new PipelineStateService(
                 pipelineStateRepository,
                 taskStateService,
+                authService,
                 pipelineObservabilityService,
                 pipelineSinkExecutionService,
                 feedScenarioService,
@@ -81,6 +91,9 @@ class PipelineStateServiceTest {
         });
 
         lenient().when(taskStateService.getActiveTask()).thenReturn(activeTask());
+        lenient().when(taskStateService.currentStudentCapabilities()).thenReturn(activeTask().studentCapabilities());
+        lenient().when(authService.listStudentGroupKeys()).thenReturn(List.of("epld01"));
+        lenient().when(appSettingsService.getAdminDeviceId()).thenReturn(null);
         lenient().when(feedScenarioService.getConfig()).thenReturn(new FeedScenarioConfigDto(List.of(), Instant.now(), "test"));
         lenient().when(pipelineObservabilityService.snapshot(anyString(), anyString(), any(PipelineProcessingSection.class)))
                 .thenReturn(new PipelineObservabilityDto(
@@ -95,6 +108,43 @@ class PipelineStateServiceTest {
                 ));
         lenient().when(pipelineSinkExecutionService.snapshot(anyString(), anyString(), any(PipelineSinkSection.class)))
                 .thenReturn(new PipelineSinkRuntimeSection(List.of()));
+        lenient().when(pipelineSinkExecutionService.processProjectedEvent(
+                        anyString(),
+                        anyString(),
+                        any(PipelineSinkSection.class),
+                        any(CanonicalEventDto.class),
+                        any(StudentDeviceScope.class),
+                        anyString(),
+                        any()
+                ))
+                .thenReturn(new PipelineSinkRuntimeSection(List.of()));
+        lenient().when(pipelineObservabilityService.recordEvent(
+                        anyString(),
+                        anyString(),
+                        any(PipelineProcessingSection.class),
+                        any(CanonicalEventDto.class)
+                ))
+                .thenAnswer(invocation -> {
+                    String groupKey = invocation.getArgument(1);
+                    CanonicalEventDto event = invocation.getArgument(3);
+                    return new CanonicalEventDto(
+                            event.id(),
+                            event.deviceId(),
+                            event.source(),
+                            event.topic(),
+                            event.eventType(),
+                            event.category(),
+                            event.payloadJson(),
+                            event.deviceTs(),
+                            event.ingestTs(),
+                            event.valid(),
+                            event.validationErrors(),
+                            event.isInternal(),
+                            event.scenarioFlags(),
+                            groupKey,
+                            event.sequenceNo()
+                    );
+                });
     }
 
     @Test
@@ -252,6 +302,45 @@ class PipelineStateServiceTest {
         PipelineViewDto reloaded = service.getAdminView("epld01");
         assertThat(reloaded.sink().nodes().stream().filter(node -> "SEND_EVENT".equals(node.type())).count())
                 .isEqualTo(2L);
+    }
+
+    @Test
+    void ingestRoutingShouldProcessExternalEventsForAllPipelineGroups() {
+        when(authService.listStudentGroupKeys()).thenReturn(List.of("epld01", "epld02"));
+        when(appSettingsService.getAdminDeviceId()).thenReturn("epld99");
+
+        CanonicalEventDto event = new CanonicalEventDto(
+                UUID.randomUUID(),
+                "wikimedia.eventstream",
+                "wikimedia/dewiki",
+                "external.wikimedia.edit",
+                EventCategory.SENSOR,
+                "{\"title\":\"Example\"}",
+                null,
+                Instant.now(),
+                true,
+                null,
+                false,
+                "{}",
+                null,
+                null
+        );
+
+        List<PipelineEventProcessingResult> results = service.recordObservabilityAndProjectEvents(event);
+
+        assertThat(results).hasSize(3);
+        assertThat(results)
+                .extracting(result -> result.observabilityUpdate().groupKey())
+                .containsExactlyInAnyOrder("epld01", "epld02", "epld99");
+        assertThat(results)
+                .extracting(result -> result.projectedEvent().groupKey())
+                .containsExactlyInAnyOrder("epld01", "epld02", "epld99");
+        verify(pipelineObservabilityService, times(3)).recordEvent(
+                anyString(),
+                anyString(),
+                any(PipelineProcessingSection.class),
+                any(CanonicalEventDto.class)
+        );
     }
 
     private String key(String taskId, PipelineOwnerType ownerType, String ownerKey) {

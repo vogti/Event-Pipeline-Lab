@@ -16,6 +16,7 @@ import ch.marcovogt.epl.realtimewebsocket.RealtimeSyncService;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -82,9 +83,9 @@ public class EventIngestionService {
         pipelineLogModeService.publish(eventDto);
 
         try {
-            PipelineEventProcessingResult processingResult =
-                    pipelineStateService.recordObservabilityAndProjectEvent(eventDto);
-            if (processingResult != null) {
+            List<PipelineEventProcessingResult> processingResults =
+                    pipelineStateService.recordObservabilityAndProjectEvents(eventDto);
+            for (PipelineEventProcessingResult processingResult : processingResults) {
                 PipelineObservabilityUpdateDto observabilityUpdate = processingResult.observabilityUpdate();
                 if (observabilityUpdate != null) {
                     realtimeSyncService.broadcastPipelineObservability(observabilityUpdate);
