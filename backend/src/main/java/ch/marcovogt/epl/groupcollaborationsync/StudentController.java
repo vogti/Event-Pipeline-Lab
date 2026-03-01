@@ -10,6 +10,7 @@ import ch.marcovogt.epl.authsession.AuthService;
 import ch.marcovogt.epl.authsession.RequestAuth;
 import ch.marcovogt.epl.authsession.SessionPrincipal;
 import ch.marcovogt.epl.common.DeviceIdMapping;
+import ch.marcovogt.epl.config.DeploymentInfoService;
 import ch.marcovogt.epl.deviceregistryhealth.DeviceTelemetryService;
 import ch.marcovogt.epl.deviceregistryhealth.StudentDeviceStateDto;
 import ch.marcovogt.epl.eventfeedquery.EventFeedStage;
@@ -51,6 +52,7 @@ public class StudentController {
     private final RealtimeSyncService realtimeSyncService;
     private final VirtualDeviceService virtualDeviceService;
     private final DeviceTelemetryService deviceTelemetryService;
+    private final DeploymentInfoService deploymentInfoService;
 
     public StudentController(
             RequestAuth requestAuth,
@@ -63,7 +65,8 @@ public class StudentController {
             PublishSourceContext publishSourceContext,
             RealtimeSyncService realtimeSyncService,
             VirtualDeviceService virtualDeviceService,
-            DeviceTelemetryService deviceTelemetryService
+            DeviceTelemetryService deviceTelemetryService,
+            DeploymentInfoService deploymentInfoService
     ) {
         this.requestAuth = requestAuth;
         this.taskStateService = taskStateService;
@@ -76,6 +79,7 @@ public class StudentController {
         this.realtimeSyncService = realtimeSyncService;
         this.virtualDeviceService = virtualDeviceService;
         this.deviceTelemetryService = deviceTelemetryService;
+        this.deploymentInfoService = deploymentInfoService;
     }
 
     @GetMapping("/bootstrap")
@@ -107,7 +111,7 @@ public class StudentController {
                 : null;
 
         return new StudentBootstrapResponse(
-                AuthMeResponse.from(principal),
+                AuthMeResponse.from(principal, deploymentInfoService.info()),
                 activeTask,
                 capabilities,
                 config,

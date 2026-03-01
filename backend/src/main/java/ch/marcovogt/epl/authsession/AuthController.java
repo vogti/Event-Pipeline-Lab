@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import java.time.Duration;
+import ch.marcovogt.epl.config.DeploymentInfoService;
 import ch.marcovogt.epl.realtimewebsocket.RealtimeSyncService;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
@@ -22,15 +23,18 @@ public class AuthController {
     private final AuthService authService;
     private final RequestAuth requestAuth;
     private final RealtimeSyncService realtimeSyncService;
+    private final DeploymentInfoService deploymentInfoService;
 
     public AuthController(
             AuthService authService,
             RequestAuth requestAuth,
-            RealtimeSyncService realtimeSyncService
+            RealtimeSyncService realtimeSyncService,
+            DeploymentInfoService deploymentInfoService
     ) {
         this.authService = authService;
         this.requestAuth = requestAuth;
         this.realtimeSyncService = realtimeSyncService;
+        this.deploymentInfoService = deploymentInfoService;
     }
 
     @PostMapping("/login")
@@ -43,7 +47,7 @@ public class AuthController {
         if (principal.role() == AppRole.STUDENT && principal.groupKey() != null) {
             realtimeSyncService.broadcastPresence(principal.groupKey());
         }
-        return AuthMeResponse.from(principal);
+        return AuthMeResponse.from(principal, deploymentInfoService.info());
     }
 
     @PostMapping("/logout")
@@ -58,7 +62,7 @@ public class AuthController {
 
     @GetMapping("/me")
     public AuthMeResponse me(HttpServletRequest request) {
-        return AuthMeResponse.from(requestAuth.requireAny(request));
+        return AuthMeResponse.from(requestAuth.requireAny(request), deploymentInfoService.info());
     }
 
     @PostMapping("/display-name")
@@ -69,7 +73,7 @@ public class AuthController {
         SessionPrincipal principal = requestAuth.requireRole(request, AppRole.STUDENT);
         SessionPrincipal updated = authService.updateDisplayName(principal, body.displayName());
         realtimeSyncService.broadcastPresence(updated.groupKey());
-        return AuthMeResponse.from(updated);
+        return AuthMeResponse.from(updated, deploymentInfoService.info());
     }
 
     private void setSessionCookie(HttpServletResponse response, String token, Duration maxAge) {

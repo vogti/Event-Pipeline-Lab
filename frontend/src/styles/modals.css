@@ -118,6 +118,32 @@
   width: min(520px, 100%);
 }
 
+.about-epl-modal {
+  width: min(560px, 100%);
+}
+
+.about-epl-hash-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.about-epl-hash-label {
+  color: #2d4d62;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.about-epl-hash-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.about-epl-hash-link:hover {
+  text-decoration: underline;
+}
+
 .student-settings-field {
   display: grid;
   gap: 0.35rem;

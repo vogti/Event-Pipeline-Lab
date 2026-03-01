@@ -1,0 +1,10 @@
+.DS_Store
+**/.DS_Store
+
+backend/build
+backend/.gradle
+frontend/dist
+frontend/node_modules
+
+infra/cloudflared/*.json
+infra/cloudflared/*.pem

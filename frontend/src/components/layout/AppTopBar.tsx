@@ -16,6 +16,7 @@ interface AppTopBarProps {
   onToggleUserMenu: () => void;
   onSetLanguage: (language: Language) => void;
   onOpenSettings: () => void;
+  onOpenAbout: () => void;
   onLogout: () => void;
 }
 
@@ -33,6 +34,7 @@ export function AppTopBar({
   onToggleUserMenu,
   onSetLanguage,
   onOpenSettings,
+  onOpenAbout,
   onLogout
 }: AppTopBarProps) {
   return (
@@ -85,6 +87,10 @@ export function AppTopBar({
 
                 <button className="button secondary user-menu-link" type="button" onClick={onOpenSettings}>
                   {t('settings')}
+                </button>
+
+                <button className="button secondary user-menu-link" type="button" onClick={onOpenAbout}>
+                  {t('aboutEpl')}
                 </button>
 
                 <button

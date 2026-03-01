@@ -28,7 +28,11 @@ describe('api login retry', () => {
       role: 'ADMIN',
       groupKey: null,
       displayName: 'Admin',
-      expiresAt: '2026-02-27T12:00:00Z'
+      expiresAt: '2026-02-27T12:00:00Z',
+      deploymentGitHash: 'abc1234',
+      deploymentCommitUrl: 'https://github.com/example/repo/commit/abc1234',
+      deploymentBuildTs: '2026-02-27T11:59:00Z',
+      deploymentDirty: false
     };
 
     const fetchMock = vi

@@ -108,6 +108,7 @@ import { AdminGroupsSection } from './components/admin/AdminGroupsSection';
 import { AdminPageNav } from './components/admin/AdminPageNav';
 import { AdminSettingsSection } from './components/admin/AdminSettingsSection';
 import { AppTopBar } from './components/layout/AppTopBar';
+import { AboutEplModal } from './components/layout/AboutEplModal';
 import { MainStateBanners } from './components/layout/MainStateBanners';
 import { ToastStack, type ToastMessage } from './components/layout/ToastStack';
 import { LoginSection } from './components/auth/LoginSection';
@@ -649,6 +650,7 @@ export default function App() {
   const [eventDetailsViewMode, setEventDetailsViewMode] = useState<EventDetailsViewMode>('rendered');
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [studentSettingsOpen, setStudentSettingsOpen] = useState(false);
+  const [aboutModalOpen, setAboutModalOpen] = useState(false);
   const [studentPipelineSimplifiedView, setStudentPipelineSimplifiedView] = useState<boolean>(() => {
     if (typeof window === 'undefined') {
       return true;
@@ -1003,6 +1005,7 @@ export default function App() {
     setFeedScenarioConfig(null);
     setFeedScenarioDraft([]);
     setStudentSettingsOpen(false);
+    setAboutModalOpen(false);
     setToasts([]);
     adminDataRef.current = null;
     deferredAdminFeedRef.current = [];
@@ -4335,6 +4338,19 @@ export default function App() {
     return session.displayName?.trim() || session.username;
   }, [session]);
 
+  const deploymentGitHash = useMemo(() => {
+    const raw = session?.deploymentGitHash ?? '';
+    const normalized = raw.trim();
+    return normalized.length > 0 ? normalized : 'unknown';
+  }, [session?.deploymentGitHash]);
+  const deploymentCommitUrl = useMemo(() => {
+    const raw = session?.deploymentCommitUrl ?? '';
+    return raw.trim();
+  }, [session?.deploymentCommitUrl]);
+  const deploymentDirty = useMemo(() => {
+    return Boolean(session?.deploymentDirty);
+  }, [session?.deploymentDirty]);
+
   const adminOnlineDeviceCount = useMemo(() => {
     if (!adminData) {
       return 0;
@@ -4443,12 +4459,20 @@ export default function App() {
     setUserMenuOpen(false);
   }, [session]);
 
+  const openAboutModal = useCallback(() => {
+    setAboutModalOpen(true);
+    setUserMenuOpen(false);
+  }, []);
+
   const formatTs = useCallback(
     (value: TimestampValue): string => {
       return formatTimestamp(value, language, timeFormat24h);
     },
     [language, timeFormat24h]
   );
+  const deploymentBuildTimeLabel = useMemo(() => {
+    return formatTs(session?.deploymentBuildTs ?? null);
+  }, [formatTs, session?.deploymentBuildTs]);
 
   const eventSourceLabel = useCallback((event: CanonicalEvent): string => {
     const source = event.source?.trim();
@@ -4922,6 +4946,7 @@ export default function App() {
         onToggleUserMenu={() => setUserMenuOpen((open) => !open)}
         onSetLanguage={setManualLanguage}
         onOpenSettings={openSettingsSection}
+        onOpenAbout={openAboutModal}
         onLogout={handleLogout}
       />
 
@@ -5293,6 +5318,16 @@ export default function App() {
           </div>
         ) : null}
       </main>
+
+      <AboutEplModal
+        t={t}
+        open={aboutModalOpen}
+        deploymentGitHash={deploymentGitHash}
+        deploymentCommitUrl={deploymentCommitUrl}
+        buildTimeLabel={deploymentBuildTimeLabel}
+        deploymentDirty={deploymentDirty}
+        onClose={() => setAboutModalOpen(false)}
+      />
 
       <StudentSettingsModal
         t={t}

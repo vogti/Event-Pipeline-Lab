@@ -29,6 +29,10 @@ export interface AuthMe {
   groupKey: string | null;
   displayName: string;
   expiresAt: string;
+  deploymentGitHash: string;
+  deploymentCommitUrl: string | null;
+  deploymentBuildTs: TimestampValue;
+  deploymentDirty: boolean;
 }
 
 export interface TaskInfo {

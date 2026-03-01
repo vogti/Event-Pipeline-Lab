@@ -32,8 +32,10 @@ services:
 
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
+      additional_contexts:
+        gitmeta: ./.git
     container_name: epl-backend
     environment:
       DB_URL: jdbc:postgresql://postgres:5432/epl

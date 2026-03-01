@@ -80,6 +80,11 @@ Event-Pipeline-Lab/
 docker compose up --build -d
 ```
 
+Backend build metadata is generated automatically by Gradle during backend build and shown in the user-menu "About EPL" modal:
+- Git short hash (linked to the GitHub commit)
+- Build date/time
+- Working-directory state at build time (`clean` / `uncommitted changes`)
+
 Run with public tunnel enabled:
 
 ```bash
