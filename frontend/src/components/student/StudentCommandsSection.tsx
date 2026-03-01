@@ -116,19 +116,19 @@ export function StudentCommandsSection({
           <span className="metric-icon">
             <MetricIcon kind="temperature" />
           </span>
-          <span className="metric-text">{temperature}</span>
+          <span className="metric-text metric-text-sensor">{temperature}</span>
         </div>
         <div className="device-metric">
           <span className="metric-icon">
             <MetricIcon kind="humidity" />
           </span>
-          <span className="metric-text">{humidity}</span>
+          <span className="metric-text metric-text-sensor">{humidity}</span>
         </div>
         <div className="device-metric">
           <span className="metric-icon">
             <MetricIcon kind="brightness" />
           </span>
-          <span className="metric-text">{brightness}</span>
+          <span className="metric-text metric-text-sensor">{brightness}</span>
         </div>
         {canResetCounter ? (
           <button

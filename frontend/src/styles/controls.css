@@ -291,6 +291,12 @@
   margin-bottom: 0.65rem;
 }
 
+.student-command-metrics .metric-text-sensor {
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
 .student-led-controls {
   margin: 0.35rem 0 0.55rem;
 }
