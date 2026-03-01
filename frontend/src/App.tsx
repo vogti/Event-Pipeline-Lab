@@ -299,7 +299,12 @@ function updatePipelineSendEventSinkConfig(
           typeof config.qos === 'number'
             ? Math.max(0, Math.min(2, Math.round(config.qos)))
             : Number.parseInt(String(config.qos ?? '1'), 10) || 1,
-        retained: Boolean(config.retained)
+        retained: Boolean(config.retained),
+        ledBlinkEnabled: Boolean(config.ledBlinkEnabled),
+        ledBlinkMs:
+          typeof config.ledBlinkMs === 'number'
+            ? Math.max(50, Math.min(10000, Math.round(config.ledBlinkMs)))
+            : Math.max(50, Math.min(10000, Number.parseInt(String(config.ledBlinkMs ?? '200'), 10) || 200))
       }
     };
   });

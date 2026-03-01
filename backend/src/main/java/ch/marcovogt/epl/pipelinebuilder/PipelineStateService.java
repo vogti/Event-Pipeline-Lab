@@ -843,7 +843,14 @@ public class PipelineStateService {
 
     private Map<String, Object> sanitizeSendEventSinkConfig(Map<String, Object> rawConfig) {
         if (rawConfig == null || rawConfig.isEmpty()) {
-            return Map.of("topic", "", "payload", "", "qos", 1, "retained", false);
+            return Map.of(
+                    "topic", "",
+                    "payload", "",
+                    "qos", 1,
+                    "retained", false,
+                    "ledBlinkEnabled", false,
+                    "ledBlinkMs", 200
+            );
         }
         Object topicRaw = rawConfig.get("topic");
         String topic = topicRaw == null ? "" : String.valueOf(topicRaw).trim();
@@ -875,11 +882,39 @@ public class PipelineStateService {
             retained = "true".equalsIgnoreCase(String.valueOf(retainedRaw));
         }
 
+        Object ledBlinkEnabledRaw = rawConfig.get("ledBlinkEnabled");
+        boolean ledBlinkEnabled;
+        if (ledBlinkEnabledRaw instanceof Boolean value) {
+            ledBlinkEnabled = value;
+        } else if (ledBlinkEnabledRaw instanceof Number number) {
+            ledBlinkEnabled = number.intValue() != 0;
+        } else {
+            String normalized = String.valueOf(ledBlinkEnabledRaw).trim().toLowerCase(Locale.ROOT);
+            ledBlinkEnabled = "true".equals(normalized) || "1".equals(normalized) || "yes".equals(normalized);
+        }
+
+        Object ledBlinkMsRaw = rawConfig.get("ledBlinkMs");
+        int ledBlinkMs = 200;
+        if (ledBlinkMsRaw instanceof Number number) {
+            ledBlinkMs = number.intValue();
+        } else if (ledBlinkMsRaw instanceof String text) {
+            try {
+                ledBlinkMs = Integer.parseInt(text.trim());
+            } catch (NumberFormatException ignored) {
+                ledBlinkMs = 200;
+            }
+        }
+        if (ledBlinkMs < 50 || ledBlinkMs > 10_000) {
+            ledBlinkMs = 200;
+        }
+
         return Map.of(
                 "topic", topic,
                 "payload", payload,
                 "qos", qos,
-                "retained", retained
+                "retained", retained,
+                "ledBlinkEnabled", ledBlinkEnabled,
+                "ledBlinkMs", ledBlinkMs
         );
     }
 

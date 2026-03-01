@@ -358,6 +358,8 @@ export function createMqttEventDraft(): MqttEventDraft {
     buttonPressed: true,
     ledColor: 'green',
     ledOn: true,
+    ledBlinkEnabled: false,
+    ledBlinkMs: 200,
     counterValue: 0,
     temperatureC: 23.0,
     humidityPct: 45.0,

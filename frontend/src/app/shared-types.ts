@@ -96,6 +96,8 @@ export interface MqttEventDraft {
   buttonPressed: boolean;
   ledColor: 'green' | 'orange';
   ledOn: boolean;
+  ledBlinkEnabled: boolean;
+  ledBlinkMs: number;
   counterValue: number;
   temperatureC: number;
   humidityPct: number;

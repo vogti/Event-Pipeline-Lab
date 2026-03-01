@@ -41,6 +41,8 @@ interface AdminMqttEventModalProps {
   showSimpleModeToggle?: boolean;
   onSimpleModeChange?: (simpleMode: boolean) => void;
   topicPrefixLock?: string | null;
+  enableLedBlinkControls?: boolean;
+  initialTab?: 'guided' | 'raw' | 'led';
 }
 
 function templateLabelKey(template: MqttComposerTemplate): I18nKey {
@@ -95,9 +97,19 @@ export function AdminMqttEventModal({
   simpleMode = false,
   showSimpleModeToggle = false,
   onSimpleModeChange,
-  topicPrefixLock = null
+  topicPrefixLock = null,
+  enableLedBlinkControls = false,
+  initialTab
 }: AdminMqttEventModalProps) {
-  const [activeTab, setActiveTab] = useState<'guided' | 'raw' | 'led'>(mode === 'raw' ? 'raw' : 'guided');
+  const resolvedInitialTab: 'guided' | 'raw' | 'led' = initialTab ?? (mode === 'raw' ? 'raw' : 'guided');
+  const [activeTab, setActiveTab] = useState<'guided' | 'raw' | 'led'>(resolvedInitialTab);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    setActiveTab(resolvedInitialTab);
+  }, [open, resolvedInitialTab]);
 
   useEffect(() => {
     if (activeTab !== 'led') {
@@ -292,6 +304,36 @@ export function AdminMqttEventModal({
                   <option value="off">{t('stateOff')}</option>
                 </select>
               </label>
+            ) : null}
+            {enableLedBlinkControls ? (
+              <>
+                <label className="mqtt-led-blink-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={draft.ledBlinkEnabled}
+                    onChange={(event) => onDraftChange('ledBlinkEnabled', event.target.checked)}
+                    disabled={busy}
+                  />
+                  <span>{t('mqttLedBlink')}</span>
+                </label>
+                <label className="mqtt-led-blink-duration">
+                  <span>{t('mqttLedBlinkMs')}</span>
+                  <input
+                    className="input"
+                    type="number"
+                    min={50}
+                    max={10000}
+                    step={10}
+                    value={draft.ledBlinkMs}
+                    onChange={(event) => {
+                      const parsed = Number.parseInt(event.target.value, 10);
+                      const next = Number.isFinite(parsed) ? parsed : draft.ledBlinkMs;
+                      onDraftChange('ledBlinkMs', Math.max(50, Math.min(10000, next)));
+                    }}
+                    disabled={busy || !draft.ledBlinkEnabled}
+                  />
+                </label>
+              </>
             ) : null}
             <label>
               <span>{t('mqttQos')}</span>

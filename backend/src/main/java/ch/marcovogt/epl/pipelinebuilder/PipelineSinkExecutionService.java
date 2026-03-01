@@ -7,18 +7,22 @@ import ch.marcovogt.epl.taskscenarioengine.StudentDeviceScope;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.concurrent.Executors;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.DisposableBean;
 import org.springframework.stereotype.Service;
 
 @Service
-public class PipelineSinkExecutionService {
+public class PipelineSinkExecutionService implements DisposableBean {
 
     private static final Logger log = LoggerFactory.getLogger(PipelineSinkExecutionService.class);
     private static final int SHOW_PAYLOAD_PREVIEW_MAX_LENGTH = 40;
@@ -27,6 +31,7 @@ public class PipelineSinkExecutionService {
     private final Clock clock;
     private final int maxRuntimeEntries;
     private final LinkedHashMap<String, SinkRuntimeState> runtimeByKey;
+    private final ScheduledExecutorService blinkScheduler;
 
     public PipelineSinkExecutionService(
             ObjectProvider<MqttCommandPublisher> mqttCommandPublisherProvider,
@@ -36,6 +41,11 @@ public class PipelineSinkExecutionService {
         this.clock = Clock.systemUTC();
         this.maxRuntimeEntries = Math.max(64, Math.min(20_000, maxRuntimeEntries));
         this.runtimeByKey = new LinkedHashMap<>(64, 0.75f, true);
+        this.blinkScheduler = Executors.newSingleThreadScheduledExecutor(runnable -> {
+            Thread thread = new Thread(runnable, "epl-sink-blink");
+            thread.setDaemon(true);
+            return thread;
+        });
     }
 
     public synchronized PipelineSinkRuntimeSection snapshot(
@@ -165,6 +175,10 @@ public class PipelineSinkExecutionService {
             log.warn("SEND_EVENT sink publish skipped because MQTT publisher is unavailable");
             return;
         }
+        if (config.ledBlinkEnabled()) {
+            publishLedBlink(sink, mqttCommandPublisher, targetTopic, config.qos(), config.retained(), config.ledBlinkMs());
+            return;
+        }
         try {
             mqttCommandPublisher.publishCustom(targetTopic, outgoingPayload, config.qos(), config.retained());
         } catch (RuntimeException ex) {
@@ -175,6 +189,39 @@ public class PipelineSinkExecutionService {
                     ex.getMessage()
             );
         }
+    }
+
+    private void publishLedBlink(
+            PipelineSinkNode sink,
+            MqttCommandPublisher mqttCommandPublisher,
+            String targetTopic,
+            int qos,
+            boolean retained,
+            int blinkMs
+    ) {
+        try {
+            mqttCommandPublisher.publishCustom(targetTopic, "on", qos, retained);
+        } catch (RuntimeException ex) {
+            log.warn(
+                    "SEND_EVENT LED blink publish(on) failed sinkId={} topic={} reason={}",
+                    normalizeSinkId(sink),
+                    targetTopic,
+                    ex.getMessage()
+            );
+            return;
+        }
+        blinkScheduler.schedule(() -> {
+            try {
+                mqttCommandPublisher.publishCustom(targetTopic, "off", qos, retained);
+            } catch (RuntimeException ex) {
+                log.warn(
+                        "SEND_EVENT LED blink publish(off) failed sinkId={} topic={} reason={}",
+                        normalizeSinkId(sink),
+                        targetTopic,
+                        ex.getMessage()
+                );
+            }
+        }, Math.max(50, Math.min(blinkMs, 10_000)), TimeUnit.MILLISECONDS);
     }
 
     private String resolveSendEventTopic(String configuredTopic, CanonicalEventDto inputEvent) {
@@ -253,7 +300,7 @@ public class PipelineSinkExecutionService {
 
     private SendEventConfig parseSendEventConfig(Map<String, Object> config) {
         if (config == null || config.isEmpty()) {
-            return new SendEventConfig("", "", 1, false);
+            return new SendEventConfig("", "", 1, false, false, 200);
         }
 
         String topic = readString(config, "topic");
@@ -266,8 +313,10 @@ public class PipelineSinkExecutionService {
         }
         int qos = readQos(config, 1);
         boolean retained = readBoolean(config, "retained", false);
+        boolean ledBlinkEnabled = readBoolean(config, "ledBlinkEnabled", false);
+        int ledBlinkMs = readInt(config, "ledBlinkMs", 200, 50, 10_000);
 
-        return new SendEventConfig(topic, payload, qos, retained);
+        return new SendEventConfig(topic, payload, qos, retained, ledBlinkEnabled, ledBlinkMs);
     }
 
     private String readString(Map<String, Object> source, String key) {
@@ -314,6 +363,21 @@ public class PipelineSinkExecutionService {
             }
         }
         return fallback;
+    }
+
+    private int readInt(Map<String, Object> source, String key, int fallback, int min, int max) {
+        Object raw = source.get(key);
+        int value = fallback;
+        if (raw instanceof Number number) {
+            value = number.intValue();
+        } else if (raw instanceof String text) {
+            try {
+                value = Integer.parseInt(text.trim());
+            } catch (NumberFormatException ignored) {
+                value = fallback;
+            }
+        }
+        return Math.max(min, Math.min(max, value));
     }
 
     private PipelineSinkRuntimeSection snapshotForNodes(String taskId, String groupKey, List<PipelineSinkNode> sinks) {
@@ -396,7 +460,19 @@ public class PipelineSinkExecutionService {
         return trimmed.substring(0, SHOW_PAYLOAD_PREVIEW_MAX_LENGTH);
     }
 
-    private record SendEventConfig(String topic, String payload, int qos, boolean retained) {
+    @Override
+    public void destroy() {
+        blinkScheduler.shutdownNow();
+    }
+
+    private record SendEventConfig(
+            String topic,
+            String payload,
+            int qos,
+            boolean retained,
+            boolean ledBlinkEnabled,
+            int ledBlinkMs
+    ) {
     }
 
     private static final class SinkRuntimeState {

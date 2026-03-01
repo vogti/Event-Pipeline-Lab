@@ -184,6 +184,8 @@ function buildDisplaySlots(processing: PipelineProcessingSection): PipelineProce
 
 type PipelineSinkType = 'EVENT_FEED' | 'SEND_EVENT' | 'VIRTUAL_SIGNAL' | 'SHOW_PAYLOAD';
 
+type ModalTab = 'guided' | 'raw' | 'led';
+
 function normalizeSinkType(raw: string): PipelineSinkType {
   const normalized = raw.trim().toUpperCase();
   if (normalized === 'SEND_EVENT' || normalized === 'DEVICE_CONTROL') {
@@ -289,6 +291,66 @@ function readSinkRetained(config: Record<string, unknown>): boolean {
     return value.trim().toLowerCase() === 'true';
   }
   return false;
+}
+
+function readSinkLedBlinkEnabled(config: Record<string, unknown>): boolean {
+  const value = config.ledBlinkEnabled;
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'number') {
+    return value !== 0;
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    return normalized === 'true' || normalized === '1' || normalized === 'yes';
+  }
+  return false;
+}
+
+function readSinkLedBlinkMs(config: Record<string, unknown>): number {
+  const value = config.ledBlinkMs;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.max(50, Math.min(10000, Math.round(value)));
+  }
+  if (typeof value === 'string') {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isFinite(parsed)) {
+      return Math.max(50, Math.min(10000, parsed));
+    }
+  }
+  return 200;
+}
+
+function parseLedSinkTopic(topic: string): { deviceId: string; ledColor: 'green' | 'orange' } | null {
+  if (!topic.trim()) {
+    return null;
+  }
+  let normalized = topic.trim().replace(/^\/+/, '');
+  if (normalized.toLowerCase().startsWith('epld/')) {
+    const remainder = normalized.substring('epld/'.length);
+    if (remainder.toLowerCase().startsWith('epld') || remainder.toLowerCase().startsWith('eplvd')) {
+      normalized = remainder;
+    }
+  }
+
+  const explicit = normalized.match(/^([^/]+)\/command\/led\/(green|orange)$/i);
+  if (explicit) {
+    return {
+      deviceId: explicit[1].trim().toLowerCase(),
+      ledColor: explicit[2].trim().toLowerCase() === 'orange' ? 'orange' : 'green'
+    };
+  }
+
+  const shelly = normalized.match(/^([^/]+)\/command\/switch:(0|1)$/i);
+  if (shelly) {
+    return {
+      deviceId: shelly[1].trim().toLowerCase(),
+      ledColor: shelly[2] === '1' ? 'orange' : 'green'
+    };
+  }
+
+  return null;
 }
 
 function sinkDisplayNameKey(type: PipelineSinkType): I18nKey {
@@ -775,6 +837,7 @@ export function PipelineBuilderSection({
     { from: '', to: '' }
   ]);
   const [sinkEditorSinkId, setSinkEditorSinkId] = useState<string | null>(null);
+  const [sinkEditorInitialTab, setSinkEditorInitialTab] = useState<ModalTab>('raw');
   const [blockInfoModal, setBlockInfoModal] = useState<{ title: string; bodyKey: I18nKey } | null>(null);
   const [sinkComposerMode, setSinkComposerMode] = useState<MqttComposerMode>('guided');
   const [sinkDraft, setSinkDraft] = useState<MqttEventDraft>(() => createMqttEventDraft());
@@ -1524,21 +1587,34 @@ export function PipelineBuilderSection({
     const topic = readSinkString(config, 'topic');
     const qos = readSinkQos(config);
     const retained = readSinkRetained(config);
+    const ledBlinkEnabled = readSinkLedBlinkEnabled(config);
+    const ledBlinkMs = readSinkLedBlinkMs(config);
+    const ledTopicConfig = parseLedSinkTopic(topic);
     const base = createMqttEventDraft();
-    const initialDeviceId = resolveMqttDeviceId('physical', base.deviceId, physicalDeviceIds, virtualDeviceIds);
+    const initialDeviceId = ledTopicConfig?.deviceId ?? resolveMqttDeviceId(
+      'physical',
+      base.deviceId,
+      physicalDeviceIds,
+      virtualDeviceIds
+    );
+    const shouldOpenLedTab = ledTopicConfig !== null;
     setSinkComposerMode('raw');
     setSinkDraft({
       ...base,
-      targetType: 'custom',
-      template: 'custom',
+      targetType: shouldOpenLedTab ? 'physical' : 'custom',
+      template: shouldOpenLedTab ? 'led' : 'custom',
       deviceId: initialDeviceId,
+      ledColor: ledTopicConfig?.ledColor ?? base.ledColor,
       customTopic: topic,
       customPayload: '',
       rawTopic: topic,
       rawPayload: '',
       qos,
-      retained
+      retained,
+      ledBlinkEnabled,
+      ledBlinkMs
     });
+    setSinkEditorInitialTab(shouldOpenLedTab ? 'led' : 'raw');
     setSinkEditorSinkId(node.id);
   };
 
@@ -1551,7 +1627,9 @@ export function PipelineBuilderSection({
       topic,
       payload: '',
       qos: sinkDraft.qos,
-      retained: sinkDraft.retained
+      retained: sinkDraft.retained,
+      ledBlinkEnabled: sinkDraft.ledBlinkEnabled,
+      ledBlinkMs: sinkDraft.ledBlinkMs
     });
     setSinkEditorSinkId(null);
   };
@@ -2200,6 +2278,11 @@ export function PipelineBuilderSection({
                     <p className="muted mono">
                       {sendTopic.length > 0 ? sendTopic : t('pipelineSinkNoTopic')}
                     </p>
+                    {readSinkLedBlinkEnabled(sinkNode.config ?? {}) ? (
+                      <p className="muted">
+                        {t('mqttLedBlink')}: {readSinkLedBlinkMs(sinkNode.config ?? {})} ms
+                      </p>
+                    ) : null}
                     <div className="pipeline-sink-actions">
                       <button
                         className="button tiny secondary"
@@ -2888,6 +2971,8 @@ export function PipelineBuilderSection({
           titleKey="pipelineSinkSendEventConfigTitle"
           submitLabelKey="save"
           hidePayloadFields
+          enableLedBlinkControls
+          initialTab={sinkEditorInitialTab}
           simpleMode={simplifiedView}
         />
       ) : null}
