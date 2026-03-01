@@ -1353,6 +1353,7 @@ export default function App() {
     };
   }, [studentPipeline, studentPipelineDraft, studentPipelineSinkDraft]);
   const studentPipelineEnabled = studentPipelineEditorView?.permissions.visible === true;
+  const adminPipelineEditorView = adminPipelineDraft ?? adminPipeline;
   const adminPipelineDraftSig = useMemo(
     () => pipelineAdminDraftSignature(adminPipelineDraft),
     [adminPipelineDraft]
@@ -5019,7 +5020,7 @@ export default function App() {
               />
             ) : null}
 
-            {studentPipelineEditorView?.permissions.visible !== false ? (
+            {studentPipelineEditorView && studentPipelineEditorView.permissions.visible !== false ? (
               <PipelineBuilderSection
                 t={t}
                 title={t('pipelineBuilder')}
@@ -5193,7 +5194,6 @@ export default function App() {
                 <AdminGroupsSection
                   t={t}
                   groups={adminData.groups}
-                  formatTs={formatTs}
                   onShowPipelineBuilder={openAdminPipelineBuilderForGroup}
                   onResetGroupProgress={(groupKey) => {
                     void resetAdminGroupProgress(groupKey);
@@ -5212,15 +5212,15 @@ export default function App() {
                 />
               ) : null}
 
-              {adminPage === 'pipeline' ? (
+              {adminPage === 'pipeline' && adminPipelineEditorView ? (
                 <PipelineBuilderSection
                   t={t}
                   title={t('pipelineBuilder')}
-                  view={adminPipelineDraft ?? adminPipeline}
+                  view={adminPipelineEditorView}
                   contextNotice={adminPipelineContextNotice}
                   contextActionLabel={adminPipelineGroupContextKey ? t('pipelineBackToLecturer') : undefined}
                   onContextAction={adminPipelineGroupContextKey ? openAdminDefaultPipelineBuilder : undefined}
-                  draftProcessing={adminPipelineDraft?.processing ?? adminPipeline?.processing ?? null}
+                  draftProcessing={adminPipelineEditorView.processing}
                   onChangeSlotBlock={changeAdminPipelineSlot}
                   onSwapSlots={swapAdminPipelineSlots}
                   onChangeSlotConfig={changeAdminPipelineSlotConfig}
@@ -5255,6 +5255,29 @@ export default function App() {
                   stateControlBusy={busyKey === 'admin-pipeline-state'}
                   formatTs={formatTs}
                 />
+              ) : null}
+
+              {adminPage === 'pipeline' && !adminPipelineEditorView ? (
+                <section className="panel panel-animate full-width">
+                  <header className="panel-header">
+                    <h3>{t('pipelineBuilder')}</h3>
+                  </header>
+                  {adminPipelineContextNotice ? (
+                    <div className="pipeline-context-banner">
+                      <span>{adminPipelineContextNotice}</span>
+                      {adminPipelineGroupContextKey ? (
+                        <button
+                          className="button tiny secondary"
+                          type="button"
+                          onClick={openAdminDefaultPipelineBuilder}
+                        >
+                          {t('pipelineBackToLecturer')}
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  <p className="muted">{t('loading')}</p>
+                </section>
               ) : null}
 
               {adminPage === 'devices' ? (

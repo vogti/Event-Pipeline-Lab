@@ -1,10 +1,9 @@
 import type { I18nKey } from '../../i18n';
-import type { GroupOverview, TimestampValue } from '../../types';
+import type { GroupOverview } from '../../types';
 
 interface AdminGroupsSectionProps {
   t: (key: I18nKey) => string;
   groups: GroupOverview[];
-  formatTs: (value: TimestampValue) => string;
   onShowPipelineBuilder: (groupKey: string) => void;
   onResetGroupProgress: (groupKey: string) => void;
   isResetBusy: (groupKey: string) => boolean;
@@ -13,7 +12,6 @@ interface AdminGroupsSectionProps {
 export function AdminGroupsSection({
   t,
   groups,
-  formatTs,
   onShowPipelineBuilder,
   onResetGroupProgress,
   isResetBusy
@@ -31,7 +29,6 @@ export function AdminGroupsSection({
               <strong>{group.groupKey}</strong>
               <span className="chip">{t('online')}: {group.onlineCount}</span>
             </header>
-            <p className="muted">{t('revision')}: {group.config.revision}</p>
             <p className="muted">{t('groupMembers')}</p>
             {group.presence.length === 0 ? (
               <p className="muted">{t('groupNoMembersOnline')}</p>
@@ -39,7 +36,7 @@ export function AdminGroupsSection({
               <ul>
                 {group.presence.map((presence) => (
                   <li key={`${presence.username}-${presence.displayName}`}>
-                    {presence.displayName} - {formatTs(presence.lastSeen)}
+                    {presence.displayName}
                   </li>
                 ))}
               </ul>
