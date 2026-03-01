@@ -1,4 +1,13 @@
-import { Fragment, useMemo, useState, type DragEvent } from 'react';
+import {
+  Fragment,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+  type PointerEvent as ReactPointerEvent,
+  type TouchEvent as ReactTouchEvent
+} from 'react';
 import type { I18nKey } from '../../i18n';
 import {
   buildGuidedMqttMessage,
@@ -674,6 +683,22 @@ function parseMicroBatchConfig(config: Record<string, unknown>): MicroBatchConfi
   };
 }
 
+function detectTabletTouchDevice(): boolean {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') {
+    return false;
+  }
+  const userAgent = navigator.userAgent ?? '';
+  const isiPad =
+    /iPad/i.test(userAgent)
+    || (navigator.platform === 'MacIntel' && typeof navigator.maxTouchPoints === 'number' && navigator.maxTouchPoints > 1);
+  const isAndroidTablet = /Android/i.test(userAgent) && !/Mobile/i.test(userAgent);
+  const isTouchViewport =
+    typeof window.matchMedia === 'function'
+      ? window.matchMedia('(pointer: coarse)').matches && Math.min(window.innerWidth, window.innerHeight) >= 720
+      : false;
+  return isiPad || isAndroidTablet || isTouchViewport;
+}
+
 export function PipelineBuilderSection({
   t,
   title,
@@ -745,6 +770,16 @@ export function PipelineBuilderSection({
   const [blockInfoModal, setBlockInfoModal] = useState<{ title: string; bodyKey: I18nKey } | null>(null);
   const [sinkComposerMode, setSinkComposerMode] = useState<MqttComposerMode>('guided');
   const [sinkDraft, setSinkDraft] = useState<MqttEventDraft>(() => createMqttEventDraft());
+  const [isTabletTouchDevice, setIsTabletTouchDevice] = useState<boolean>(() => detectTabletTouchDevice());
+  const [touchDragState, setTouchDragState] = useState<{ blockType: string; sourceSlotIndex: number | null } | null>(
+    null
+  );
+  const touchDragStateRef = useRef<{ blockType: string; sourceSlotIndex: number | null } | null>(null);
+  const dragOverSlotIndexRef = useRef<number | null>(null);
+  const touchDragCloneRef = useRef<HTMLElement | null>(null);
+  const touchDragCloneOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 24 });
+  const suppressTouchClickUntilRef = useRef<number>(0);
+  const activePointerIdRef = useRef<number | null>(null);
 
   const guidedSinkMqttMessage = useMemo(() => buildGuidedMqttMessage(sinkDraft), [sinkDraft]);
 
@@ -834,6 +869,73 @@ export function PipelineBuilderSection({
   const inspectorOutputMissingBecauseDropped = Boolean(
     inspectorSelectedSample?.dropped && inspectorOutputPayload.trim().length === 0
   );
+  const touchDragging = touchDragState !== null;
+
+  useEffect(() => {
+    touchDragStateRef.current = touchDragState;
+  }, [touchDragState]);
+
+  useEffect(() => {
+    dragOverSlotIndexRef.current = dragOverSlotIndex;
+  }, [dragOverSlotIndex]);
+
+  const moveTouchDragClone = (x: number, y: number) => {
+    const clone = touchDragCloneRef.current;
+    if (!clone) {
+      return;
+    }
+    const offset = touchDragCloneOffsetRef.current;
+    clone.style.transform = `translate(${Math.round(x - offset.x)}px, ${Math.round(y + offset.y)}px)`;
+  };
+
+  const removeTouchDragClone = () => {
+    const clone = touchDragCloneRef.current;
+    if (clone) {
+      clone.remove();
+      touchDragCloneRef.current = null;
+    }
+  };
+
+  const createTouchDragClone = (sourceElement: HTMLElement | null, x: number, y: number) => {
+    removeTouchDragClone();
+    if (!sourceElement || typeof document === 'undefined') {
+      return;
+    }
+    const rect = sourceElement.getBoundingClientRect();
+    const clone = sourceElement.cloneNode(true);
+    if (!(clone instanceof HTMLElement)) {
+      return;
+    }
+    clone.classList.add('pipeline-touch-drag-clone');
+    clone.setAttribute('aria-hidden', 'true');
+    clone.style.width = `${Math.max(120, Math.round(rect.width))}px`;
+    clone.style.maxWidth = `${Math.max(120, Math.round(rect.width))}px`;
+    if (sourceElement.classList.contains('pipeline-flow-node')) {
+      clone.classList.add('pipeline-touch-drag-clone-node');
+    } else {
+      clone.classList.add('pipeline-touch-drag-clone-chip');
+    }
+    touchDragCloneOffsetRef.current = {
+      x: Math.max(40, rect.width / 2),
+      y: Math.max(20, Math.min(44, rect.height * 0.45))
+    };
+    document.body.appendChild(clone);
+    touchDragCloneRef.current = clone;
+    moveTouchDragClone(x, y);
+  };
+
+  useEffect(() => {
+    const updateTabletMode = () => {
+      setIsTabletTouchDevice(detectTabletTouchDevice());
+    };
+    updateTabletMode();
+    window.addEventListener('resize', updateTabletMode);
+    window.addEventListener('orientationchange', updateTabletMode);
+    return () => {
+      window.removeEventListener('resize', updateTabletMode);
+      window.removeEventListener('orientationchange', updateTabletMode);
+    };
+  }, []);
 
   const setSlotBlockType = (slotIndex: number, nextBlockType: string) => {
     if (!view.permissions.processingEditable) {
@@ -930,6 +1032,251 @@ export function PipelineBuilderSection({
     setSlotBlockType(slotIndex, sourceBlockType);
     setSlotBlockType(sourceSlotIndex, targetBlockType);
   };
+
+  const readTouchSlotIndexFromPoint = (clientX: number, clientY: number): number | null => {
+    if (!view.permissions.processingEditable || typeof document === 'undefined') {
+      return null;
+    }
+    const target = document.elementFromPoint(clientX, clientY);
+    if (!(target instanceof Element)) {
+      return null;
+    }
+    const slotElement = target.closest('[data-pipeline-slot-index]');
+    if (!(slotElement instanceof HTMLElement)) {
+      return null;
+    }
+    if (slotElement.dataset.pipelineSlotLocked === 'true') {
+      return null;
+    }
+    const rawSlotIndex = slotElement.dataset.pipelineSlotIndex ?? '';
+    const slotIndex = Number.parseInt(rawSlotIndex, 10);
+    if (!Number.isFinite(slotIndex)) {
+      return null;
+    }
+    return slotIndex;
+  };
+
+  const clearTouchDrag = () => {
+    touchDragStateRef.current = null;
+    dragOverSlotIndexRef.current = null;
+    activePointerIdRef.current = null;
+    removeTouchDragClone();
+    setTouchDragState(null);
+    setDragOverSlotIndex(null);
+  };
+
+  const applyTouchDrop = (slotIndex: number, blockType: string, sourceSlotIndex: number | null) => {
+    if (!view.permissions.processingEditable) {
+      return;
+    }
+    if (!blockOptions.includes(blockType)) {
+      return;
+    }
+    if (sourceSlotIndex === null) {
+      setSlotBlockType(slotIndex, blockType);
+      return;
+    }
+    if (sourceSlotIndex === slotIndex) {
+      return;
+    }
+    if (onSwapSlots) {
+      onSwapSlots(sourceSlotIndex, slotIndex);
+      return;
+    }
+    const sourceBlockType = processingSlots[sourceSlotIndex]?.blockType ?? blockType;
+    const targetBlockType = processingSlots[slotIndex]?.blockType ?? 'NONE';
+    setSlotBlockType(slotIndex, sourceBlockType);
+    setSlotBlockType(sourceSlotIndex, targetBlockType);
+  };
+
+  const startTouchDrag = (
+    blockType: string,
+    sourceSlotIndex: number | null,
+    clientX: number,
+    clientY: number,
+    sourceElement: HTMLElement | null
+  ) => {
+    const started = { blockType, sourceSlotIndex };
+    touchDragStateRef.current = started;
+    setTouchDragState(started);
+    const hovered = readTouchSlotIndexFromPoint(clientX, clientY);
+    const initialTarget = sourceSlotIndex === null ? hovered : hovered ?? sourceSlotIndex;
+    dragOverSlotIndexRef.current = initialTarget;
+    setDragOverSlotIndex(initialTarget);
+    createTouchDragClone(sourceElement, clientX, clientY);
+  };
+
+  const onTouchStartLibraryBlock = (event: ReactTouchEvent<HTMLElement>, blockType: string) => {
+    if (!view.permissions.processingEditable) {
+      return;
+    }
+    if (event.touches.length === 0) {
+      return;
+    }
+    if (event.cancelable) {
+      event.preventDefault();
+    }
+    const touch = event.touches[0];
+    startTouchDrag(blockType, null, touch.clientX, touch.clientY, event.currentTarget);
+  };
+
+  const onTouchStartSlotBlock = (
+    event: ReactTouchEvent<HTMLElement>,
+    blockType: string,
+    sourceSlotIndex: number,
+    slotEditable: boolean
+  ) => {
+    if (!view.permissions.processingEditable || !slotEditable || event.touches.length === 0) {
+      return;
+    }
+    if (event.cancelable) {
+      event.preventDefault();
+    }
+    const touch = event.touches[0];
+    const sourceElement = event.currentTarget.closest('.pipeline-flow-node.slot');
+    startTouchDrag(
+      blockType,
+      sourceSlotIndex,
+      touch.clientX,
+      touch.clientY,
+      sourceElement instanceof HTMLElement ? sourceElement : null
+    );
+  };
+
+  const onPointerStartLibraryBlock = (event: ReactPointerEvent<HTMLElement>, blockType: string) => {
+    if (!view.permissions.processingEditable || event.pointerType !== 'touch') {
+      return;
+    }
+    if (event.cancelable) {
+      event.preventDefault();
+    }
+    event.stopPropagation();
+    activePointerIdRef.current = event.pointerId;
+    startTouchDrag(blockType, null, event.clientX, event.clientY, event.currentTarget);
+  };
+
+  const onPointerStartSlotBlock = (
+    event: ReactPointerEvent<HTMLElement>,
+    blockType: string,
+    sourceSlotIndex: number,
+    slotEditable: boolean
+  ) => {
+    if (!view.permissions.processingEditable || !slotEditable || event.pointerType !== 'touch') {
+      return;
+    }
+    if (event.cancelable) {
+      event.preventDefault();
+    }
+    event.stopPropagation();
+    activePointerIdRef.current = event.pointerId;
+    const sourceElement = event.currentTarget.closest('.pipeline-flow-node.slot');
+    startTouchDrag(
+      blockType,
+      sourceSlotIndex,
+      event.clientX,
+      event.clientY,
+      sourceElement instanceof HTMLElement ? sourceElement : null
+    );
+  };
+
+  const shouldSuppressTouchClick = () => Date.now() < suppressTouchClickUntilRef.current;
+
+  useEffect(() => {
+    if (!touchDragState) {
+      return undefined;
+    }
+
+    const handleTouchMove = (event: TouchEvent) => {
+      const activeDrag = touchDragStateRef.current;
+      if (!activeDrag || event.touches.length === 0) {
+        return;
+      }
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+      const touch = event.touches[0];
+      moveTouchDragClone(touch.clientX, touch.clientY);
+      const hovered = readTouchSlotIndexFromPoint(touch.clientX, touch.clientY);
+      if (dragOverSlotIndexRef.current !== hovered) {
+        dragOverSlotIndexRef.current = hovered;
+        setDragOverSlotIndex(hovered);
+      }
+    };
+
+    const handleTouchEnd = (event: TouchEvent) => {
+      const activeDrag = touchDragStateRef.current;
+      if (!activeDrag) {
+        return;
+      }
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+      const changedTouch = event.changedTouches[0];
+      const slotIndexFromPoint = changedTouch
+        ? readTouchSlotIndexFromPoint(changedTouch.clientX, changedTouch.clientY)
+        : null;
+      const targetSlotIndex = slotIndexFromPoint ?? dragOverSlotIndexRef.current;
+      if (targetSlotIndex !== null) {
+        applyTouchDrop(targetSlotIndex, activeDrag.blockType, activeDrag.sourceSlotIndex);
+      }
+      suppressTouchClickUntilRef.current = Date.now() + 450;
+      clearTouchDrag();
+    };
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const activeDrag = touchDragStateRef.current;
+      if (!activeDrag) {
+        return;
+      }
+      if (activePointerIdRef.current !== null && event.pointerId !== activePointerIdRef.current) {
+        return;
+      }
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+      moveTouchDragClone(event.clientX, event.clientY);
+      const hovered = readTouchSlotIndexFromPoint(event.clientX, event.clientY);
+      if (dragOverSlotIndexRef.current !== hovered) {
+        dragOverSlotIndexRef.current = hovered;
+        setDragOverSlotIndex(hovered);
+      }
+    };
+
+    const handlePointerEnd = (event: PointerEvent) => {
+      const activeDrag = touchDragStateRef.current;
+      if (!activeDrag) {
+        return;
+      }
+      if (activePointerIdRef.current !== null && event.pointerId !== activePointerIdRef.current) {
+        return;
+      }
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+      const slotIndexFromPoint = readTouchSlotIndexFromPoint(event.clientX, event.clientY);
+      const targetSlotIndex = slotIndexFromPoint ?? dragOverSlotIndexRef.current;
+      if (targetSlotIndex !== null) {
+        applyTouchDrop(targetSlotIndex, activeDrag.blockType, activeDrag.sourceSlotIndex);
+      }
+      suppressTouchClickUntilRef.current = Date.now() + 450;
+      clearTouchDrag();
+    };
+
+    window.addEventListener('touchmove', handleTouchMove, { passive: false });
+    window.addEventListener('touchend', handleTouchEnd, { passive: false });
+    window.addEventListener('touchcancel', handleTouchEnd, { passive: false });
+    window.addEventListener('pointermove', handlePointerMove, { passive: false });
+    window.addEventListener('pointerup', handlePointerEnd, { passive: false });
+    window.addEventListener('pointercancel', handlePointerEnd, { passive: false });
+    return () => {
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleTouchEnd);
+      window.removeEventListener('touchcancel', handleTouchEnd);
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerEnd);
+      window.removeEventListener('pointercancel', handlePointerEnd);
+    };
+  }, [touchDragState]);
 
   const openInspectorModal = (slotIndex: number) => {
     setInspectorModalSlotIndex(slotIndex);
@@ -1221,7 +1568,7 @@ export function PipelineBuilderSection({
   };
 
   return (
-    <section className="panel pipeline-builder full-width">
+    <section className={`panel pipeline-builder full-width ${isTabletTouchDevice ? 'tablet-touch-mode' : ''}`}>
       <header className="panel-header">
         <h3>{title}</h3>
       </header>
@@ -1337,7 +1684,10 @@ export function PipelineBuilderSection({
         <h4>{t('pipelineProcessing')}</h4>
         <div className="pipeline-builder-workbench">
           <section className="pipeline-flow-column">
-            <section className="pipeline-flow-board" onDragLeave={() => setDragOverSlotIndex(null)}>
+            <section
+              className={`pipeline-flow-board ${touchDragging ? 'touch-dragging' : ''}`}
+              onDragLeave={() => setDragOverSlotIndex(null)}
+            >
               {processingSlots.map((slot) => {
                 const isEmpty = slot.blockType === 'NONE';
                 const isDropTarget = dragOverSlotIndex === slot.index;
@@ -1399,8 +1749,14 @@ export function PipelineBuilderSection({
                     <div
                       className={`pipeline-flow-node slot ${isEmpty ? 'empty' : 'filled'} ${
                         isDropTarget ? 'drag-over' : ''
+                      } ${isTabletTouchDevice && slotEditable && !isEmpty ? 'tablet-grabbable' : ''} ${
+                        touchDragging && slotEditable ? 'touch-drop-candidate' : ''
+                      } ${
+                        touchDragging && touchDragState?.sourceSlotIndex === slot.index ? 'touch-drag-source' : ''
                       }`}
-                      draggable={slotEditable && !isEmpty}
+                      data-pipeline-slot-index={slot.index}
+                      data-pipeline-slot-locked={isTaskScopeLocked ? 'true' : 'false'}
+                      draggable={!isTabletTouchDevice && slotEditable && !isEmpty}
                       onDragStart={(event) => {
                         if (isEmpty || !slotEditable) {
                           event.preventDefault();
@@ -1414,7 +1770,26 @@ export function PipelineBuilderSection({
                     >
                       <div className="pipeline-flow-node-header">
                         <div className="pipeline-node-title-wrap">
-                          <strong className="mono pipeline-node-label">
+                          {!isEmpty && slotEditable && isTabletTouchDevice ? (
+                            <span
+                              className="pipeline-drag-grab-handle slot-handle"
+                              aria-label={t('pipelineDragHandle')}
+                              title={t('pipelineDragHandle')}
+                              onTouchStart={(event) => onTouchStartSlotBlock(event, slot.blockType, slot.index, slotEditable)}
+                              onPointerDown={(event) => onPointerStartSlotBlock(event, slot.blockType, slot.index, slotEditable)}
+                            >
+                              ⋮⋮
+                            </span>
+                          ) : null}
+                          <strong
+                            className="mono pipeline-node-label"
+                            onTouchStart={(event) => {
+                              if (isEmpty || isTabletTouchDevice) {
+                                return;
+                              }
+                              onTouchStartSlotBlock(event, slot.blockType, slot.index, slotEditable);
+                            }}
+                          >
                             {isEmpty ? t('pipelineDropBlockHint') : displayPipelineBlockType(slot.blockType)}
                           </strong>
                           {!isEmpty ? (
@@ -1646,13 +2021,40 @@ export function PipelineBuilderSection({
                   <button
                     key={blockType}
                     type="button"
-                    className="pipeline-library-chip"
+                    className={`pipeline-library-chip ${isTabletTouchDevice ? 'tablet-grabbable' : ''}`}
+                    data-touch-dragging={
+                      touchDragging && touchDragState?.sourceSlotIndex === null && touchDragState.blockType === blockType
+                        ? 'true'
+                        : 'false'
+                    }
                     disabled={!view.permissions.processingEditable}
-                    draggable={view.permissions.processingEditable}
+                    draggable={!isTabletTouchDevice && view.permissions.processingEditable}
                     onDragStart={(event) => setDragPayload(event, blockType, null)}
                     onDragEnd={() => setDragOverSlotIndex(null)}
-                    onClick={() => placeInFirstAvailableSlot(blockType)}
+                    onTouchStart={(event) => {
+                      if (isTabletTouchDevice) {
+                        return;
+                      }
+                      onTouchStartLibraryBlock(event, blockType);
+                    }}
+                    onClick={() => {
+                      if (shouldSuppressTouchClick()) {
+                        return;
+                      }
+                      placeInFirstAvailableSlot(blockType);
+                    }}
                   >
+                    {isTabletTouchDevice ? (
+                      <span
+                        className="pipeline-drag-grab-handle library-handle"
+                        aria-label={t('pipelineDragHandle')}
+                        title={t('pipelineDragHandle')}
+                        onTouchStart={(event) => onTouchStartLibraryBlock(event, blockType)}
+                        onPointerDown={(event) => onPointerStartLibraryBlock(event, blockType)}
+                      >
+                        ⋮⋮
+                      </span>
+                    ) : null}
                     <span className="mono">{displayPipelineBlockType(blockType)}</span>
                   </button>
                 ))}

@@ -38,6 +38,10 @@ export function LoginSection({
             className="input"
             value={username}
             onChange={(event) => onUsernameChange(event.target.value)}
+            autoCapitalize="none"
+            autoCorrect="off"
+            autoComplete="username"
+            spellCheck={false}
             required
           />
         </label>
@@ -49,6 +53,10 @@ export function LoginSection({
             type="password"
             value={pin}
             onChange={(event) => onPinChange(event.target.value)}
+            autoCapitalize="none"
+            autoCorrect="off"
+            autoComplete="current-password"
+            spellCheck={false}
             required
           />
         </label>

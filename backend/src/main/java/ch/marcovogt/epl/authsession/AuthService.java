@@ -41,7 +41,8 @@ public class AuthService {
 
     @Transactional
     public SessionPrincipal login(String username, String pin) {
-        AuthAccount account = authAccountRepository.findByUsernameAndEnabledTrue(username)
+        String normalizedUsername = username == null ? "" : username.trim();
+        AuthAccount account = authAccountRepository.findByUsernameIgnoreCaseAndEnabledTrue(normalizedUsername)
                 .orElseThrow(() -> AuthExceptions.invalidCredentials());
 
         if (!account.getPinCode().equals(pin)) {
