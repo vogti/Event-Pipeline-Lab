@@ -147,6 +147,21 @@ class DeviceStatusServiceTest {
         verify(deviceStatusRepository, never()).save(any(DeviceStatus.class));
     }
 
+    @Test
+    void shouldIgnoreExternalSourceEventsForDeviceStatus() throws Exception {
+        CanonicalEvent externalEvent = createEvent(
+                "wikimedia.eventstream",
+                "ext/wikimedia/recentchange",
+                "external.wikimedia.edit",
+                Instant.parse("2026-03-01T11:00:00Z")
+        );
+
+        DeviceStatus updated = service.upsertFromInbound(externalEvent, objectMapper.readTree("{\"type\":\"edit\"}"), null);
+
+        assertThat(updated).isNull();
+        verify(deviceDiscoveryProvisioningService, never()).ensureProvisionedForPhysicalDevice(any(String.class));
+    }
+
     private CanonicalEvent createEvent(String deviceId, String topic, String eventType, Instant ingestTs) {
         CanonicalEvent event = new CanonicalEvent();
         event.setDeviceId(deviceId);

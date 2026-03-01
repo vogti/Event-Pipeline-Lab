@@ -4,6 +4,7 @@
 @import './controls.css';
 @import './device-overview.css';
 @import './system-status.css';
+@import './stream-sources.css';
 @import './feed.css';
 @import './pipeline.css';
 @import './modals.css';

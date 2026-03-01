@@ -7,6 +7,7 @@ This repository currently delivers:
 - **PBV Stage 1**: task-bound Pipeline Builder state model (Input/Processing/Sink), constrained processing slots, student/admin APIs, real-time per-group pipeline sync, and initial PBV UI in student/admin
 - **PBV Stage 2**: task-level PBV configuration controls (student visibility, allowed processing blocks, slot count), admin compare view across groups, and active-task live propagation
 - **PBV Stage 6**: optional Kafka-backed log mode (status, offsets, replay controls in admin PBV)
+- **External stream sources (new)**: admin-managed integration for public streams with enable/disable, runtime status, endpoint config, and ingestion into EPL event feed + pipeline path (starting with Wikimedia EventStream)
 
 Backend package namespace: `ch.marcovogt.epl`.
 Build system: **Gradle**.
@@ -36,6 +37,7 @@ Event-Pipeline-Lab/
       eventfeedquery/
       realtimewebsocket/
       taskscenarioengine/
+      externalsources/
       pipelinebuilder/
       groupcollaborationsync/
       auditlogging/
@@ -54,6 +56,7 @@ Event-Pipeline-Lab/
         V9__pipeline_builder_state.sql
         V10__task_pipeline_config.sql
         V11__task_pipeline_config_scenarios.sql
+        V21__external_stream_sources.sql
     Dockerfile
     build.gradle
     settings.gradle
@@ -122,6 +125,42 @@ PBV is implemented in staged increments to keep lecture reliability high.
    - Admin PBV log mode status (`topic`, connectivity, earliest/latest offset)  
    - Admin PBV replay from offset with bounded record count  
    - Replay events update PBV observability in real time
+
+## External Stream Sources (Wikimedia EventStream)
+
+Admin UI:
+
+- Open **Stream Sources** page
+- Enable/disable source ingestion
+- Configure source endpoint URL
+- See runtime status (online/offline), last connected/event, last error
+- Reset and inspect counter (`events since reset`)
+
+Backend API:
+
+- `GET /api/admin/stream-sources`
+- `POST /api/admin/stream-sources/{sourceId}/enable`
+- `POST /api/admin/stream-sources/{sourceId}/disable`
+- `POST /api/admin/stream-sources/{sourceId}/config`
+- `POST /api/admin/stream-sources/{sourceId}/counter/reset`
+
+Current built-in source:
+
+- `wikimedia.eventstream` (`https://stream.wikimedia.org/v2/stream/recentchange`)
+
+Note:
+
+- For PBV projection (`After Pipeline` feed), configure an admin device in Settings.  
+  External stream events are routed through that lecturer/admin pipeline context.
+
+External stream runtime tuning (`backend/src/main/resources/application.yml`):
+
+- `EPL_EXTERNAL_WIKIMEDIA_CONNECT_TIMEOUT_MS` (default `5000`)
+- `EPL_EXTERNAL_WIKIMEDIA_READ_TIMEOUT_MS` (default `3000`)
+- `EPL_EXTERNAL_WIKIMEDIA_RECONNECT_DELAY_MS` (default `3000`)
+- `EPL_EXTERNAL_WIKIMEDIA_DISABLED_POLL_DELAY_MS` (default `1500`)
+- `EPL_EXTERNAL_WIKIMEDIA_MAX_PAYLOAD_BYTES` (default `524288`)
+- `EPL_EXTERNAL_WIKIMEDIA_USER_AGENT` (default `EventPipelineLab/1.0 (+https://epl.marcovogt.ch)`)
 
 ## Stage 6 Log Mode (Kafka-backed)
 

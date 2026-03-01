@@ -89,3 +89,11 @@ epl:
     ready-url: ${EPL_CLOUDFLARE_READY_URL:http://cloudflared:2000/ready}
     metrics-url: ${EPL_CLOUDFLARE_METRICS_URL:http://cloudflared:2000/metrics}
     request-timeout: ${EPL_CLOUDFLARE_REQUEST_TIMEOUT:PT2S}
+  external:
+    wikimedia:
+      connect-timeout-ms: ${EPL_EXTERNAL_WIKIMEDIA_CONNECT_TIMEOUT_MS:5000}
+      read-timeout-ms: ${EPL_EXTERNAL_WIKIMEDIA_READ_TIMEOUT_MS:3000}
+      reconnect-delay-ms: ${EPL_EXTERNAL_WIKIMEDIA_RECONNECT_DELAY_MS:3000}
+      disabled-poll-delay-ms: ${EPL_EXTERNAL_WIKIMEDIA_DISABLED_POLL_DELAY_MS:1500}
+      max-payload-bytes: ${EPL_EXTERNAL_WIKIMEDIA_MAX_PAYLOAD_BYTES:524288}
+      user-agent: ${EPL_EXTERNAL_WIKIMEDIA_USER_AGENT:EventPipelineLab/1.0 (+https://epl.marcovogt.ch)}

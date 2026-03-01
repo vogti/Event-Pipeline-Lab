@@ -75,6 +75,9 @@ export function AdminDashboardSection({
           <button className="button secondary" type="button" onClick={() => onNavigate('groups')}>
             {t('groups')}
           </button>
+          <button className="button secondary" type="button" onClick={() => onNavigate('streamSources')}>
+            {t('streamSources')}
+          </button>
           <button className="button secondary" type="button" onClick={() => onNavigate('systemStatus')}>
             {t('systemStatus')}
           </button>

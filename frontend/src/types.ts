@@ -167,6 +167,22 @@ export interface AppSettings {
   updatedBy: string;
 }
 
+export interface ExternalStreamSource {
+  sourceId: string;
+  displayName: string;
+  enabled: boolean;
+  endpointUrl: string;
+  online: boolean;
+  lastConnectedAt: TimestampValue;
+  lastEventAt: TimestampValue;
+  statusCheckedAt: TimestampValue;
+  lastError: string | null;
+  eventsSinceReset: number;
+  counterResetAt: TimestampValue;
+  updatedAt: TimestampValue;
+  updatedBy: string;
+}
+
 export interface FeedScenarioConfig {
   scenarioOverlays: string[];
   updatedAt: TimestampValue;

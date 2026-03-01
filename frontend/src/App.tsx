@@ -6,6 +6,7 @@ import type {
   CanonicalEvent,
   DeviceCommandType,
   EventCategory,
+  ExternalStreamSource,
   FeedScenarioConfig,
   LanguageMode,
   PipelineLogModeStatus,
@@ -107,6 +108,7 @@ import { AdminTasksSection } from './components/admin/AdminTasksSection';
 import { AdminGroupsSection } from './components/admin/AdminGroupsSection';
 import { AdminPageNav } from './components/admin/AdminPageNav';
 import { AdminSettingsSection } from './components/admin/AdminSettingsSection';
+import { AdminStreamSourcesSection } from './components/admin/AdminStreamSourcesSection';
 import { AppTopBar } from './components/layout/AppTopBar';
 import { AboutEplModal } from './components/layout/AboutEplModal';
 import { MainStateBanners } from './components/layout/MainStateBanners';
@@ -463,6 +465,36 @@ function normalizeStudentDeviceScope(raw: string | null | undefined): StudentDev
   return 'OWN_DEVICE';
 }
 
+function sortExternalStreamSources(sources: ExternalStreamSource[]): ExternalStreamSource[] {
+  return [...sources].sort((left, right) => left.displayName.localeCompare(right.displayName));
+}
+
+function upsertExternalStreamSource(
+  sources: ExternalStreamSource[],
+  updated: ExternalStreamSource
+): ExternalStreamSource[] {
+  const next = [...sources];
+  const index = next.findIndex((entry) => entry.sourceId === updated.sourceId);
+  if (index >= 0) {
+    next[index] = updated;
+    return sortExternalStreamSources(next);
+  }
+  next.push(updated);
+  return sortExternalStreamSources(next);
+}
+
+function endpointDraftsFromSources(
+  sources: ExternalStreamSource[],
+  previous: Record<string, string>
+): Record<string, string> {
+  const next: Record<string, string> = {};
+  for (const source of sources) {
+    const previousDraft = previous[source.sourceId];
+    next[source.sourceId] = previousDraft ?? source.endpointUrl;
+  }
+  return next;
+}
+
 const VIRTUAL_PATCH_KEYS: Array<keyof VirtualDevicePatch> = [
   'buttonRedPressed',
   'buttonBlackPressed',
@@ -606,6 +638,8 @@ export default function App() {
 
   const [adminData, setAdminData] = useState<AdminViewData | null>(null);
   const [adminSystemStatus, setAdminSystemStatus] = useState<AdminSystemStatus | null>(null);
+  const [adminStreamSources, setAdminStreamSources] = useState<ExternalStreamSource[]>([]);
+  const [adminStreamSourceEndpointDrafts, setAdminStreamSourceEndpointDrafts] = useState<Record<string, string>>({});
   const [adminTopicFilter, setAdminTopicFilter] = useState('');
   const [adminCategoryFilter, setAdminCategoryFilter] = useState<EventCategory | 'ALL'>('ALL');
   const [adminDeviceFilter, setAdminDeviceFilter] = useState('');
@@ -848,6 +882,35 @@ export default function App() {
   }, [adminPage, flushDeferredAdminFeedEvents]);
 
   useEffect(() => {
+    if (!token || session?.role !== 'ADMIN' || adminPage !== 'streamSources') {
+      return;
+    }
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const sources = sortExternalStreamSources(await api.adminStreamSources(token));
+        if (cancelled) {
+          return;
+        }
+        setAdminStreamSources(sources);
+        setAdminStreamSourceEndpointDrafts((previous) => endpointDraftsFromSources(sources, previous));
+      } catch (error) {
+        reportBackgroundError('adminStreamSources', error);
+      }
+    };
+
+    void refresh();
+    const timerId = window.setInterval(() => {
+      void refresh();
+    }, 2500);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timerId);
+    };
+  }, [adminPage, reportBackgroundError, session?.role, token]);
+
+  useEffect(() => {
     if (adminPage !== 'devices') {
       return;
     }
@@ -958,6 +1021,8 @@ export default function App() {
 
     setAdminData(null);
     setAdminSystemStatus(null);
+    setAdminStreamSources([]);
+    setAdminStreamSourceEndpointDrafts({});
     setAdminTopicFilter('');
     setAdminCategoryFilter('ALL');
     setAdminDeviceFilter('');
@@ -1167,12 +1232,13 @@ export default function App() {
     }
 
     const logModeStatusPromise = api.adminPipelineLogModeStatus(activeToken).catch(() => null);
-    const [tasks, devices, virtualDevices, groups, settings, events, pipelineEvents, systemStatus, logModeStatus, scenarios] = await Promise.all([
+    const [tasks, devices, virtualDevices, groups, settings, streamSources, events, pipelineEvents, systemStatus, logModeStatus, scenarios] = await Promise.all([
       api.adminTasks(activeToken),
       api.adminDevices(activeToken),
       api.adminVirtualDevices(activeToken),
       api.adminGroups(activeToken),
       api.adminSettings(activeToken),
+      api.adminStreamSources(activeToken),
       api.eventsFeed(activeToken, { limit: MAX_FEED_EVENTS, includeInternal: true }),
       api.eventsFeed(activeToken, { limit: MAX_FEED_EVENTS, includeInternal: true, stage: 'AFTER_PIPELINE' }),
       api.adminSystemStatus(activeToken),
@@ -1198,6 +1264,9 @@ export default function App() {
     setDefaultLanguageMode(settings.defaultLanguageMode);
     setTimeFormat24h(settings.timeFormat24h);
     setAdminSystemStatus(systemStatus);
+    const sortedStreamSources = sortExternalStreamSources(streamSources);
+    setAdminStreamSources(sortedStreamSources);
+    setAdminStreamSourceEndpointDrafts(endpointDraftsFromSources(sortedStreamSources, {}));
     setAdminPipelineLogModeStatus(logModeStatus);
     setAdminPipelineReplayFromOffset('');
     setAdminPipelineReplayMaxRecords(logModeStatus?.replayDefaultMaxRecords ?? 200);
@@ -3092,6 +3161,79 @@ export default function App() {
     }
   };
 
+  const changeAdminStreamSourceEndpointDraft = useCallback((sourceId: string, value: string) => {
+    setAdminStreamSourceEndpointDrafts((previous) => ({
+      ...previous,
+      [sourceId]: value
+    }));
+  }, []);
+
+  const applyAdminStreamSourceUpdate = useCallback((updated: ExternalStreamSource) => {
+    setAdminStreamSources((previous) => upsertExternalStreamSource(previous, updated));
+    setAdminStreamSourceEndpointDrafts((previous) => ({
+      ...previous,
+      [updated.sourceId]: updated.endpointUrl
+    }));
+  }, []);
+
+  const toggleAdminStreamSourceEnabled = async (sourceId: string, enabled: boolean) => {
+    if (!token || !session || session.role !== 'ADMIN') {
+      return;
+    }
+    setBusyKey(`stream-source-toggle-${sourceId}`);
+    setErrorMessage(null);
+    try {
+      const updated = enabled
+        ? await api.enableAdminStreamSource(token, sourceId)
+        : await api.disableAdminStreamSource(token, sourceId);
+      applyAdminStreamSourceUpdate(updated);
+      pushToast(t(enabled ? 'streamSourceEnabled' : 'streamSourceDisabled'));
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const saveAdminStreamSourceConfig = async (sourceId: string) => {
+    if (!token || !session || session.role !== 'ADMIN') {
+      return;
+    }
+    const endpointUrl = (adminStreamSourceEndpointDrafts[sourceId] ?? '').trim();
+    if (!endpointUrl) {
+      setErrorMessage(t('invalidInput'));
+      return;
+    }
+    setBusyKey(`stream-source-config-${sourceId}`);
+    setErrorMessage(null);
+    try {
+      const updated = await api.updateAdminStreamSourceConfig(token, sourceId, endpointUrl);
+      applyAdminStreamSourceUpdate(updated);
+      pushToast(t('streamSourceConfigSaved'));
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const resetAdminStreamSourceCounter = async (sourceId: string) => {
+    if (!token || !session || session.role !== 'ADMIN') {
+      return;
+    }
+    setBusyKey(`stream-source-reset-${sourceId}`);
+    setErrorMessage(null);
+    try {
+      const updated = await api.resetAdminStreamSourceCounter(token, sourceId);
+      applyAdminStreamSourceUpdate(updated);
+      pushToast(t('streamSourceCounterReset'));
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
   const sendAdminDeviceCommand = useCallback(
     async (
       deviceId: string,
@@ -3898,7 +4040,7 @@ export default function App() {
 
     try {
       const logModeStatusPromise = api.adminPipelineLogModeStatus(token).catch(() => null);
-      const [tasks, devices, virtualDevices, groups, events, pipelineEvents, settings, systemStatus, logModeStatus, scenarios] = await Promise.all([
+      const [tasks, devices, virtualDevices, groups, events, pipelineEvents, settings, streamSources, systemStatus, logModeStatus, scenarios] = await Promise.all([
         api.adminTasks(token),
         api.adminDevices(token),
         api.adminVirtualDevices(token),
@@ -3906,6 +4048,7 @@ export default function App() {
         api.eventsFeed(token, { limit: MAX_FEED_EVENTS, includeInternal: true }),
         api.eventsFeed(token, { limit: MAX_FEED_EVENTS, includeInternal: true, stage: 'AFTER_PIPELINE' }),
         api.adminSettings(token),
+        api.adminStreamSources(token),
         api.adminSystemStatus(token),
         logModeStatusPromise,
         api.adminScenarios(token)
@@ -3934,6 +4077,9 @@ export default function App() {
       setAdminSettingsDraftVirtualDeviceTopicMode(settings.virtualDeviceTopicMode);
       setDefaultLanguageMode(settings.defaultLanguageMode);
       setTimeFormat24h(settings.timeFormat24h);
+      const sortedStreamSources = sortExternalStreamSources(streamSources);
+      setAdminStreamSources(sortedStreamSources);
+      setAdminStreamSourceEndpointDrafts(endpointDraftsFromSources(sortedStreamSources, {}));
       setAdminSystemStatus((previous) => (sameAdminSystemStatus(previous, systemStatus) ? previous : systemStatus));
       setAdminPipelineLogModeStatus(logModeStatus);
       setFeedScenarioConfig(scenarios);
@@ -5211,6 +5357,20 @@ export default function App() {
                   busy={busyKey === 'admin-scenarios'}
                   onOverlaysChange={changeFeedScenarioOverlays}
                   onSave={saveAdminFeedScenarios}
+                />
+              ) : null}
+
+              {adminPage === 'streamSources' ? (
+                <AdminStreamSourcesSection
+                  t={t}
+                  sources={adminStreamSources}
+                  endpointDrafts={adminStreamSourceEndpointDrafts}
+                  busyKey={busyKey}
+                  formatTs={formatTs}
+                  onEndpointDraftChange={changeAdminStreamSourceEndpointDraft}
+                  onToggleEnabled={toggleAdminStreamSourceEnabled}
+                  onSaveConfig={saveAdminStreamSourceConfig}
+                  onResetCounter={resetAdminStreamSourceCounter}
                 />
               ) : null}
 

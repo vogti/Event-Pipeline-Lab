@@ -116,7 +116,7 @@ public class EventIngestionService {
         }
 
         log.debug(
-                "Ingested MQTT topic={} deviceId={} eventType={} valid={}",
+                "Ingested event topic={} deviceId={} eventType={} valid={}",
                 topic,
                 saved.getDeviceId(),
                 saved.getEventType(),

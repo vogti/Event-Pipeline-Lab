@@ -13,6 +13,7 @@ import type {
   SystemDataImportVerifyResponse,
   SystemDataPart,
   DeviceStatus,
+  ExternalStreamSource,
   GroupConfig,
   GroupOverview,
   GroupResetProgressResponse,
@@ -450,6 +451,55 @@ export const api = {
 
   adminSettings(token: string): Promise<AppSettings> {
     return request<AppSettings>('/api/admin/settings', undefined, token);
+  },
+
+  adminStreamSources(token: string): Promise<ExternalStreamSource[]> {
+    return request<ExternalStreamSource[]>('/api/admin/stream-sources', undefined, token);
+  },
+
+  enableAdminStreamSource(token: string, sourceId: string): Promise<ExternalStreamSource> {
+    return request<ExternalStreamSource>(
+      `/api/admin/stream-sources/${encodeURIComponent(sourceId)}/enable`,
+      {
+        method: 'POST'
+      },
+      token
+    );
+  },
+
+  disableAdminStreamSource(token: string, sourceId: string): Promise<ExternalStreamSource> {
+    return request<ExternalStreamSource>(
+      `/api/admin/stream-sources/${encodeURIComponent(sourceId)}/disable`,
+      {
+        method: 'POST'
+      },
+      token
+    );
+  },
+
+  updateAdminStreamSourceConfig(
+    token: string,
+    sourceId: string,
+    endpointUrl: string
+  ): Promise<ExternalStreamSource> {
+    return request<ExternalStreamSource>(
+      `/api/admin/stream-sources/${encodeURIComponent(sourceId)}/config`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ endpointUrl })
+      },
+      token
+    );
+  },
+
+  resetAdminStreamSourceCounter(token: string, sourceId: string): Promise<ExternalStreamSource> {
+    return request<ExternalStreamSource>(
+      `/api/admin/stream-sources/${encodeURIComponent(sourceId)}/counter/reset`,
+      {
+        method: 'POST'
+      },
+      token
+    );
   },
 
   scenarios(token: string): Promise<FeedScenarioConfig> {

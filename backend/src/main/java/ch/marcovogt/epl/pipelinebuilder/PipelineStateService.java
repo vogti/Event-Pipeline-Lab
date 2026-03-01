@@ -285,6 +285,12 @@ public class PipelineStateService {
             resolvedGroupKey = DeviceIdMapping.groupKeyForDevice(eventDto.deviceId()).orElse(null);
         }
         if (resolvedGroupKey == null || resolvedGroupKey.isBlank()) {
+            String adminDeviceId = appSettingsService.getAdminDeviceId();
+            if (adminDeviceId != null && !adminDeviceId.isBlank()) {
+                resolvedGroupKey = adminDeviceId.trim().toLowerCase();
+            }
+        }
+        if (resolvedGroupKey == null || resolvedGroupKey.isBlank()) {
             return null;
         }
 

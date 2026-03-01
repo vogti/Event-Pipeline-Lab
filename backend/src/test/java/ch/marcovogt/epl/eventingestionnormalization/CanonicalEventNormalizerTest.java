@@ -290,4 +290,40 @@ class CanonicalEventNormalizerTest {
         assertThat(normalized.event().getCategory()).isEqualTo(EventCategory.STATUS);
         assertThat(normalized.event().isInternal()).isTrue();
     }
+
+    @Test
+    void shouldNormalizeWikimediaExternalEvent() {
+        String topic = "ext/wikimedia/recentchange";
+        byte[] payload = """
+                {
+                  "type":"edit",
+                  "meta":{"id":"x"}
+                }
+                """.getBytes(StandardCharsets.UTF_8);
+
+        NormalizedEvent normalized = normalizer.normalize(topic, payload, Instant.parse("2026-03-01T10:00:00Z"));
+
+        assertThat(normalized.event().getDeviceId()).isEqualTo("wikimedia.eventstream");
+        assertThat(normalized.event().getTopic()).isEqualTo("ext/wikimedia/recentchange");
+        assertThat(normalized.event().getEventType()).isEqualTo("external.wikimedia.edit");
+        assertThat(normalized.event().getCategory()).isEqualTo(EventCategory.SENSOR);
+        assertThat(normalized.event().isInternal()).isFalse();
+        assertThat(normalized.event().getGroupKey()).isNull();
+    }
+
+    @Test
+    void shouldUseExternalFallbackEventTypeWhenTypeMissing() {
+        String topic = "ext/wikimedia/recentchange";
+        byte[] payload = """
+                {
+                  "wiki":"enwiki"
+                }
+                """.getBytes(StandardCharsets.UTF_8);
+
+        NormalizedEvent normalized = normalizer.normalize(topic, payload, Instant.parse("2026-03-01T10:00:01Z"));
+
+        assertThat(normalized.event().getDeviceId()).isEqualTo("wikimedia.eventstream");
+        assertThat(normalized.event().getEventType()).isEqualTo("external.wikimedia.recentchange");
+        assertThat(normalized.event().isInternal()).isFalse();
+    }
 }

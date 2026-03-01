@@ -44,6 +44,7 @@ export type AdminPage =
   | 'groups'
   | 'scenarios'
   | 'pipeline'
+  | 'streamSources'
   | 'systemStatus'
   | 'settings';
 export type CounterResetTarget = { deviceId: string; isVirtual: boolean };

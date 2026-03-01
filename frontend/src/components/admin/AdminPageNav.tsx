@@ -60,6 +60,13 @@ export function AdminPageNav({ t, adminPage, onChangePage }: AdminPageNavProps) 
         {t('scenarioPage')}
       </button>
       <button
+        className={`button tiny ${adminPage === 'streamSources' ? 'active' : 'secondary'}`}
+        type="button"
+        onClick={() => onChangePage('streamSources')}
+      >
+        {t('streamSources')}
+      </button>
+      <button
         className={`button tiny ${adminPage === 'pipeline' ? 'active' : 'secondary'}`}
         type="button"
         onClick={() => onChangePage('pipeline')}

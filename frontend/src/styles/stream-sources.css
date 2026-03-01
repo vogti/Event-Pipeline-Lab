@@ -1,0 +1,79 @@
+.stream-source-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
+  gap: 0.85rem;
+}
+
+.stream-source-card {
+  border-radius: 0.82rem;
+  border: 1px solid rgba(45, 67, 84, 0.17);
+  background: rgba(247, 252, 255, 0.84);
+  padding: 0.82rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.stream-source-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.7rem;
+}
+
+.stream-source-id {
+  margin-top: 0.15rem;
+  font-size: 0.75rem;
+}
+
+.stream-source-controls {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.6rem;
+  align-items: end;
+}
+
+.stream-source-controls label {
+  display: grid;
+  gap: 0.36rem;
+  color: #385367;
+  font-size: 0.86rem;
+}
+
+.stream-source-counter {
+  min-height: 2.15rem;
+  border-radius: 10px;
+  border: 1px solid rgba(43, 68, 86, 0.18);
+  background: rgba(251, 254, 255, 0.95);
+  color: #1e2d3a;
+  padding: 0.5rem 0.62rem;
+  display: flex;
+  align-items: center;
+}
+
+.stream-source-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.42rem 0.72rem;
+}
+
+.stream-source-meta > div {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.stream-source-meta span {
+  color: #5a7487;
+  font-size: 0.75rem;
+}
+
+.stream-source-meta strong {
+  color: #203847;
+  font-size: 0.84rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.stream-source-actions {
+  display: flex;
+  justify-content: flex-end;
+}

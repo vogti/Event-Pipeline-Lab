@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import ch.marcovogt.epl.common.DeviceIdMapping;
 import ch.marcovogt.epl.common.EventCategory;
+import ch.marcovogt.epl.externalsources.ExternalStreamSourceIds;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -88,6 +89,8 @@ public class CanonicalEventNormalizer {
         String topicDeviceId = null;
         if (segments.length >= 2 && "epld".equals(segments[0])) {
             topicDeviceId = normalizeDeviceId(segments[1]);
+        } else if (segments.length >= 2 && "ext".equalsIgnoreCase(segments[0])) {
+            topicDeviceId = resolveExternalSourceIdSegment(segments[1]);
         } else if (segments.length >= 1
                 && (segments[0].startsWith("epld") || segments[0].startsWith("eplvd"))) {
             topicDeviceId = normalizeDeviceId(segments[0]);
@@ -127,12 +130,20 @@ public class CanonicalEventNormalizer {
             return null;
         }
         if (!(normalized.startsWith("epld") || normalized.startsWith("eplvd"))) {
+            if (ExternalStreamSourceIds.WIKIMEDIA_EVENTSTREAM.equalsIgnoreCase(normalized)) {
+                return ExternalStreamSourceIds.WIKIMEDIA_EVENTSTREAM;
+            }
             return null;
         }
         return normalized;
     }
 
     private String determineEventType(String topic, JsonNode payloadNode) {
+        String externalEventType = determineExternalEventType(topic, payloadNode);
+        if (externalEventType != null) {
+            return externalEventType;
+        }
+
         if (topic.endsWith("/online")) {
             return "device.online.changed";
         }
@@ -221,6 +232,10 @@ public class CanonicalEventNormalizer {
         }
 
         String normalized = rawTopic.trim();
+        if (normalized.startsWith("ext/")) {
+            return normalized;
+        }
+
         if (normalized.startsWith("epld/")) {
             String[] segments = normalized.split("/", 3);
             if (segments.length == 3 && !segments[1].isBlank()) {
@@ -308,6 +323,9 @@ public class CanonicalEventNormalizer {
             return null;
         }
         String[] segments = topic.split("/");
+        if (segments.length >= 2 && "ext".equalsIgnoreCase(segments[0])) {
+            return resolveExternalSourceIdSegment(segments[1]);
+        }
         if (segments.length >= 2 && "epld".equals(segments[0])) {
             return normalizeDeviceId(segments[1]);
         }
@@ -323,7 +341,50 @@ public class CanonicalEventNormalizer {
         if (payloadGroupKey != null && !payloadGroupKey.isBlank()) {
             return payloadGroupKey;
         }
+        if (!DeviceIdMapping.isPhysicalDeviceId(deviceId) && !DeviceIdMapping.isVirtualDeviceId(deviceId)) {
+            return null;
+        }
         return DeviceIdMapping.groupKeyForDevice(deviceId).orElse(deviceId);
+    }
+
+    private String determineExternalEventType(String topic, JsonNode payloadNode) {
+        String sourceId = resolveExternalSourceIdFromTopic(topic);
+        if (sourceId == null) {
+            return null;
+        }
+
+        if (ExternalStreamSourceIds.WIKIMEDIA_EVENTSTREAM.equals(sourceId)) {
+            String rawType = text(payloadNode, "type");
+            String normalized = safe(rawType);
+            if (normalized.isBlank() || "unknown".equals(normalized)) {
+                return "external.wikimedia.recentchange";
+            }
+            return "external.wikimedia." + normalized;
+        }
+
+        return "external.stream.event";
+    }
+
+    private String resolveExternalSourceIdFromTopic(String topic) {
+        if (topic == null || topic.isBlank()) {
+            return null;
+        }
+        String[] segments = topic.split("/");
+        if (segments.length < 2 || !"ext".equalsIgnoreCase(segments[0])) {
+            return null;
+        }
+        return resolveExternalSourceIdSegment(segments[1]);
+    }
+
+    private String resolveExternalSourceIdSegment(String rawSegment) {
+        if (rawSegment == null || rawSegment.isBlank()) {
+            return null;
+        }
+        String normalized = rawSegment.trim().toLowerCase(Locale.ROOT);
+        if ("wikimedia".equals(normalized) || "wikimedia.eventstream".equals(normalized)) {
+            return ExternalStreamSourceIds.WIKIMEDIA_EVENTSTREAM;
+        }
+        return null;
     }
 
     private String normalizeButtonEvent(JsonNode payloadNode) {
@@ -485,6 +546,9 @@ public class CanonicalEventNormalizer {
     }
 
     private EventCategory categorize(String topic, String eventType) {
+        if (eventType.startsWith("external.")) {
+            return EventCategory.SENSOR;
+        }
         if (eventType.startsWith("button.")) {
             return EventCategory.BUTTON;
         }
@@ -511,6 +575,9 @@ public class CanonicalEventNormalizer {
     }
 
     private boolean isInternal(String topic, EventCategory category, String eventType) {
+        if (eventType.startsWith("external.") || topic.startsWith("ext/")) {
+            return false;
+        }
         return category == EventCategory.INTERNAL
                 || category == EventCategory.ACK
                 || topic.startsWith("epl/probe/")
