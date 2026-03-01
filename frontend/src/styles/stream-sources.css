@@ -20,6 +20,47 @@
   gap: 0.7rem;
 }
 
+.stream-source-state-stack {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 10.5rem;
+}
+
+.stream-source-state-row {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.42rem;
+}
+
+.stream-source-state-label {
+  color: #5a7487;
+  font-size: 0.74rem;
+}
+
+.stream-source-state-pill {
+  border-radius: 999px;
+  padding: 0.18rem 0.52rem;
+  font-size: 0.74rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+  line-height: 1.2;
+}
+
+.stream-source-state-pill.enabled,
+.stream-source-state-pill.online {
+  color: #1f7c50;
+  background: rgba(31, 130, 82, 0.12);
+  border-color: rgba(31, 130, 82, 0.28);
+}
+
+.stream-source-state-pill.disabled,
+.stream-source-state-pill.offline {
+  color: #9b4a21;
+  background: rgba(170, 92, 36, 0.13);
+  border-color: rgba(170, 92, 36, 0.3);
+}
+
 .stream-source-id {
   margin-top: 0.15rem;
   font-size: 0.75rem;
@@ -76,4 +117,16 @@
 .stream-source-actions {
   display: flex;
   justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+.stream-source-config-modal {
+  width: min(620px, 100%);
+}
+
+.stream-source-config-modal label {
+  display: grid;
+  gap: 0.36rem;
+  color: #385367;
+  font-size: 0.9rem;
 }
