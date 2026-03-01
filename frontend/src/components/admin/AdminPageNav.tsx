@@ -32,11 +32,11 @@ export function AdminPageNav({ t, adminPage, onChangePage }: AdminPageNavProps) 
         {t('virtualDevices')}
       </button>
       <button
-        className={`button tiny ${adminPage === 'feed' ? 'active' : 'secondary'}`}
+        className={`button tiny ${adminPage === 'streamSources' ? 'active' : 'secondary'}`}
         type="button"
-        onClick={() => onChangePage('feed')}
+        onClick={() => onChangePage('streamSources')}
       >
-        {t('liveFeed')}
+        {t('streamSources')}
       </button>
       <button
         className={`button tiny ${adminPage === 'tasks' ? 'active' : 'secondary'}`}
@@ -60,11 +60,11 @@ export function AdminPageNav({ t, adminPage, onChangePage }: AdminPageNavProps) 
         {t('scenarioPage')}
       </button>
       <button
-        className={`button tiny ${adminPage === 'streamSources' ? 'active' : 'secondary'}`}
+        className={`button tiny ${adminPage === 'feed' ? 'active' : 'secondary'}`}
         type="button"
-        onClick={() => onChangePage('streamSources')}
+        onClick={() => onChangePage('feed')}
       >
-        {t('streamSources')}
+        {t('liveFeed')}
       </button>
       <button
         className={`button tiny ${adminPage === 'pipeline' ? 'active' : 'secondary'}`}

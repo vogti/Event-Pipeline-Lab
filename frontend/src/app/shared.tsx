@@ -1044,6 +1044,14 @@ function eventValueSummary(event: CanonicalEvent): string {
       return String(mqttConnected);
     }
   }
+  if (lowerTopic.startsWith('wikimedia/') || lowerEventType.startsWith('external.wikimedia.')) {
+    const title =
+      firstString(parsedPayload, [['title'], ['meta', 'title']]) ??
+      null;
+    if (title !== null && title.trim().length > 0) {
+      return title.trim();
+    }
+  }
 
   const temperature =
     firstNumber(parsedPayload, [
@@ -1142,6 +1150,20 @@ function eventValueSummary(event: CanonicalEvent): string {
   }
 
   return extractEventValueFromPayload(parsedPayload) ?? '';
+}
+
+function firstString(payload: unknown, paths: Array<Array<string>>): string | null {
+  for (const path of paths) {
+    const value = readPath(payload, path);
+    if (typeof value !== 'string') {
+      continue;
+    }
+    if (value.trim().length === 0) {
+      continue;
+    }
+    return value;
+  }
+  return null;
 }
 
 function emptyDeviceTelemetrySnapshot(): DeviceTelemetrySnapshot {

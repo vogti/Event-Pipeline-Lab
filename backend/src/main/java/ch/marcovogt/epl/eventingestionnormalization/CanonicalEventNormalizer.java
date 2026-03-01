@@ -56,7 +56,7 @@ public class CanonicalEventNormalizer {
         }
 
         String eventType = determineEventType(topic, payloadNode);
-        String canonicalTopic = canonicalizeTopic(topic, deviceId, eventType);
+        String canonicalTopic = canonicalizeTopic(topic, deviceId, eventType, payloadNode);
         EventCategory category = categorize(canonicalTopic, eventType);
         boolean isInternal = isInternal(canonicalTopic, category, eventType);
 
@@ -226,13 +226,18 @@ public class CanonicalEventNormalizer {
         return "internal.raw";
     }
 
-    private String canonicalizeTopic(String rawTopic, String deviceId, String eventType) {
+    private String canonicalizeTopic(String rawTopic, String deviceId, String eventType, JsonNode payloadNode) {
         if (rawTopic == null || rawTopic.isBlank()) {
             return rawTopic;
         }
 
         String normalized = rawTopic.trim();
         if (normalized.startsWith("ext/")) {
+            String sourceId = resolveExternalSourceIdFromTopic(normalized);
+            if (ExternalStreamSourceIds.WIKIMEDIA_EVENTSTREAM.equals(sourceId)) {
+                String wikiField = safe(text(payloadNode, "wiki"));
+                return "wikimedia/" + wikiField;
+            }
             return normalized;
         }
 

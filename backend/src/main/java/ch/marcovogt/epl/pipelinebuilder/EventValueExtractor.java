@@ -57,6 +57,12 @@ final class EventValueExtractor {
                 return String.valueOf(mqttConnected);
             }
         }
+        if (isWikimediaEvent(lowerTopic, lowerEventType)) {
+            String title = firstText(payload, path("title"), path("meta", "title"));
+            if (title != null && !title.isBlank()) {
+                return title.trim();
+            }
+        }
 
         Double temperature = firstNumber(
                 payload,
@@ -395,6 +401,16 @@ final class EventValueExtractor {
         return null;
     }
 
+    private static String firstText(JsonNode root, String[]... paths) {
+        for (String[] path : paths) {
+            String value = toText(readPath(root, path));
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
+    }
+
     private static JsonNode readPath(JsonNode root, String... path) {
         JsonNode current = root;
         for (String segment : path) {
@@ -466,6 +482,21 @@ final class EventValueExtractor {
             }
         }
         return null;
+    }
+
+    private static String toText(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (node.isTextual()) {
+            String value = node.asText();
+            return value == null || value.isBlank() ? null : value;
+        }
+        return null;
+    }
+
+    private static boolean isWikimediaEvent(String lowerTopic, String lowerEventType) {
+        return lowerTopic.startsWith("wikimedia/") || lowerEventType.startsWith("external.wikimedia.");
     }
 
     private static Double findNumberByKeys(JsonNode node, String[] keys, int depth) {

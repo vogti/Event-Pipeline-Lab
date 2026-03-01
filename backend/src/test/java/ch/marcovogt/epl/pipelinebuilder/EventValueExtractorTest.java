@@ -76,4 +76,19 @@ class EventValueExtractorTest {
 
         assertThat(value).isEqualTo("on");
     }
+
+    @Test
+    void shouldExtractWikimediaTitleAsValue() throws Exception {
+        JsonNode payload = objectMapper.readTree("{\"wiki\":\"enwiki\",\"title\":\"Albert Einstein\"}");
+
+        String value = EventValueExtractor.extractValue(
+                EventCategory.SENSOR,
+                "external.wikimedia.edit",
+                "wikimedia/enwiki",
+                payload,
+                objectMapper
+        );
+
+        assertThat(value).isEqualTo("Albert Einstein");
+    }
 }

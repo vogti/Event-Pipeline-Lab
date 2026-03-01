@@ -167,6 +167,20 @@ describe('shared helpers', () => {
     expect(eventValueSummary(mqttStatusEvent)).toBe('true');
   });
 
+  it('shows Wikimedia title as value summary', () => {
+    const wikimediaEvent = createEvent({
+      id: 'event-wikimedia-title',
+      deviceId: 'wikimedia.eventstream',
+      topic: 'wikimedia/enwiki',
+      eventType: 'external.wikimedia.edit',
+      category: 'SENSOR',
+      payloadJson: '{"wiki":"enwiki","title":"OpenAI"}',
+      groupKey: null
+    });
+
+    expect(eventValueSummary(wikimediaEvent)).toBe('OpenAI');
+  });
+
   it('rejects timestamp-like loose counter values but accepts explicit counter fields', () => {
     const timestampLikeCounter = extractCounterValueFromPayload({ value: 1700000000 }, true);
     const explicitCounter = extractCounterValueFromPayload({ counter: 7 }, true);
