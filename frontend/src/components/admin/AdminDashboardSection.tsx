@@ -1,5 +1,6 @@
 import type { I18nKey } from '../../i18n';
 import type { AdminPage, WsConnectionState } from '../../app/shared-types';
+import type { CloudflareTunnelStatus, TimestampValue } from '../../types';
 
 interface AdminDashboardSectionProps {
   t: (key: I18nKey) => string;
@@ -12,6 +13,8 @@ interface AdminDashboardSectionProps {
   eventCount: number;
   currentTaskLabel: string;
   lastEventLabel: string;
+  cloudflareTunnel: CloudflareTunnelStatus | null;
+  formatTs: (value: TimestampValue) => string;
   onNavigate: (page: AdminPage) => void;
 }
 
@@ -26,8 +29,17 @@ export function AdminDashboardSection({
   eventCount,
   currentTaskLabel,
   lastEventLabel,
+  cloudflareTunnel,
+  formatTs,
   onNavigate
 }: AdminDashboardSectionProps) {
+  const cloudflareConnected = cloudflareTunnel?.enabled
+    ? (cloudflareTunnel.reachable && (cloudflareTunnel.ready || (cloudflareTunnel.haConnections ?? 0) > 0))
+    : false;
+  const cloudflareStatusLabel = !cloudflareTunnel?.enabled
+    ? t('cloudflareTunnelDisabled')
+    : (cloudflareConnected ? t('cloudflareTunnelConnected') : t('cloudflareTunnelDisconnected'));
+
   return (
     <>
       <section className="panel hero panel-animate full-width">
@@ -82,6 +94,38 @@ export function AdminDashboardSection({
       <section className="panel panel-animate">
         <h2>{t('groups')}</h2>
         <p className="muted">{t('groupPresence')}: {onlineUserCount}</p>
+      </section>
+
+      <section className="panel panel-animate">
+        <h2>{t('cloudflareTunnel')}</h2>
+        <p>
+          <span className={`system-status-pill ${cloudflareConnected ? 'ok' : 'warn'}`}>
+            {cloudflareStatusLabel}
+          </span>
+        </p>
+        {cloudflareTunnel?.enabled ? (
+          <>
+            <p className="muted">
+              {t('cloudflareHostname')}:{' '}
+              {cloudflareTunnel.hostname ? (
+                <a
+                  className="mono"
+                  href={`https://${cloudflareTunnel.hostname}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {cloudflareTunnel.hostname}
+                </a>
+              ) : (
+                '-'
+              )}
+            </p>
+            <p className="muted">{t('cloudflareHaConnections')}: {cloudflareTunnel.haConnections ?? '-'}</p>
+            <p className="muted">{t('cloudflareCheckedAt')}: {formatTs(cloudflareTunnel.checkedAt)}</p>
+          </>
+        ) : (
+          <p className="muted">{t('cloudflareTunnelEnableHint')}</p>
+        )}
       </section>
     </>
   );

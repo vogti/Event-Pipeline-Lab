@@ -20,7 +20,8 @@ export function useAdminSystemStatusPolling({
   setAdminSystemStatus
 }: UseAdminSystemStatusPollingParams): void {
   useEffect(() => {
-    if (!token || role !== 'ADMIN' || adminPage !== 'systemStatus') {
+    const onStatusPage = adminPage === 'systemStatus' || adminPage === 'dashboard';
+    if (!token || role !== 'ADMIN' || !onStatusPage) {
       return;
     }
 

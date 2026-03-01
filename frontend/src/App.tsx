@@ -5106,6 +5106,8 @@ export default function App() {
                       ? formatRelativeFromNow(adminLatestEvent.ingestTs, nowEpochMs, language)
                       : '-'
                   }
+                  cloudflareTunnel={adminSystemStatus?.cloudflareTunnel ?? null}
+                  formatTs={formatTs}
                   onNavigate={navigateAdminPage}
                 />
               ) : null}
