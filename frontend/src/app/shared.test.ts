@@ -264,6 +264,67 @@ describe('shared helpers', () => {
     expect(merged.epld01).toEqual(previous.epld01);
   });
 
+  it('keeps latest telemetry values regardless of incoming batch order', () => {
+    const events = [
+      createEvent({
+        id: 'newest-temp',
+        ingestTs: '2026-01-01T10:00:03Z',
+        topic: 'epld01/event/sensor/temperature',
+        eventType: 'sensor.temperature.read',
+        category: 'SENSOR',
+        payloadJson: '{"temperature":22.9}'
+      }),
+      createEvent({
+        id: 'older-temp',
+        ingestTs: '2026-01-01T10:00:01Z',
+        topic: 'epld01/event/sensor/temperature',
+        eventType: 'sensor.temperature.read',
+        category: 'SENSOR',
+        payloadJson: '{"temperature":20.1}'
+      }),
+      createEvent({
+        id: 'newest-led',
+        ingestTs: '2026-01-01T10:00:04Z',
+        topic: 'epld01/event/led/green',
+        eventType: 'led.green.state_changed',
+        category: 'STATUS',
+        payloadJson: '{"output":true}'
+      }),
+      createEvent({
+        id: 'older-led',
+        ingestTs: '2026-01-01T10:00:02Z',
+        topic: 'epld01/event/led/green',
+        eventType: 'led.green.state_changed',
+        category: 'STATUS',
+        payloadJson: '{"output":false}'
+      }),
+      createEvent({
+        id: 'newest-uptime',
+        ingestTs: '2026-01-01T10:00:05Z',
+        topic: 'epld01/status/heartbeat',
+        eventType: 'status.heartbeat',
+        category: 'STATUS',
+        payloadJson: '{"sys":{"uptime":125}}'
+      }),
+      createEvent({
+        id: 'older-uptime',
+        ingestTs: '2026-01-01T10:00:00Z',
+        topic: 'epld01/status/heartbeat',
+        eventType: 'status.heartbeat',
+        category: 'STATUS',
+        payloadJson: '{"sys":{"uptime":120}}'
+      })
+    ];
+
+    const snapshots = buildDeviceTelemetrySnapshots(events);
+    expect(snapshots.epld01).toMatchObject({
+      temperatureC: 22.9,
+      ledGreenOn: true,
+      uptimeMs: 125_000,
+      uptimeIngestTs: '2026-01-01T10:00:05Z'
+    });
+  });
+
   it('merges ip cache by active devices and prunes removed ids', () => {
     const previous = { epld01: '192.168.1.10', epld02: '192.168.1.11' };
     const latest = { epld01: '192.168.1.20' };

@@ -1336,94 +1336,92 @@ function extractUptimeMs(payload: unknown): number | null {
 function buildDeviceTelemetrySnapshots(events: CanonicalEvent[]): Record<string, DeviceTelemetrySnapshot> {
   const byDevice: Record<string, DeviceTelemetrySnapshot> = {};
 
-  for (const event of events) {
+  const orderedEvents = events
+    .map((event, index) => ({
+      event,
+      index,
+      ingestEpoch: timestampToEpochMillis(event.ingestTs) ?? (Number.MIN_SAFE_INTEGER + index)
+    }))
+    .sort((left, right) => {
+      if (left.ingestEpoch === right.ingestEpoch) {
+        return left.index - right.index;
+      }
+      return left.ingestEpoch - right.ingestEpoch;
+    });
+
+  for (const entry of orderedEvents) {
+    const event = entry.event;
     if (!byDevice[event.deviceId]) {
       byDevice[event.deviceId] = emptyDeviceTelemetrySnapshot();
     }
     const snapshot = byDevice[event.deviceId];
     const payload = tryParsePayload(event.payloadJson);
 
-    if (snapshot.temperatureC === null) {
-      const temperature = firstNumber(payload, [
-        ['temperature'],
-        ['temp'],
-        ['tC'],
-        ['params', 'temperature:100', 'tC'],
-        ['params', 'temperature:100', 'value']
-      ]) ?? findNumberByKeys(payload, ['temperature', 'temp', 'tC']);
-      if (temperature !== null) {
-        snapshot.temperatureC = temperature;
-      }
+    const temperature = firstNumber(payload, [
+      ['temperature'],
+      ['temp'],
+      ['tC'],
+      ['params', 'temperature:100', 'tC'],
+      ['params', 'temperature:100', 'value']
+    ]) ?? findNumberByKeys(payload, ['temperature', 'temp', 'tC']);
+    if (temperature !== null) {
+      snapshot.temperatureC = temperature;
     }
 
-    if (snapshot.humidityPct === null) {
-      const humidity = firstNumber(payload, [
-        ['humidity'],
-        ['hum'],
-        ['rh'],
-        ['params', 'humidity:100', 'rh'],
-        ['params', 'humidity:100', 'value']
-      ]) ?? findNumberByKeys(payload, ['humidity', 'hum', 'rh']);
-      if (humidity !== null) {
-        snapshot.humidityPct = humidity;
-      }
+    const humidity = firstNumber(payload, [
+      ['humidity'],
+      ['hum'],
+      ['rh'],
+      ['params', 'humidity:100', 'rh'],
+      ['params', 'humidity:100', 'value']
+    ]) ?? findNumberByKeys(payload, ['humidity', 'hum', 'rh']);
+    if (humidity !== null) {
+      snapshot.humidityPct = humidity;
     }
 
-    if (snapshot.brightness === null) {
-      const brightness = firstNumber(payload, [
-        ['brightness'],
-        ['lux'],
-        ['ldr'],
-        ['voltage'],
-        ['params', 'voltmeter:100', 'voltage'],
-        ['params', 'voltmeter:100', 'value']
-      ]) ?? findNumberByKeys(payload, ['brightness', 'lux', 'ldr', 'voltage']);
-      if (brightness !== null) {
-        snapshot.brightness = brightness;
-      }
+    const brightness = firstNumber(payload, [
+      ['brightness'],
+      ['lux'],
+      ['ldr'],
+      ['voltage'],
+      ['params', 'voltmeter:100', 'voltage'],
+      ['params', 'voltmeter:100', 'value']
+    ]) ?? findNumberByKeys(payload, ['brightness', 'lux', 'ldr', 'voltage']);
+    if (brightness !== null) {
+      snapshot.brightness = brightness;
     }
 
-    if (snapshot.counterValue === null && isCounterEvent(event)) {
+    if (isCounterEvent(event)) {
       const counterValue = extractCounterValueFromPayload(payload, true);
       if (counterValue !== null) {
         snapshot.counterValue = counterValue;
       }
     }
 
-    if (snapshot.buttonRedPressed === null) {
-      const red = extractButtonState(event, payload, 'red');
-      if (red !== null) {
-        snapshot.buttonRedPressed = red;
-      }
+    const red = extractButtonState(event, payload, 'red');
+    if (red !== null) {
+      snapshot.buttonRedPressed = red;
     }
 
-    if (snapshot.buttonBlackPressed === null) {
-      const black = extractButtonState(event, payload, 'black');
-      if (black !== null) {
-        snapshot.buttonBlackPressed = black;
-      }
+    const black = extractButtonState(event, payload, 'black');
+    if (black !== null) {
+      snapshot.buttonBlackPressed = black;
     }
 
-    if (snapshot.ledGreenOn === null) {
-      const green = extractLedState(event, payload, 'green');
-      if (green !== null) {
-        snapshot.ledGreenOn = green;
-      }
+    const green = extractLedState(event, payload, 'green');
+    if (green !== null) {
+      snapshot.ledGreenOn = green;
     }
 
-    if (snapshot.ledOrangeOn === null) {
-      const orange = extractLedState(event, payload, 'orange');
-      if (orange !== null) {
-        snapshot.ledOrangeOn = orange;
-      }
+    const orange = extractLedState(event, payload, 'orange');
+    if (orange !== null) {
+      snapshot.ledOrangeOn = orange;
     }
 
-    if (snapshot.uptimeMs === null) {
-      const uptimeMs = extractUptimeMs(payload);
-      if (uptimeMs !== null) {
-        snapshot.uptimeMs = uptimeMs;
-        snapshot.uptimeIngestTs = event.ingestTs;
-      }
+    const uptimeMs = extractUptimeMs(payload);
+    if (uptimeMs !== null) {
+      snapshot.uptimeMs = uptimeMs;
+      snapshot.uptimeIngestTs = event.ingestTs;
     }
   }
 

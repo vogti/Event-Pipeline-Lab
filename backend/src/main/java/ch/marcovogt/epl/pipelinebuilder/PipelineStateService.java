@@ -33,6 +33,7 @@ public class PipelineStateService {
     private static final String GLOBAL_OWNER_KEY = "global";
     private static final Set<String> INPUT_MODES = Set.of("LIVE_MQTT", "LOG_MODE");
     private static final Set<String> DEVICE_SCOPES = Set.of("SINGLE_DEVICE", "GROUP_DEVICES", "ALL_DEVICES");
+    private static final int MAX_PROCESSING_SLOT_COUNT = 512;
     private static final String TASK_SCOPE_LOCKED_KEY = "taskScopeLocked";
     private static final String TASK_SCOPE_ORIGIN_KEY = "taskScopeOrigin";
     private static final String TASK_SCOPE_ORIGIN_VALUE = "task_device_scope";
@@ -844,8 +845,14 @@ public class PipelineStateService {
             List<String> allowedBlocks,
             boolean enforceAllowList
     ) {
-        int minSlots = Math.max(1, minimumSlotCount);
+        int minSlots = Math.min(Math.max(1, minimumSlotCount), MAX_PROCESSING_SLOT_COUNT);
         int requestedSlots = source != null ? Math.max(1, source.slotCount()) : minSlots;
+        if (requestedSlots > MAX_PROCESSING_SLOT_COUNT) {
+            throw new ResponseStatusException(
+                    BAD_REQUEST,
+                    "slotCount exceeds maximum allowed value: " + MAX_PROCESSING_SLOT_COUNT
+            );
+        }
 
         Map<Integer, PipelineSlot> byIndex = new java.util.HashMap<>();
         List<PipelineSlot> incoming = source == null || source.slots() == null ? List.of() : source.slots();
@@ -857,6 +864,12 @@ public class PipelineStateService {
             if (slot.index() < 0) {
                 throw new ResponseStatusException(BAD_REQUEST, "Invalid slot index: " + slot.index());
             }
+            if (slot.index() >= MAX_PROCESSING_SLOT_COUNT) {
+                throw new ResponseStatusException(
+                        BAD_REQUEST,
+                        "slot index exceeds maximum allowed value: " + (MAX_PROCESSING_SLOT_COUNT - 1)
+                );
+            }
             if (byIndex.containsKey(slot.index())) {
                 throw new ResponseStatusException(BAD_REQUEST, "Duplicate slot index: " + slot.index());
             }
@@ -867,6 +880,12 @@ public class PipelineStateService {
         }
 
         int effectiveSlotCount = Math.max(Math.max(minSlots, requestedSlots), highestIndex + 1);
+        if (effectiveSlotCount > MAX_PROCESSING_SLOT_COUNT) {
+            throw new ResponseStatusException(
+                    BAD_REQUEST,
+                    "effective slot count exceeds maximum allowed value: " + MAX_PROCESSING_SLOT_COUNT
+            );
+        }
 
         Set<String> allowListSet = new LinkedHashSet<>();
         if (allowedBlocks != null) {
@@ -925,6 +944,7 @@ public class PipelineStateService {
         int highestIndex = shifted.keySet().stream().mapToInt(Integer::intValue).max().orElse(0);
         int requestedSlots = Math.max(2, base.slotCount() + 1);
         int effectiveSlotCount = Math.max(requestedSlots, highestIndex + 1);
+        effectiveSlotCount = Math.min(MAX_PROCESSING_SLOT_COUNT, effectiveSlotCount);
 
         List<PipelineSlot> resolved = new ArrayList<>();
         resolved.add(new PipelineSlot(

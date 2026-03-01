@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import ch.marcovogt.epl.common.EventCategory;
 import ch.marcovogt.epl.eventingestionnormalization.CanonicalEventDto;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import java.time.Instant;
@@ -15,12 +16,14 @@ import org.junit.jupiter.api.Test;
 
 class PipelineObservabilityServiceTest {
 
+    private ObjectMapper objectMapper;
     private PipelineObservabilityService service;
 
     @BeforeEach
     void setUp() {
+        objectMapper = new ObjectMapper();
         service = new PipelineObservabilityService(
-                new ObjectMapper(),
+                objectMapper,
                 Clock.fixed(Instant.parse("2026-02-26T15:00:00Z"), ZoneOffset.UTC),
                 1,
                 3,
@@ -276,6 +279,943 @@ class PipelineObservabilityServiceTest {
         assertThat(downstream.samples().get(0).dropped()).isFalse();
     }
 
+    @Test
+    void filterDeviceOwnScopeShouldDropEventsFromOtherGroups() {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(0, "FILTER_DEVICE", java.util.Map.of("deviceScope", "OWN_DEVICE")))
+        );
+
+        CanonicalEventDto ownEvent = eventAt(
+                "device-own",
+                "epld01",
+                "epld01/event/button/black",
+                "button.black.press",
+                EventCategory.BUTTON,
+                "{\"state\":true}",
+                null,
+                Instant.parse("2026-02-26T15:00:00Z"),
+                false
+        );
+        CanonicalEventDto otherGroupEvent = eventAt(
+                "device-other",
+                "epld02",
+                "epld02/event/button/black",
+                "button.black.press",
+                EventCategory.BUTTON,
+                "{\"state\":true}",
+                null,
+                Instant.parse("2026-02-26T15:00:01Z"),
+                false
+        );
+
+        CanonicalEventDto ownOutput = service.recordEvent("task_intro", "epld01", processing, ownEvent);
+        CanonicalEventDto filteredOutput = service.recordEvent("task_intro", "epld01", processing, otherGroupEvent);
+        PipelineBlockObservabilityDto block = service.snapshot("task_intro", "epld01", processing).blocks().get(0);
+
+        assertThat(ownOutput).isNotNull();
+        assertThat(filteredOutput).isNull();
+        assertThat(block.outCount()).isEqualTo(1);
+        assertThat(block.dropCount()).isEqualTo(1);
+        assertThat(block.dropReasons()).containsEntry("device_filtered", 1L);
+    }
+
+    @Test
+    void filterDeviceShouldDropInternalEventsBeforeScopeEvaluation() {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(0, "FILTER_DEVICE", java.util.Map.of("deviceScope", "ALL_DEVICES")))
+        );
+        CanonicalEventDto internalEvent = eventAt(
+                "internal",
+                "epld01",
+                "epld01/status/system",
+                "status.system",
+                EventCategory.INTERNAL,
+                "{\"kind\":\"internal\"}",
+                null,
+                Instant.parse("2026-02-26T15:00:00Z"),
+                true
+        );
+
+        CanonicalEventDto output = service.recordEvent("task_intro", "epld01", processing, internalEvent);
+        PipelineBlockObservabilityDto block = service.snapshot("task_intro", "epld01", processing).blocks().get(0);
+
+        assertThat(output).isNull();
+        assertThat(block.dropReasons()).containsEntry("internal_filtered", 1L);
+    }
+
+    @Test
+    void filterDeviceLecturerScopeShouldRequireConfiguredDeviceId() {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(
+                        0,
+                        "FILTER_DEVICE",
+                        java.util.Map.of("deviceScope", "LECTURER_DEVICE", "lecturerDeviceId", "epld99")
+                ))
+        );
+        CanonicalEventDto lecturerEvent = eventAt(
+                "lecturer-pass",
+                "epld99",
+                "epld99/event/button/black",
+                "button.black.press",
+                EventCategory.BUTTON,
+                "{\"state\":true}",
+                null,
+                Instant.parse("2026-02-26T15:00:00Z"),
+                false
+        );
+        CanonicalEventDto studentEvent = eventAt(
+                "lecturer-drop",
+                "epld01",
+                "epld01/event/button/black",
+                "button.black.press",
+                EventCategory.BUTTON,
+                "{\"state\":true}",
+                null,
+                Instant.parse("2026-02-26T15:00:01Z"),
+                false
+        );
+
+        CanonicalEventDto pass = service.recordEvent("task_intro", "epld01", processing, lecturerEvent);
+        CanonicalEventDto drop = service.recordEvent("task_intro", "epld01", processing, studentEvent);
+        PipelineBlockObservabilityDto block = service.snapshot("task_intro", "epld01", processing).blocks().get(0);
+
+        assertThat(pass).isNotNull();
+        assertThat(drop).isNull();
+        assertThat(block.dropReasons()).containsEntry("device_filtered", 1L);
+    }
+
+    @Test
+    void filterTopicShouldResolveRawTopicAliasAndPrefixedCompatibility() {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(0, "FILTER_TOPIC", java.util.Map.of("rawTopic", "epld/+/event/button/#")))
+        );
+        CanonicalEventDto pass = event(
+                "raw-topic-pass",
+                "epld01/event/button/red",
+                "button.red.press",
+                EventCategory.BUTTON,
+                "{\"state\":true}"
+        );
+        CanonicalEventDto drop = event(
+                "raw-topic-drop",
+                "epld01/event/sensor/ldr",
+                "sensor.ldr.voltage",
+                EventCategory.SENSOR,
+                "{\"voltage\":2.1}"
+        );
+
+        CanonicalEventDto passOutput = service.recordEvent("task_intro", "epld01", processing, pass);
+        CanonicalEventDto dropOutput = service.recordEvent("task_intro", "epld01", processing, drop);
+        PipelineBlockObservabilityDto block = service.snapshot("task_intro", "epld01", processing).blocks().get(0);
+
+        assertThat(passOutput).isNotNull();
+        assertThat(dropOutput).isNull();
+        assertThat(block.dropReasons()).containsEntry("topic_filtered", 1L);
+    }
+
+    @Test
+    void extractValueShouldEmitBlankForStatusSystemEvents() {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(0, "EXTRACT_VALUE", java.util.Map.of()))
+        );
+        CanonicalEventDto input = event(
+                "extract-system",
+                "epld01/status/system",
+                "status.system",
+                EventCategory.STATUS,
+                "{\"value\":\"ignored\"}"
+        );
+
+        CanonicalEventDto output = service.recordEvent("task_intro", "epld01", processing, input);
+
+        assertThat(output).isNotNull();
+        assertThat(output.payloadJson()).isEqualTo("\"\"");
+    }
+
+    @Test
+    void extractValueShouldExposeStatusMqttConnectedFlag() {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(0, "EXTRACT_VALUE", java.util.Map.of()))
+        );
+        CanonicalEventDto input = event(
+                "extract-status-mqtt",
+                "epld01/status/mqtt",
+                "status.mqtt",
+                EventCategory.STATUS,
+                "{\"params\":{\"mqtt\":{\"connected\":true}}}"
+        );
+
+        CanonicalEventDto output = service.recordEvent("task_intro", "epld01", processing, input);
+
+        assertThat(output).isNotNull();
+        assertThat(output.payloadJson()).isEqualTo("\"true\"");
+    }
+
+    @Test
+    void transformPayloadShouldSupportMapConfigAndTrimLookup() {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(
+                        0,
+                        "TRANSFORM_PAYLOAD",
+                        java.util.Map.of("mappings", java.util.Map.of("pressed", "ON"))
+                ))
+        );
+        CanonicalEventDto input = event(
+                "transform-map",
+                "epld01/event/button/black",
+                "button.black.press",
+                EventCategory.BUTTON,
+                "\" pressed \""
+        );
+
+        CanonicalEventDto output = service.recordEvent("task_intro", "epld01", processing, input);
+        assertThat(output).isNotNull();
+        assertThat(output.payloadJson()).isEqualTo("\"ON\"");
+    }
+
+    @Test
+    void transformPayloadShouldKeepPayloadWhenNoMappingMatches() {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(
+                        0,
+                        "TRANSFORM_PAYLOAD",
+                        java.util.Map.of("transformMappings", List.of(java.util.Map.of("from", "pressed", "to", "on")))
+                ))
+        );
+        CanonicalEventDto input = event(
+                "transform-no-match",
+                "epld01/event/button/black",
+                "button.black.press",
+                EventCategory.BUTTON,
+                "\"unknown\""
+        );
+
+        CanonicalEventDto output = service.recordEvent("task_intro", "epld01", processing, input);
+        assertThat(output).isNotNull();
+        assertThat(output.payloadJson()).isEqualTo("\"unknown\"");
+    }
+
+    @Test
+    void rateLimitShouldAllowEventsAgainAfterWindowExpires() {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(
+                        0,
+                        "FILTER_RATE_LIMIT",
+                        java.util.Map.of("maxEvents", 1, "windowMs", 1_000)
+                ))
+        );
+        CanonicalEventDto first = eventAt(
+                "rate-1",
+                "epld01",
+                "epld01/event/button/black",
+                "button.black.press",
+                EventCategory.BUTTON,
+                "{\"state\":true}",
+                null,
+                Instant.parse("2026-02-26T15:00:00Z"),
+                false
+        );
+        CanonicalEventDto second = eventAt(
+                "rate-2",
+                "epld01",
+                "epld01/event/button/black",
+                "button.black.press",
+                EventCategory.BUTTON,
+                "{\"state\":true}",
+                null,
+                Instant.parse("2026-02-26T15:00:00.500Z"),
+                false
+        );
+        CanonicalEventDto third = eventAt(
+                "rate-3",
+                "epld01",
+                "epld01/event/button/black",
+                "button.black.press",
+                EventCategory.BUTTON,
+                "{\"state\":true}",
+                null,
+                Instant.parse("2026-02-26T15:00:01.200Z"),
+                false
+        );
+
+        CanonicalEventDto firstOut = service.recordEvent("task_intro", "epld01", processing, first);
+        CanonicalEventDto secondOut = service.recordEvent("task_intro", "epld01", processing, second);
+        CanonicalEventDto thirdOut = service.recordEvent("task_intro", "epld01", processing, third);
+        PipelineBlockObservabilityDto block = service.snapshot("task_intro", "epld01", processing).blocks().get(0);
+
+        assertThat(firstOut).isNotNull();
+        assertThat(secondOut).isNull();
+        assertThat(thirdOut).isNotNull();
+        assertThat(block.inCount()).isEqualTo(3);
+        assertThat(block.outCount()).isEqualTo(2);
+        assertThat(block.dropReasons()).containsEntry("rate_limited", 1L);
+    }
+
+    @Test
+    void dedupShouldPassDuplicatesWhenStrategyOff() {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(0, "DEDUP", java.util.Map.of("dedupStrategy", "OFF")))
+        );
+        CanonicalEventDto duplicate = event("dedup-off", "{\"state\":true}");
+
+        CanonicalEventDto firstOut = service.recordEvent("task_intro", "epld01", processing, duplicate);
+        CanonicalEventDto secondOut = service.recordEvent("task_intro", "epld01", processing, duplicate);
+        PipelineBlockObservabilityDto block = service.snapshot("task_intro", "epld01", processing).blocks().get(0);
+
+        assertThat(firstOut).isNotNull();
+        assertThat(secondOut).isNotNull();
+        assertThat(block.dropCount()).isEqualTo(0);
+    }
+
+    @Test
+    void dedupEventIdStrategyShouldDropSameEventIdDespiteDifferentPayload() {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(0, "DEDUP", java.util.Map.of("dedupStrategy", "EVENT_ID")))
+        );
+        UUID sameId = UUID.nameUUIDFromBytes("same-event-id".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        CanonicalEventDto first = eventWithId(
+                sameId,
+                "epld01",
+                "epld01/event/button/black",
+                "button.black.press",
+                EventCategory.BUTTON,
+                "{\"state\":true}",
+                null,
+                Instant.parse("2026-02-26T15:00:00Z"),
+                false
+        );
+        CanonicalEventDto second = eventWithId(
+                sameId,
+                "epld01",
+                "epld01/event/button/black",
+                "button.black.release",
+                EventCategory.BUTTON,
+                "{\"state\":false}",
+                null,
+                Instant.parse("2026-02-26T15:00:00.100Z"),
+                false
+        );
+
+        CanonicalEventDto firstOut = service.recordEvent("task_intro", "epld01", processing, first);
+        CanonicalEventDto secondOut = service.recordEvent("task_intro", "epld01", processing, second);
+        PipelineBlockObservabilityDto block = service.snapshot("task_intro", "epld01", processing).blocks().get(0);
+
+        assertThat(firstOut).isNotNull();
+        assertThat(secondOut).isNull();
+        assertThat(block.dropReasons()).containsEntry("duplicate", 1L);
+    }
+
+    @Test
+    void dedupWindowShouldAllowSameEventAfterWindowExpiry() {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(0, "DEDUP", java.util.Map.of("dedupWindowMs", 1_000)))
+        );
+        CanonicalEventDto first = eventAt(
+                "dedup-window-1",
+                "epld01",
+                "epld01/event/button/black",
+                "button.black.press",
+                EventCategory.BUTTON,
+                "{\"state\":true}",
+                null,
+                Instant.parse("2026-02-26T15:00:00Z"),
+                false
+        );
+        CanonicalEventDto second = eventAt(
+                "dedup-window-2",
+                "epld01",
+                "epld01/event/button/black",
+                "button.black.press",
+                EventCategory.BUTTON,
+                "{\"state\":true}",
+                null,
+                Instant.parse("2026-02-26T15:00:00.100Z"),
+                false
+        );
+        CanonicalEventDto third = eventAt(
+                "dedup-window-3",
+                "epld01",
+                "epld01/event/button/black",
+                "button.black.press",
+                EventCategory.BUTTON,
+                "{\"state\":true}",
+                null,
+                Instant.parse("2026-02-26T15:00:01.500Z"),
+                false
+        );
+
+        CanonicalEventDto firstOut = service.recordEvent("task_intro", "epld01", processing, first);
+        CanonicalEventDto secondOut = service.recordEvent("task_intro", "epld01", processing, second);
+        CanonicalEventDto thirdOut = service.recordEvent("task_intro", "epld01", processing, third);
+        PipelineBlockObservabilityDto block = service.snapshot("task_intro", "epld01", processing).blocks().get(0);
+
+        assertThat(firstOut).isNotNull();
+        assertThat(secondOut).isNull();
+        assertThat(thirdOut).isNotNull();
+        assertThat(block.outCount()).isEqualTo(2);
+        assertThat(block.dropReasons()).containsEntry("duplicate", 1L);
+    }
+
+    @Test
+    void windowAggregateShouldDropNonNumericValuesForAvg() {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(0, "WINDOW_AGGREGATE", java.util.Map.of("windowAggregation", "AVG")))
+        );
+        CanonicalEventDto input = event(
+                "window-avg-non-numeric",
+                "epld01/event/button/black",
+                "button.black.press",
+                EventCategory.BUTTON,
+                "{\"state\":true}"
+        );
+
+        CanonicalEventDto output = service.recordEvent("task_intro", "epld01", processing, input);
+        PipelineBlockObservabilityDto block = service.snapshot("task_intro", "epld01", processing).blocks().get(0);
+
+        assertThat(output).isNull();
+        assertThat(block.dropReasons()).containsEntry("non_numeric", 1L);
+    }
+
+    @Test
+    void windowAggregateShouldRespectEventTimeWithGracePolicy() throws Exception {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(
+                        0,
+                        "WINDOW_AGGREGATE",
+                        java.util.Map.of(
+                                "windowAggregation", "COUNT",
+                                "windowTimeBasis", "EVENT_TIME",
+                                "windowLatePolicy", "GRACE",
+                                "windowSizeMs", 1_000,
+                                "windowGraceMs", 2_000
+                        )
+                ))
+        );
+        CanonicalEventDto first = eventAt(
+                "window-grace-1",
+                "epld01",
+                "epld01/event/counter",
+                "counter.blue.changed",
+                EventCategory.COUNTER,
+                "{\"counter\":1}",
+                Instant.parse("2026-02-26T15:00:10Z"),
+                Instant.parse("2026-02-26T15:00:10Z"),
+                false
+        );
+        CanonicalEventDto lateButGrace = eventAt(
+                "window-grace-2",
+                "epld01",
+                "epld01/event/counter",
+                "counter.blue.changed",
+                EventCategory.COUNTER,
+                "{\"counter\":2}",
+                Instant.parse("2026-02-26T15:00:09Z"),
+                Instant.parse("2026-02-26T15:00:11Z"),
+                false
+        );
+
+        CanonicalEventDto firstOut = service.recordEvent("task_intro", "epld01", processing, first);
+        CanonicalEventDto secondOut = service.recordEvent("task_intro", "epld01", processing, lateButGrace);
+
+        assertThat(firstOut).isNotNull();
+        assertThat(secondOut).isNotNull();
+        JsonNode payload = objectMapper.readTree(secondOut.payloadJson());
+        assertThat(payload.path("eventCount").asInt()).isEqualTo(2);
+        assertThat(payload.path("value").asInt()).isEqualTo(2);
+    }
+
+    @Test
+    void windowAggregateShouldDropLateEventsWhenPolicyIgnore() {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(
+                        0,
+                        "WINDOW_AGGREGATE",
+                        java.util.Map.of(
+                                "windowAggregation", "COUNT",
+                                "windowTimeBasis", "EVENT_TIME",
+                                "windowLatePolicy", "IGNORE",
+                                "windowSizeMs", 1_000
+                        )
+                ))
+        );
+        CanonicalEventDto first = eventAt(
+                "window-ignore-1",
+                "epld01",
+                "epld01/event/counter",
+                "counter.blue.changed",
+                EventCategory.COUNTER,
+                "{\"counter\":1}",
+                Instant.parse("2026-02-26T15:00:10Z"),
+                Instant.parse("2026-02-26T15:00:10Z"),
+                false
+        );
+        CanonicalEventDto late = eventAt(
+                "window-ignore-2",
+                "epld01",
+                "epld01/event/counter",
+                "counter.blue.changed",
+                EventCategory.COUNTER,
+                "{\"counter\":2}",
+                Instant.parse("2026-02-26T15:00:09Z"),
+                Instant.parse("2026-02-26T15:00:11Z"),
+                false
+        );
+
+        CanonicalEventDto firstOut = service.recordEvent("task_intro", "epld01", processing, first);
+        CanonicalEventDto lateOut = service.recordEvent("task_intro", "epld01", processing, late);
+        PipelineBlockObservabilityDto block = service.snapshot("task_intro", "epld01", processing).blocks().get(0);
+
+        assertThat(firstOut).isNotNull();
+        assertThat(lateOut).isNull();
+        assertThat(block.dropReasons()).containsEntry("late_event", 1L);
+    }
+
+    @Test
+    void windowAggregateCountDistinctDevicesShouldEmitDistinctCount() throws Exception {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(
+                        0,
+                        "WINDOW_AGGREGATE",
+                        java.util.Map.of("windowAggregation", "COUNT_DISTINCT_DEVICES", "windowSizeMs", 5_000)
+                ))
+        );
+        CanonicalEventDto first = eventAt(
+                "window-distinct-1",
+                "epld01",
+                "epld01/event/counter",
+                "counter.blue.changed",
+                EventCategory.COUNTER,
+                "{\"counter\":1}",
+                null,
+                Instant.parse("2026-02-26T15:00:00Z"),
+                false
+        );
+        CanonicalEventDto second = eventAt(
+                "window-distinct-2",
+                "epld02",
+                "epld02/event/counter",
+                "counter.blue.changed",
+                EventCategory.COUNTER,
+                "{\"counter\":1}",
+                null,
+                Instant.parse("2026-02-26T15:00:01Z"),
+                false
+        );
+
+        service.recordEvent("task_intro", "epld01", processing, first);
+        CanonicalEventDto secondOut = service.recordEvent("task_intro", "epld01", processing, second);
+
+        assertThat(secondOut).isNotNull();
+        JsonNode payload = objectMapper.readTree(secondOut.payloadJson());
+        assertThat(payload.path("distinctDeviceCount").asInt()).isEqualTo(2);
+        assertThat(payload.path("value").asInt()).isEqualTo(2);
+    }
+
+    @Test
+    void microBatchShouldFlushOnBatchSizeThreshold() throws Exception {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(
+                        0,
+                        "MICRO_BATCH",
+                        java.util.Map.of("microBatchSize", 3, "microBatchMaxWaitMs", 5_000)
+                ))
+        );
+
+        CanonicalEventDto firstOut = service.recordEvent(
+                "task_intro",
+                "epld01",
+                processing,
+                eventAt(
+                        "micro-size-1",
+                        "epld01",
+                        "epld01/event/counter",
+                        "counter.blue.changed",
+                        EventCategory.COUNTER,
+                        "{\"counter\":1}",
+                        null,
+                        Instant.parse("2026-02-26T15:00:00Z"),
+                        false
+                )
+        );
+        CanonicalEventDto secondOut = service.recordEvent(
+                "task_intro",
+                "epld01",
+                processing,
+                eventAt(
+                        "micro-size-2",
+                        "epld01",
+                        "epld01/event/counter",
+                        "counter.blue.changed",
+                        EventCategory.COUNTER,
+                        "{\"counter\":2}",
+                        null,
+                        Instant.parse("2026-02-26T15:00:00.100Z"),
+                        false
+                )
+        );
+        CanonicalEventDto thirdOut = service.recordEvent(
+                "task_intro",
+                "epld01",
+                processing,
+                eventAt(
+                        "micro-size-3",
+                        "epld01",
+                        "epld01/event/counter",
+                        "counter.blue.changed",
+                        EventCategory.COUNTER,
+                        "{\"counter\":3}",
+                        null,
+                        Instant.parse("2026-02-26T15:00:00.200Z"),
+                        false
+                )
+        );
+        PipelineBlockObservabilityDto block = service.snapshot("task_intro", "epld01", processing).blocks().get(0);
+
+        assertThat(firstOut).isNull();
+        assertThat(secondOut).isNull();
+        assertThat(thirdOut).isNotNull();
+        assertThat(thirdOut.eventType()).endsWith(".micro_batch");
+        JsonNode payload = objectMapper.readTree(thirdOut.payloadJson());
+        assertThat(payload.path("batchEventCount").asInt()).isEqualTo(3);
+        assertThat(payload.path("flushReason").asText()).isEqualTo("size");
+        assertThat(block.dropReasons()).containsEntry("micro_batch_buffering", 2L);
+    }
+
+    @Test
+    void microBatchShouldFlushOnElapsedMaxWait() throws Exception {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(
+                        0,
+                        "MICRO_BATCH",
+                        java.util.Map.of("microBatchSize", 10, "microBatchMaxWaitMs", 500)
+                ))
+        );
+        CanonicalEventDto firstOut = service.recordEvent(
+                "task_intro",
+                "epld01",
+                processing,
+                eventAt(
+                        "micro-time-1",
+                        "epld01",
+                        "epld01/event/counter",
+                        "counter.blue.changed",
+                        EventCategory.COUNTER,
+                        "{\"counter\":1}",
+                        null,
+                        Instant.parse("2026-02-26T15:00:00Z"),
+                        false
+                )
+        );
+        CanonicalEventDto secondOut = service.recordEvent(
+                "task_intro",
+                "epld01",
+                processing,
+                eventAt(
+                        "micro-time-2",
+                        "epld01",
+                        "epld01/event/counter",
+                        "counter.blue.changed",
+                        EventCategory.COUNTER,
+                        "{\"counter\":2}",
+                        null,
+                        Instant.parse("2026-02-26T15:00:01Z"),
+                        false
+                )
+        );
+
+        assertThat(firstOut).isNull();
+        assertThat(secondOut).isNotNull();
+        JsonNode payload = objectMapper.readTree(secondOut.payloadJson());
+        assertThat(payload.path("batchEventCount").asInt()).isEqualTo(2);
+        assertThat(payload.path("flushReason").asText()).isEqualTo("time");
+    }
+
+    @Test
+    void filterTopicShouldSupportTopicPatternAliasWithMultiLevelWildcard() {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(0, "FILTER_TOPIC", java.util.Map.of("topicPattern", "epld01/event/#")))
+        );
+        CanonicalEventDto matching = event(
+                "topic-pattern-match",
+                "epld01/event/sensor/temperature",
+                "sensor.temperature.changed",
+                EventCategory.SENSOR,
+                "{\"temperature\":22.3}"
+        );
+        CanonicalEventDto nonMatching = event(
+                "topic-pattern-miss",
+                "epld01/status/heartbeat",
+                "device.online",
+                EventCategory.STATUS,
+                "{\"online\":true}"
+        );
+
+        CanonicalEventDto pass = service.recordEvent("task_intro", "epld01", processing, matching);
+        CanonicalEventDto drop = service.recordEvent("task_intro", "epld01", processing, nonMatching);
+        PipelineBlockObservabilityDto block = service.snapshot("task_intro", "epld01", processing).blocks().get(0);
+
+        assertThat(pass).isNotNull();
+        assertThat(drop).isNull();
+        assertThat(block.dropReasons()).containsEntry("topic_filtered", 1L);
+    }
+
+    @Test
+    void transformPayloadShouldParseMappingsFromJsonStringWithAliasKeys() {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(
+                        0,
+                        "TRANSFORM_PAYLOAD",
+                        java.util.Map.of(
+                                "transformMappings",
+                                "[{\"source\":\"pressed\",\"target\":\"ON\"},{\"match\":\"released\",\"replace\":\"OFF\"}]"
+                        )
+                ))
+        );
+        CanonicalEventDto input = event(
+                "transform-json-mapping",
+                "epld01/event/button/red",
+                "button.red.release",
+                EventCategory.BUTTON,
+                "\"released\""
+        );
+
+        CanonicalEventDto output = service.recordEvent("task_intro", "epld01", processing, input);
+
+        assertThat(output).isNotNull();
+        assertThat(output.payloadJson()).isEqualTo("\"OFF\"");
+    }
+
+    @Test
+    void dedupPayloadOnlyKeyShouldDropAcrossDifferentEventsWithSamePayload() {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(
+                        0,
+                        "DEDUP",
+                        java.util.Map.of("dedupKey", "PAYLOAD_ONLY", "dedupWindowMs", 5_000)
+                ))
+        );
+        CanonicalEventDto first = eventAt(
+                "dedup-payload-only-1",
+                "epld01",
+                "epld01/event/button/black",
+                "button.black.press",
+                EventCategory.BUTTON,
+                "{\"state\":true}",
+                null,
+                Instant.parse("2026-02-26T15:00:00Z"),
+                false
+        );
+        CanonicalEventDto second = eventAt(
+                "dedup-payload-only-2",
+                "epld02",
+                "epld02/event/button/red",
+                "button.red.release",
+                EventCategory.BUTTON,
+                "{\"state\":true}",
+                null,
+                Instant.parse("2026-02-26T15:00:00.200Z"),
+                false
+        );
+
+        CanonicalEventDto firstOut = service.recordEvent("task_intro", "epld01", processing, first);
+        CanonicalEventDto secondOut = service.recordEvent("task_intro", "epld01", processing, second);
+        PipelineBlockObservabilityDto block = service.snapshot("task_intro", "epld01", processing).blocks().get(0);
+
+        assertThat(firstOut).isNotNull();
+        assertThat(secondOut).isNull();
+        assertThat(block.dropReasons()).containsEntry("duplicate", 1L);
+    }
+
+    @Test
+    void dedupTopicPayloadKeyShouldAllowSamePayloadOnDifferentTopics() {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(
+                        0,
+                        "DEDUP",
+                        java.util.Map.of("dedupKey", "TOPIC_PAYLOAD", "dedupWindowMs", 5_000)
+                ))
+        );
+        CanonicalEventDto first = eventAt(
+                "dedup-topic-payload-1",
+                "epld01",
+                "epld01/event/button/black",
+                "button.black.press",
+                EventCategory.BUTTON,
+                "{\"state\":true}",
+                null,
+                Instant.parse("2026-02-26T15:00:00Z"),
+                false
+        );
+        CanonicalEventDto second = eventAt(
+                "dedup-topic-payload-2",
+                "epld01",
+                "epld01/event/button/red",
+                "button.red.press",
+                EventCategory.BUTTON,
+                "{\"state\":true}",
+                null,
+                Instant.parse("2026-02-26T15:00:00.200Z"),
+                false
+        );
+
+        CanonicalEventDto firstOut = service.recordEvent("task_intro", "epld01", processing, first);
+        CanonicalEventDto secondOut = service.recordEvent("task_intro", "epld01", processing, second);
+
+        assertThat(firstOut).isNotNull();
+        assertThat(secondOut).isNotNull();
+    }
+
+    @Test
+    void windowAggregateShouldComputeMinAndMaxValues() throws Exception {
+        PipelineProcessingSection minProcessing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(0, "WINDOW_AGGREGATE", java.util.Map.of("windowAggregation", "MIN")))
+        );
+        PipelineProcessingSection maxProcessing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(0, "WINDOW_AGGREGATE", java.util.Map.of("windowAggregation", "MAX")))
+        );
+        CanonicalEventDto low = eventAt(
+                "window-min-max-low",
+                "epld01",
+                "epld01/event/counter",
+                "counter.blue.changed",
+                EventCategory.COUNTER,
+                "{\"counter\":1.5}",
+                null,
+                Instant.parse("2026-02-26T15:00:00Z"),
+                false
+        );
+        CanonicalEventDto high = eventAt(
+                "window-min-max-high",
+                "epld01",
+                "epld01/event/counter",
+                "counter.blue.changed",
+                EventCategory.COUNTER,
+                "{\"counter\":3.0}",
+                null,
+                Instant.parse("2026-02-26T15:00:00.200Z"),
+                false
+        );
+
+        service.recordEvent("task_intro", "epld01", minProcessing, low);
+        CanonicalEventDto minOut = service.recordEvent("task_intro", "epld01", minProcessing, high);
+
+        service.recordEvent("task_intro", "epld02", maxProcessing, low);
+        CanonicalEventDto maxOut = service.recordEvent("task_intro", "epld02", maxProcessing, high);
+
+        assertThat(minOut).isNotNull();
+        assertThat(maxOut).isNotNull();
+        assertThat(objectMapper.readTree(minOut.payloadJson()).path("value").asDouble()).isEqualTo(1.5d);
+        assertThat(objectMapper.readTree(maxOut.payloadJson()).path("value").asDouble()).isEqualTo(3.0d);
+    }
+
+    @Test
+    void windowAggregateEventTimeShouldFallbackToIngestTimestampWhenDeviceTimeMissing() throws Exception {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(
+                        0,
+                        "WINDOW_AGGREGATE",
+                        java.util.Map.of("windowAggregation", "COUNT", "windowTimeBasis", "EVENT_TIME", "windowSizeMs", 1_000)
+                ))
+        );
+        CanonicalEventDto input = eventAt(
+                "window-event-time-fallback",
+                "epld01",
+                "epld01/event/counter",
+                "counter.blue.changed",
+                EventCategory.COUNTER,
+                "{\"counter\":1}",
+                null,
+                Instant.parse("2026-02-26T15:00:03.456Z"),
+                false
+        );
+
+        CanonicalEventDto output = service.recordEvent("task_intro", "epld01", processing, input);
+
+        assertThat(output).isNotNull();
+        JsonNode payload = objectMapper.readTree(output.payloadJson());
+        assertThat(payload.path("timeBasis").asText()).isEqualTo("EVENT_TIME");
+        assertThat(payload.path("windowStartTs").asText()).isEqualTo("2026-02-26T15:00:03Z");
+        assertThat(payload.path("windowEndTs").asText()).isEqualTo("2026-02-26T15:00:04Z");
+    }
+
+    @Test
+    void microBatchShouldWrapScalarPayloadIntoObjectOnFlush() throws Exception {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(
+                        0,
+                        "MICRO_BATCH",
+                        java.util.Map.of("microBatchSize", 1, "microBatchMaxWaitMs", 60_000)
+                ))
+        );
+        CanonicalEventDto input = event(
+                "micro-wrap-scalar",
+                "epld01/event/button/black",
+                "button.black.press",
+                EventCategory.BUTTON,
+                "\"pressed\""
+        );
+
+        CanonicalEventDto output = service.recordEvent("task_intro", "epld01", processing, input);
+
+        assertThat(output).isNotNull();
+        JsonNode payload = objectMapper.readTree(output.payloadJson());
+        assertThat(payload.path("value").asText()).isEqualTo("pressed");
+        assertThat(payload.path("batchEventCount").asInt()).isEqualTo(1);
+        assertThat(payload.path("flushReason").asText()).isEqualTo("size");
+    }
+
     private CanonicalEventDto event(String suffix, String payloadJson) {
         return event(
                 suffix,
@@ -283,6 +1223,59 @@ class PipelineObservabilityServiceTest {
                 "button.black.press",
                 EventCategory.BUTTON,
                 payloadJson
+        );
+    }
+
+    private CanonicalEventDto eventAt(
+            String suffix,
+            String deviceId,
+            String topic,
+            String eventType,
+            EventCategory category,
+            String payloadJson,
+            Instant deviceTs,
+            Instant ingestTs,
+            boolean isInternal
+    ) {
+        return eventWithId(
+                UUID.nameUUIDFromBytes(("event-" + suffix).getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                deviceId,
+                topic,
+                eventType,
+                category,
+                payloadJson,
+                deviceTs,
+                ingestTs,
+                isInternal
+        );
+    }
+
+    private CanonicalEventDto eventWithId(
+            UUID id,
+            String deviceId,
+            String topic,
+            String eventType,
+            EventCategory category,
+            String payloadJson,
+            Instant deviceTs,
+            Instant ingestTs,
+            boolean isInternal
+    ) {
+        return new CanonicalEventDto(
+                id,
+                deviceId,
+                topic,
+                eventType,
+                category,
+                payloadJson,
+                deviceTs,
+                ingestTs,
+                true,
+                null,
+                isInternal,
+                "{}",
+                deviceId,
+                null
         );
     }
 

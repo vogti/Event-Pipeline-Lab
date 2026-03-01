@@ -385,6 +385,61 @@ function setPipelineSlotConfigValue(
   };
 }
 
+function swapPipelineSlots(
+  processing: PipelineProcessingSection,
+  sourceSlotIndex: number,
+  targetSlotIndex: number
+): PipelineProcessingSection {
+  if (sourceSlotIndex === targetSlotIndex) {
+    return processing;
+  }
+
+  const byIndex = new Map<number, PipelineProcessingSection['slots'][number]>();
+  for (const slot of processing.slots) {
+    byIndex.set(slot.index, slot);
+  }
+
+  const sourceSlot = byIndex.get(sourceSlotIndex) ?? {
+    index: sourceSlotIndex,
+    blockType: 'NONE',
+    config: {}
+  };
+  const targetSlot = byIndex.get(targetSlotIndex) ?? {
+    index: targetSlotIndex,
+    blockType: 'NONE',
+    config: {}
+  };
+
+  const nextSource = {
+    index: sourceSlotIndex,
+    blockType: targetSlot.blockType,
+    config: { ...(targetSlot.config ?? {}) }
+  };
+  const nextTarget = {
+    index: targetSlotIndex,
+    blockType: sourceSlot.blockType,
+    config: { ...(sourceSlot.config ?? {}) }
+  };
+
+  const sourceUnchanged =
+    sourceSlot.blockType === nextSource.blockType &&
+    JSON.stringify(sourceSlot.config ?? {}) === JSON.stringify(nextSource.config);
+  const targetUnchanged =
+    targetSlot.blockType === nextTarget.blockType &&
+    JSON.stringify(targetSlot.config ?? {}) === JSON.stringify(nextTarget.config);
+  if (sourceUnchanged && targetUnchanged) {
+    return processing;
+  }
+
+  byIndex.set(sourceSlotIndex, nextSource);
+  byIndex.set(targetSlotIndex, nextTarget);
+
+  return {
+    ...processing,
+    slots: Array.from(byIndex.values()).sort((a, b) => a.index - b.index)
+  };
+}
+
 function toggleStringInList(values: string[], value: string, enabled: boolean): string[] {
   if (enabled) {
     if (values.includes(value)) {
@@ -2132,6 +2187,15 @@ export default function App() {
     });
   }, []);
 
+  const swapStudentPipelineSlots = useCallback((sourceSlotIndex: number, targetSlotIndex: number) => {
+    setStudentPipelineDraft((previous) => {
+      if (!previous) {
+        return previous;
+      }
+      return swapPipelineSlots(previous, sourceSlotIndex, targetSlotIndex);
+    });
+  }, []);
+
   const changeStudentPipelineSlotConfig = useCallback((slotIndex: number, key: string, value: unknown) => {
     setStudentPipelineDraft((previous) => {
       if (!previous) {
@@ -2475,6 +2539,18 @@ export default function App() {
       return {
         ...previous,
         processing: setPipelineSlotBlock(previous.processing, slotIndex, blockType)
+      };
+    });
+  }, []);
+
+  const swapAdminPipelineSlots = useCallback((sourceSlotIndex: number, targetSlotIndex: number) => {
+    setAdminPipelineDraft((previous) => {
+      if (!previous) {
+        return previous;
+      }
+      return {
+        ...previous,
+        processing: swapPipelineSlots(previous.processing, sourceSlotIndex, targetSlotIndex)
       };
     });
   }, []);
@@ -4925,6 +5001,7 @@ export default function App() {
                 view={studentPipelineEditorView}
                 draftProcessing={studentPipelineDraft}
                 onChangeSlotBlock={changeStudentPipelineSlot}
+                onSwapSlots={swapStudentPipelineSlots}
                 onChangeSlotConfig={changeStudentPipelineSlotConfig}
                 onAddSink={addStudentPipelineSink}
                 onRemoveSink={removeStudentPipelineSink}
@@ -5120,6 +5197,7 @@ export default function App() {
                   onContextAction={adminPipelineGroupContextKey ? openAdminDefaultPipelineBuilder : undefined}
                   draftProcessing={adminPipelineDraft?.processing ?? adminPipeline?.processing ?? null}
                   onChangeSlotBlock={changeAdminPipelineSlot}
+                  onSwapSlots={swapAdminPipelineSlots}
                   onChangeSlotConfig={changeAdminPipelineSlotConfig}
                   onInputModeChange={changeAdminPipelineInputMode}
                   onAddSink={addAdminPipelineSink}

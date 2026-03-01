@@ -38,6 +38,7 @@ interface PipelineBuilderSectionProps {
   onContextAction?: () => void;
   draftProcessing: PipelineProcessingSection | null;
   onChangeSlotBlock: (slotIndex: number, blockType: string) => void;
+  onSwapSlots?: (sourceSlotIndex: number, targetSlotIndex: number) => void;
   onChangeSlotConfig?: (slotIndex: number, key: string, value: unknown) => void;
   onInputModeChange?: (nextMode: string) => void;
   onAddSink?: (sinkType: 'SEND_EVENT' | 'VIRTUAL_SIGNAL' | 'SHOW_PAYLOAD') => void;
@@ -424,8 +425,7 @@ type FilterTopicTemplate =
   | 'STATUS_ALL'
   | 'STATUS_HEARTBEAT'
   | 'STATUS_WIFI'
-  | 'ACK_ALL'
-  | 'VIRTUAL_RPC';
+  | 'ACK_ALL';
 
 const FILTER_TOPIC_TEMPLATE_TO_FILTER: Record<FilterTopicTemplate, string> = {
   ANY: '#',
@@ -441,8 +441,7 @@ const FILTER_TOPIC_TEMPLATE_TO_FILTER: Record<FilterTopicTemplate, string> = {
   STATUS_ALL: '+/status/#',
   STATUS_HEARTBEAT: '+/status/heartbeat',
   STATUS_WIFI: '+/status/wifi',
-  ACK_ALL: '+/ack/#',
-  VIRTUAL_RPC: '+/events/rpc'
+  ACK_ALL: '+/ack/#'
 };
 
 const FILTER_TOPIC_TEMPLATE_OPTIONS: Array<{ id: FilterTopicTemplate; labelKey: I18nKey }> = [
@@ -656,6 +655,7 @@ export function PipelineBuilderSection({
   onContextAction,
   draftProcessing,
   onChangeSlotBlock,
+  onSwapSlots,
   onChangeSlotConfig,
   onInputModeChange,
   onAddSink,
@@ -857,6 +857,10 @@ export function PipelineBuilderSection({
     if (sourceSlotIndex === slotIndex) {
       return;
     }
+    if (onSwapSlots) {
+      onSwapSlots(sourceSlotIndex, slotIndex);
+      return;
+    }
 
     const sourceBlockType = processingSlots[sourceSlotIndex]?.blockType ?? 'NONE';
     const targetBlockType = processingSlots[slotIndex]?.blockType ?? 'NONE';
@@ -868,9 +872,8 @@ export function PipelineBuilderSection({
     const configuredFilter = extractTopicFilterFromSlotConfig(slotConfig);
     const configuredMode = slotConfig.topicMode === 'raw' ? 'raw' : 'guided';
     const matchedTemplate = templateFromTopicFilter(configuredFilter);
-    const requiresRawMode = matchedTemplate === 'VIRTUAL_RPC';
 
-    if (requiresRawMode || configuredMode === 'raw' || (configuredFilter.length > 0 && !matchedTemplate)) {
+    if (configuredMode === 'raw' || (configuredFilter.length > 0 && !matchedTemplate)) {
       setTopicFilterModalMode('raw');
       setTopicFilterModalRawValue(configuredFilter);
       setTopicFilterModalTemplate(matchedTemplate ?? 'EVENT_ALL');

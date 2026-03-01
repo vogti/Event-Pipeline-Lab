@@ -1,8 +1,10 @@
 package ch.marcovogt.epl.pipelinebuilder;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 import ch.marcovogt.epl.authsession.AppRole;
@@ -18,6 +20,7 @@ import ch.marcovogt.epl.taskscenarioengine.TaskStateService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -26,6 +29,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.web.server.ResponseStatusException;
 
 @ExtendWith(MockitoExtension.class)
 class PipelineStateServiceTest {
@@ -64,21 +68,21 @@ class PipelineStateServiceTest {
         );
 
         states = new HashMap<>();
-        when(pipelineStateRepository.findByTaskIdAndOwnerTypeAndOwnerKey(anyString(), any(), anyString()))
+        lenient().when(pipelineStateRepository.findByTaskIdAndOwnerTypeAndOwnerKey(anyString(), any(), anyString()))
                 .thenAnswer(invocation -> Optional.ofNullable(states.get(key(
                         invocation.getArgument(0),
                         invocation.getArgument(1),
                         invocation.getArgument(2)
                 ))));
-        when(pipelineStateRepository.save(any(PipelineState.class))).thenAnswer(invocation -> {
+        lenient().when(pipelineStateRepository.save(any(PipelineState.class))).thenAnswer(invocation -> {
             PipelineState state = invocation.getArgument(0);
             states.put(key(state.getTaskId(), state.getOwnerType(), state.getOwnerKey()), state);
             return state;
         });
 
-        when(taskStateService.getActiveTask()).thenReturn(activeTask());
-        when(feedScenarioService.getConfig()).thenReturn(new FeedScenarioConfigDto(List.of(), Instant.now(), "test"));
-        when(pipelineObservabilityService.snapshot(anyString(), anyString(), any(PipelineProcessingSection.class)))
+        lenient().when(taskStateService.getActiveTask()).thenReturn(activeTask());
+        lenient().when(feedScenarioService.getConfig()).thenReturn(new FeedScenarioConfigDto(List.of(), Instant.now(), "test"));
+        lenient().when(pipelineObservabilityService.snapshot(anyString(), anyString(), any(PipelineProcessingSection.class)))
                 .thenReturn(new PipelineObservabilityDto(
                         1,
                         100,
@@ -89,7 +93,7 @@ class PipelineStateServiceTest {
                         null,
                         List.of()
                 ));
-        when(pipelineSinkExecutionService.snapshot(anyString(), anyString(), any(PipelineSinkSection.class)))
+        lenient().when(pipelineSinkExecutionService.snapshot(anyString(), anyString(), any(PipelineSinkSection.class)))
                 .thenReturn(new PipelineSinkRuntimeSection(List.of()));
     }
 
@@ -134,6 +138,63 @@ class PipelineStateServiceTest {
         PipelineViewDto reloaded = service.getStudentViewForGroup("epld01");
         assertThat(reloaded.sink().nodes().stream().filter(node -> "SEND_EVENT".equals(node.type())).count())
                 .isEqualTo(2L);
+    }
+
+    @Test
+    void studentUpdateShouldRejectExcessiveSlotCount() {
+        SessionPrincipal student = new SessionPrincipal(
+                "token",
+                "epld01",
+                AppRole.STUDENT,
+                "epld01",
+                "student-1",
+                Instant.now().plusSeconds(3600)
+        );
+
+        PipelineViewDto initial = service.getStudentViewForGroup("epld01");
+        PipelineProcessingSection oversizedProcessing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                600,
+                List.of(new PipelineSlot(0, "FILTER_TOPIC", Map.of("topicFilter", "+/event/#")))
+        );
+
+        assertThatThrownBy(() -> service.updateStudentPipeline(student, oversizedProcessing, initial.sink()))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("slotCount exceeds maximum allowed value");
+    }
+
+    @Test
+    void studentViewShouldCapInjectedTaskScopeSlotCountToConfiguredMaximum() throws Exception {
+        List<PipelineSlot> slots = new ArrayList<>();
+        slots.add(new PipelineSlot(510, "FILTER_TOPIC", Map.of("topicFilter", "+/event/#")));
+        PipelineStatePayload largePayload = new PipelineStatePayload(
+                new PipelineInputSection("LIVE_MQTT", "GROUP_DEVICES", List.of(), List.of()),
+                new PipelineProcessingSection("CONSTRAINED", 512, slots),
+                new PipelineSinkSection(
+                        List.of(
+                                new PipelineSinkNode("event-feed", "EVENT_FEED", Map.of()),
+                                new PipelineSinkNode("virtual-signal", "VIRTUAL_SIGNAL", Map.of())
+                        ),
+                        List.of("VIRTUAL_SIGNAL"),
+                        "Goal"
+                )
+        );
+        PipelineState state = new PipelineState();
+        state.setTaskId("task_intro");
+        state.setOwnerType(PipelineOwnerType.GROUP);
+        state.setOwnerKey("epld01");
+        state.setRevision(7L);
+        state.setUpdatedAt(Instant.parse("2026-02-28T12:00:00Z"));
+        state.setUpdatedBy("test");
+        state.setStateJson(new ObjectMapper().writeValueAsString(largePayload));
+        states.put(key("task_intro", PipelineOwnerType.GROUP, "epld01"), state);
+
+        PipelineViewDto view = service.getStudentViewForGroup("epld01");
+
+        assertThat(view.processing().slotCount()).isEqualTo(512);
+        assertThat(view.processing().slots().stream().mapToInt(PipelineSlot::index).max().orElse(-1)).isEqualTo(511);
+        assertThat(view.processing().slots().stream().anyMatch(slot -> slot.index() == 511 && "FILTER_TOPIC".equals(slot.blockType())))
+                .isTrue();
     }
 
     private String key(String taskId, PipelineOwnerType ownerType, String ownerKey) {

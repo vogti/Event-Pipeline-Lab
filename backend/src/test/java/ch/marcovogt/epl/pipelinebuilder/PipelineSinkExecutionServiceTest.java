@@ -1,8 +1,10 @@
 package ch.marcovogt.epl.pipelinebuilder;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -209,9 +211,222 @@ class PipelineSinkExecutionServiceTest {
                 .filter(candidate -> "show-payload".equals(candidate.sinkId()))
                 .findFirst()
                 .orElseThrow();
-        org.assertj.core.api.Assertions.assertThat(node.sinkType()).isEqualTo("SHOW_PAYLOAD");
-        org.assertj.core.api.Assertions.assertThat(node.lastPayloadPreview()).isEqualTo("abcdefghijklmnopqrstuvwxyz0123456789ABCD");
-        org.assertj.core.api.Assertions.assertThat(node.lastPayloadPreview()).hasSize(40);
+        assertThat(node.sinkType()).isEqualTo("SHOW_PAYLOAD");
+        assertThat(node.lastPayloadPreview()).isEqualTo("abcdefghijklmnopqrstuvwxyz0123456789ABCD");
+        assertThat(node.lastPayloadPreview()).hasSize(40);
+    }
+
+    @Test
+    void sendEventSinkShouldAllowOwnScopeForLegacyPrefixedTopic() {
+        when(mqttCommandPublisherProvider.getIfAvailable()).thenReturn(mqttCommandPublisher);
+
+        PipelineSinkSection sinkSection = new PipelineSinkSection(
+                List.of(new PipelineSinkNode(
+                        "send-event",
+                        "SEND_EVENT",
+                        Map.of(
+                                "topic", "epld/epld01/command/led/green",
+                                "qos", 1,
+                                "retained", false
+                        )
+                )),
+                List.of(),
+                "goal"
+        );
+
+        CanonicalEventDto inputEvent = event(
+                "event-own-scope-legacy-prefix",
+                "epld01/event/button/black",
+                "\"pressed\""
+        );
+
+        service.processProjectedEvent(
+                "task_intro",
+                "epld01",
+                sinkSection,
+                inputEvent,
+                StudentDeviceScope.OWN_DEVICE,
+                "epld01",
+                "epld99"
+        );
+
+        verify(mqttCommandPublisher).publishCustom(
+                "epld/epld01/command/led/green",
+                "\"pressed\"",
+                1,
+                false
+        );
+    }
+
+    @Test
+    void sendEventSinkShouldAllowAdminScopeForLegacyPrefixedTopic() {
+        when(mqttCommandPublisherProvider.getIfAvailable()).thenReturn(mqttCommandPublisher);
+
+        PipelineSinkSection sinkSection = new PipelineSinkSection(
+                List.of(new PipelineSinkNode(
+                        "send-event",
+                        "SEND_EVENT",
+                        Map.of(
+                                "topic", "epld/epld99/command/led/orange",
+                                "qos", 1,
+                                "retained", false
+                        )
+                )),
+                List.of(),
+                "goal"
+        );
+
+        CanonicalEventDto inputEvent = event(
+                "event-admin-scope-legacy-prefix",
+                "epld01/event/button/black",
+                "\"pressed\""
+        );
+
+        service.processProjectedEvent(
+                "task_intro",
+                "epld01",
+                sinkSection,
+                inputEvent,
+                StudentDeviceScope.ADMIN_DEVICE,
+                "epld01",
+                "epld99"
+        );
+
+        verify(mqttCommandPublisher).publishCustom(
+                "epld/epld99/command/led/orange",
+                "\"pressed\"",
+                1,
+                false
+        );
+    }
+
+    @Test
+    void sendEventSinkShouldAllowOwnAndAdminScopeForBothTargets() {
+        when(mqttCommandPublisherProvider.getIfAvailable()).thenReturn(mqttCommandPublisher);
+
+        PipelineSinkSection sinkSection = new PipelineSinkSection(
+                List.of(
+                        new PipelineSinkNode(
+                                "send-own",
+                                "SEND_EVENT",
+                                Map.of("topic", "epld01/command/led/green", "qos", 1, "retained", false)
+                        ),
+                        new PipelineSinkNode(
+                                "send-admin",
+                                "SEND_EVENT",
+                                Map.of("topic", "epld99/command/led/orange", "qos", 1, "retained", false)
+                        )
+                ),
+                List.of(),
+                "goal"
+        );
+
+        CanonicalEventDto inputEvent = event(
+                "event-own-admin-scope",
+                "epld01/event/button/black",
+                "\"pressed\""
+        );
+
+        service.processProjectedEvent(
+                "task_intro",
+                "epld01",
+                sinkSection,
+                inputEvent,
+                StudentDeviceScope.OWN_AND_ADMIN_DEVICE,
+                "epld01",
+                "epld99"
+        );
+
+        verify(mqttCommandPublisher).publishCustom(eq("epld01/command/led/green"), eq("\"pressed\""), eq(1), eq(false));
+        verify(mqttCommandPublisher).publishCustom(eq("epld99/command/led/orange"), eq("\"pressed\""), eq(1), eq(false));
+    }
+
+    @Test
+    void sendEventSinkShouldFallbackInvalidQosToDefault() {
+        when(mqttCommandPublisherProvider.getIfAvailable()).thenReturn(mqttCommandPublisher);
+
+        PipelineSinkSection sinkSection = new PipelineSinkSection(
+                List.of(new PipelineSinkNode(
+                        "send-event",
+                        "SEND_EVENT",
+                        Map.of(
+                                "topic", "epld02/command/led/green",
+                                "qos", 99,
+                                "retained", "yes"
+                        )
+                )),
+                List.of(),
+                "goal"
+        );
+
+        CanonicalEventDto inputEvent = event(
+                "event-invalid-qos",
+                "epld01/event/button/black",
+                "\"pressed\""
+        );
+
+        service.processProjectedEvent("task_intro", "epld01", sinkSection, inputEvent);
+
+        verify(mqttCommandPublisher).publishCustom(
+                "epld02/command/led/green",
+                "\"pressed\"",
+                1,
+                true
+        );
+    }
+
+    @Test
+    void resetSinkCounterShouldResetOnlyTargetSink() {
+        PipelineSinkSection sinkSection = new PipelineSinkSection(
+                List.of(
+                        new PipelineSinkNode("show-payload", "SHOW_PAYLOAD", Map.of()),
+                        new PipelineSinkNode("virtual-signal", "VIRTUAL_SIGNAL", Map.of())
+                ),
+                List.of(),
+                "goal"
+        );
+        CanonicalEventDto inputEvent = event(
+                "event-reset-target",
+                "epld01/event/button/black",
+                "\"pressed\""
+        );
+
+        PipelineSinkRuntimeSection beforeReset = service.processProjectedEvent("task_intro", "epld01", sinkSection, inputEvent);
+        assertThat(nodeById(beforeReset, "show-payload").receivedCount()).isEqualTo(1L);
+        assertThat(nodeById(beforeReset, "virtual-signal").receivedCount()).isEqualTo(1L);
+
+        PipelineSinkRuntimeSection afterReset = service.resetSinkCounter("task_intro", "epld01", sinkSection, "show-payload");
+        assertThat(nodeById(afterReset, "show-payload").receivedCount()).isEqualTo(0L);
+        assertThat(nodeById(afterReset, "virtual-signal").receivedCount()).isEqualTo(1L);
+    }
+
+    @Test
+    void eventFeedAndVirtualSignalShouldTrackReceivedEvents() {
+        PipelineSinkSection sinkSection = new PipelineSinkSection(
+                List.of(
+                        new PipelineSinkNode("event-feed", "EVENT_FEED", Map.of()),
+                        new PipelineSinkNode("virtual-signal", "VIRTUAL_SIGNAL", Map.of())
+                ),
+                List.of(),
+                "goal"
+        );
+        CanonicalEventDto first = event(
+                "event-runtime-track-1",
+                "epld01/event/button/black",
+                "\"pressed\""
+        );
+        CanonicalEventDto second = event(
+                "event-runtime-track-2",
+                "epld01/event/button/black",
+                "\"released\""
+        );
+
+        service.processProjectedEvent("task_intro", "epld01", sinkSection, first);
+        PipelineSinkRuntimeSection runtime = service.processProjectedEvent("task_intro", "epld01", sinkSection, second);
+
+        assertThat(nodeById(runtime, "event-feed").receivedCount()).isEqualTo(2L);
+        assertThat(nodeById(runtime, "virtual-signal").receivedCount()).isEqualTo(2L);
+        assertThat(nodeById(runtime, "virtual-signal").lastPayloadPreview()).isEqualTo("\"released\"");
     }
 
     private CanonicalEventDto event(String idSeed, String topic, String payloadJson) {
@@ -231,5 +446,12 @@ class PipelineSinkExecutionServiceTest {
                 "epld01",
                 null
         );
+    }
+
+    private PipelineSinkRuntimeNodeDto nodeById(PipelineSinkRuntimeSection runtime, String sinkId) {
+        return runtime.nodes().stream()
+                .filter(node -> sinkId.equals(node.sinkId()))
+                .findFirst()
+                .orElseThrow();
     }
 }

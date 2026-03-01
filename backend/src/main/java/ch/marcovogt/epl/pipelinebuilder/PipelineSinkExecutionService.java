@@ -235,6 +235,12 @@ public class PipelineSinkExecutionService {
             return null;
         }
         String normalized = topic.trim();
+        while (normalized.startsWith("/")) {
+            normalized = normalized.substring(1);
+        }
+        if (startsWithIgnoreCase(normalized, "epld/")) {
+            normalized = normalized.substring("epld/".length());
+        }
         int separatorIndex = normalized.indexOf('/');
         String firstSegment = (separatorIndex < 0 ? normalized : normalized.substring(0, separatorIndex))
                 .trim()
@@ -299,7 +305,7 @@ public class PipelineSinkExecutionService {
             return number.intValue() != 0;
         }
         if (raw instanceof String text) {
-            String normalized = text.trim().toLowerCase();
+            String normalized = text.trim().toLowerCase(Locale.ROOT);
             if ("true".equals(normalized) || "1".equals(normalized) || "yes".equals(normalized)) {
                 return true;
             }
