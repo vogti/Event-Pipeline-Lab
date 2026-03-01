@@ -74,6 +74,7 @@ interface PipelineBuilderSectionProps {
   onRestartStateLost?: () => void;
   onRestartStateRetained?: () => void;
   stateControlBusy?: boolean;
+  forceSinkEditable?: boolean;
   simplifiedView?: boolean;
   formatTs: (value: TimestampValue) => string;
 }
@@ -734,6 +735,7 @@ export function PipelineBuilderSection({
   onRestartStateLost,
   onRestartStateRetained,
   stateControlBusy,
+  forceSinkEditable = false,
   simplifiedView = false,
   formatTs
 }: PipelineBuilderSectionProps) {
@@ -827,6 +829,7 @@ export function PipelineBuilderSection({
     onLogReplayMaxRecordsChange &&
     typeof logReplayMaxRecords === 'number'
   );
+  const sinkEditable = forceSinkEditable || view.permissions.sinkEditable;
   const processingSlots = buildDisplaySlots(processing);
   const processingSlotByIndex = new Map(processingSlots.map((slot) => [slot.index, slot]));
   const libraryBlockOptions = blockOptions.filter((entry) => entry !== 'NONE');
@@ -1606,7 +1609,7 @@ export function PipelineBuilderSection({
             ))}
           </div>
         </div>
-        {canControlLogMode ? (
+        {canControlLogMode && view.input.mode === 'LOG_MODE' ? (
           <section className="pipeline-log-mode-box">
             <div className="pipeline-log-mode-header">
               <strong>{t('pipelineLogModeStatus')}</strong>
@@ -2146,7 +2149,7 @@ export function PipelineBuilderSection({
                     </button>
                   </div>
                   <div className="pipeline-node-header-actions">
-                    {view.permissions.sinkEditable && sinkType !== 'EVENT_FEED' && sinkType !== 'VIRTUAL_SIGNAL' ? (
+                    {sinkEditable && sinkType !== 'EVENT_FEED' && sinkType !== 'VIRTUAL_SIGNAL' ? (
                       <button
                         className="pipeline-node-icon-button"
                         type="button"
@@ -2174,7 +2177,7 @@ export function PipelineBuilderSection({
                         className="button tiny secondary"
                         type="button"
                         onClick={() => openSendEventSinkEditor(sinkNode)}
-                        disabled={!view.permissions.sinkEditable}
+                        disabled={!sinkEditable}
                       >
                         {t('pipelineSinkConfigure')}
                       </button>
@@ -2218,7 +2221,7 @@ export function PipelineBuilderSection({
             );
           })}
         </div>
-        {view.permissions.sinkEditable ? (
+        {sinkEditable ? (
           <div className="pipeline-sink-add-row">
             <span className="muted">{t('pipelineSinkAdd')}</span>
             {availableSinkTypes.map((sinkType) => (
@@ -2233,7 +2236,7 @@ export function PipelineBuilderSection({
             ))}
           </div>
         ) : null}
-        {!view.permissions.sinkEditable ? <p className="muted">{t('pipelineReadOnlyTask')}</p> : null}
+        {!sinkEditable ? <p className="muted">{t('pipelineReadOnlyTask')}</p> : null}
       </article>
 
       {inspectorModalSlotIndex !== null && inspectorBlock !== null && inspectorSlot !== null ? (

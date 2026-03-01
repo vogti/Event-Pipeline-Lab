@@ -4367,8 +4367,15 @@ export default function App() {
   ]);
 
   const adminNextDisturbanceReleaseAt = useMemo(() => {
-    if (!adminData || session?.role !== 'ADMIN' || adminPage !== 'feed') {
+    if (!adminData || session?.role !== 'ADMIN' || (adminPage !== 'feed' && adminPage !== 'pipeline')) {
       return null;
+    }
+    if (adminPage === 'pipeline') {
+      return nextFeedScenarioReleaseAt(
+        adminPipelineFeed,
+        feedScenarioConfig?.scenarioOverlays,
+        disturbanceNowEpochMs
+      );
     }
     if (adminFeedSource === 'BEFORE_DISTURBANCES') {
       return null;
@@ -4423,6 +4430,15 @@ export default function App() {
     });
   }, [adminFeedSourceEvents, adminIncludeInternal, adminTopicFilter]);
 
+  const adminPipelineVisibleFeed = useMemo(() => {
+    return adminAfterPipelineDisturbedFeedSource.filter((event) => {
+      if (!adminIncludeInternal && (event.isInternal || isTelemetryEvent(event))) {
+        return false;
+      }
+      return feedMatchesTopic(event, adminTopicFilter);
+    });
+  }, [adminAfterPipelineDisturbedFeedSource, adminIncludeInternal, adminTopicFilter]);
+
   const studentFeedValues = useMemo(() => {
     const values = new Map<string, string>();
     for (const event of studentVisibleFeed) {
@@ -4440,6 +4456,14 @@ export default function App() {
     }
     return values;
   }, [adminVisibleFeed]);
+
+  const adminPipelineFeedValues = useMemo(() => {
+    const values = new Map<string, string>();
+    for (const event of adminPipelineVisibleFeed) {
+      values.set(event.id, eventValueSummary(event));
+    }
+    return values;
+  }, [adminPipelineVisibleFeed]);
 
   const wsLabel = useMemo(() => {
     if (wsConnection === 'connected') {
@@ -5056,6 +5080,47 @@ export default function App() {
     ));
   }, [adminFeedValues, adminVisibleFeed, eventSourceLabel, feedViewMode, formatTs, recentFeedEventIds]);
 
+  const adminPipelineFeedRows = useMemo(() => {
+    if (adminPipelineVisibleFeed.length === 0) {
+      return null;
+    }
+    return adminPipelineVisibleFeed.map((eventItem) => (
+      <tr
+        key={eventItem.id}
+        className={`feed-row-clickable ${recentFeedEventIds[eventItem.id] ? 'feed-row-new' : ''}`}
+        role="button"
+        tabIndex={0}
+        onClick={() => {
+          setSelectedEvent(eventItem);
+          setEventDetailsViewMode('rendered');
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            setSelectedEvent(eventItem);
+            setEventDetailsViewMode('rendered');
+          }
+        }}
+      >
+        <td>{formatTs(eventItem.ingestTs)}</td>
+        <td>{eventSourceLabel(eventItem)}</td>
+        <td className="mono">{eventItem.topic}</td>
+        <td className="mono raw-cell">
+          {feedViewMode === 'rendered'
+            ? (adminPipelineFeedValues.get(eventItem.id) ?? '')
+            : eventItem.payloadJson}
+        </td>
+      </tr>
+    ));
+  }, [
+    adminPipelineFeedValues,
+    adminPipelineVisibleFeed,
+    eventSourceLabel,
+    feedViewMode,
+    formatTs,
+    recentFeedEventIds
+  ]);
+
   return (
     <div className="app-shell">
       <AppTopBar
@@ -5394,7 +5459,30 @@ export default function App() {
                     void controlAdminPipelineState('RESTART_STATE_RETAINED');
                   }}
                   stateControlBusy={busyKey === 'admin-pipeline-state'}
+                  forceSinkEditable
                   formatTs={formatTs}
+                />
+              ) : null}
+
+              {adminPage === 'pipeline' && adminPipelineEditorView ? (
+                <AdminFeedSection
+                  t={t}
+                  title={`${t('liveFeed')} (${t('feedSourceAfterPipeline')})`}
+                  adminFeedPaused={adminFeedPaused}
+                  feedViewMode={feedViewMode}
+                  onTogglePause={() => setAdminFeedPaused((value) => !value)}
+                  onToggleFeedViewMode={() =>
+                    setFeedViewMode((mode) => (mode === 'rendered' ? 'raw' : 'rendered'))
+                  }
+                  onClearFeed={() => setAdminPipelineFeed([])}
+                  showPublishEventButton={false}
+                  adminTopicFilter={adminTopicFilter}
+                  onAdminTopicFilterChange={setAdminTopicFilter}
+                  adminIncludeInternal={adminIncludeInternal}
+                  onAdminIncludeInternalChange={setAdminIncludeInternal}
+                  showFeedSourceSelector={false}
+                  adminVisibleFeedCount={adminPipelineVisibleFeed.length}
+                  adminFeedRows={adminPipelineFeedRows}
                 />
               ) : null}
 

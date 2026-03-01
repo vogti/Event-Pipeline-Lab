@@ -197,6 +197,63 @@ class PipelineStateServiceTest {
                 .isTrue();
     }
 
+    @Test
+    void adminViewShouldKeepSinkEditableWhenLecturerModeDisabled() {
+        PipelineViewDto adminView = service.getAdminView("epld01");
+
+        assertThat(adminView.permissions().inputEditable()).isFalse();
+        assertThat(adminView.permissions().sinkEditable()).isTrue();
+    }
+
+    @Test
+    void adminUpdateShouldPersistSinkInNonLecturerMode() {
+        SessionPrincipal admin = new SessionPrincipal(
+                "token-admin",
+                "admin",
+                AppRole.ADMIN,
+                null,
+                "admin",
+                Instant.now().plusSeconds(3600)
+        );
+
+        PipelineViewDto initial = service.getAdminView("epld01");
+        assertThat(initial.permissions().sinkEditable()).isTrue();
+
+        PipelineSinkSection updatedSink = new PipelineSinkSection(
+                List.of(
+                        new PipelineSinkNode("event-feed", "EVENT_FEED", Map.of()),
+                        new PipelineSinkNode(
+                                "send-event",
+                                "SEND_EVENT",
+                                Map.of("topic", "epld01/command/led/green", "payload", "", "qos", 1, "retained", false)
+                        ),
+                        new PipelineSinkNode(
+                                "send-event-2",
+                                "SEND_EVENT",
+                                Map.of("topic", "epld01/command/led/orange", "payload", "", "qos", 1, "retained", false)
+                        ),
+                        new PipelineSinkNode("virtual-signal", "VIRTUAL_SIGNAL", Map.of())
+                ),
+                List.of("DEVICE_CONTROL", "VIRTUAL_SIGNAL"),
+                "Goal"
+        );
+
+        AdminPipelineUpdateRequest request = new AdminPipelineUpdateRequest(
+                "epld01",
+                initial.input(),
+                initial.processing(),
+                updatedSink
+        );
+
+        PipelineViewDto updated = service.updateAdminState(admin, request);
+        assertThat(updated.sink().nodes().stream().filter(node -> "SEND_EVENT".equals(node.type())).count())
+                .isEqualTo(2L);
+
+        PipelineViewDto reloaded = service.getAdminView("epld01");
+        assertThat(reloaded.sink().nodes().stream().filter(node -> "SEND_EVENT".equals(node.type())).count())
+                .isEqualTo(2L);
+    }
+
     private String key(String taskId, PipelineOwnerType ownerType, String ownerKey) {
         return taskId + "|" + ownerType + "|" + ownerKey;
     }

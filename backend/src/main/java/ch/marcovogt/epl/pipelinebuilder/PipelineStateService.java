@@ -198,7 +198,7 @@ public class PipelineStateService {
                         true,
                         config.lecturerMode(),
                         true,
-                        config.lecturerMode(),
+                        true,
                         true,
                         true,
                         config.lecturerMode(),
@@ -229,12 +229,13 @@ public class PipelineStateService {
                 PipelineBlockLibrary.allBlocks(),
                 false
         );
+        PipelineSinkSection sink = normalizeSink(request.sink(), groupCurrent.sink());
 
         if (!config.lecturerMode()) {
             PipelineStatePayload updatedGroup = new PipelineStatePayload(
                     groupCurrent.input(),
                     processing,
-                    groupCurrent.sink()
+                    sink
             );
             persist(groupState, updatedGroup, principal.username());
             pipelineObservabilityService.reset(task.id(), groupKey);
@@ -245,7 +246,7 @@ public class PipelineStateService {
         PipelineStatePayload globalCurrent = deserializeOrDefault(globalState.getStateJson(), defaults);
 
         PipelineInputSection input = normalizeInput(request.input(), config, globalCurrent.input(), true);
-        PipelineSinkSection sink = normalizeSink(request.sink(), globalCurrent.sink());
+        sink = normalizeSink(request.sink(), globalCurrent.sink());
 
         PipelineStatePayload updatedGlobal = new PipelineStatePayload(
                 input,
