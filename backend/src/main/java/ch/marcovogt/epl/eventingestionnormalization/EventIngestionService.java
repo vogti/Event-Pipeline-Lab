@@ -69,6 +69,10 @@ public class EventIngestionService {
         Instant ingestTs = Instant.now(clock);
         NormalizedEvent normalizedEvent = canonicalEventNormalizer.normalize(topic, payloadBytes, ingestTs);
         String actorSource = publishedEventSourceTracker.consume(topic, new String(payloadBytes, StandardCharsets.UTF_8));
+        if (PublishedEventSourceTracker.INTERNAL_FANOUT_SOURCE.equals(actorSource)) {
+            log.debug("Skipped internally generated fan-out event topic={}", topic);
+            return null;
+        }
         if (actorSource != null && !actorSource.isBlank()) {
             normalizedEvent.event().setSource(actorSource);
         }

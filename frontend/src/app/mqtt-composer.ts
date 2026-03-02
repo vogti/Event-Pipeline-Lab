@@ -50,6 +50,36 @@ function firstOrBlank(values: string[]): string {
   return values[0] ?? '';
 }
 
+export function normalizeLegacyLedCommandTopic(topic: string): string {
+  const trimmed = topic.trim();
+  if (!trimmed) {
+    return topic;
+  }
+  const hadLeadingSlash = trimmed.startsWith('/');
+  let normalized = trimmed.replace(/^\/+/, '');
+  if (normalized.toLowerCase().startsWith('epld/')) {
+    const remainder = normalized.substring('epld/'.length);
+    if (remainder.toLowerCase().startsWith('epld') || remainder.toLowerCase().startsWith('eplvd')) {
+      normalized = remainder;
+    }
+  }
+
+  const legacyDeviceMatch = normalized.match(/^([^/]+)\/command\/switch:(0|1)$/i);
+  if (legacyDeviceMatch) {
+    const deviceId = legacyDeviceMatch[1].trim().toLowerCase();
+    const ledColor = legacyDeviceMatch[2] === '1' ? 'orange' : 'green';
+    const rewritten = `${deviceId}/command/led/${ledColor}`;
+    return hadLeadingSlash ? `/${rewritten}` : rewritten;
+  }
+  const legacyBroadcastMatch = normalized.match(/^command\/switch:(0|1)$/i);
+  if (!legacyBroadcastMatch) {
+    return topic;
+  }
+  const ledColor = legacyBroadcastMatch[1] === '1' ? 'orange' : 'green';
+  const rewritten = `command/led/${ledColor}`;
+  return hadLeadingSlash ? `/${rewritten}` : rewritten;
+}
+
 export function topicSuffixWithoutDevicePrefix(topic: string): string {
   const trimmed = topic.trim().replace(/^\/+/, '');
   if (!trimmed) {
@@ -117,10 +147,8 @@ function topicForTemplate(draft: MqttEventDraft, deviceId: string): string {
       return `${prefix}/event/button`;
     case 'counter':
       return `${prefix}/event/counter`;
-    case 'led': {
-      const channel = draft.ledColor === 'green' ? 0 : 1;
-      return `${prefix}/command/switch:${channel}`;
-    }
+    case 'led':
+      return `${prefix}/command/led/${draft.ledColor === 'orange' ? 'orange' : 'green'}`;
     case 'temperature':
       return `${prefix}/event/sensor/temperature`;
     case 'humidity':

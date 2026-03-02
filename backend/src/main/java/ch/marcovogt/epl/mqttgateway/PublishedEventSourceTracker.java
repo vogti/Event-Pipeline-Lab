@@ -13,6 +13,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class PublishedEventSourceTracker {
 
+    public static final String INTERNAL_FANOUT_SOURCE = "__epl_internal_fanout__";
+
     private final Map<EventKey, Deque<SourceEntry>> entriesByKey = new ConcurrentHashMap<>();
     private final Clock clock;
     private final Duration ttl;
@@ -97,4 +99,3 @@ public class PublishedEventSourceTracker {
     private record SourceEntry(String source, Instant expiresAt) {
     }
 }
-

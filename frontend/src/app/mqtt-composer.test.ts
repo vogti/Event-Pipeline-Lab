@@ -3,6 +3,7 @@ import {
   buildGuidedMqttMessage,
   createMqttEventDraft,
   lockTopicToDevicePrefix,
+  normalizeLegacyLedCommandTopic,
   normalizeMqttTemplateForTarget,
   resolveMqttDeviceId,
   topicSuffixForLockedPrefix,
@@ -59,7 +60,7 @@ describe('mqtt composer', () => {
     draft.ledOn = false;
 
     const result = buildGuidedMqttMessage(draft);
-    expect(result.topic).toBe('epld04/command/switch:1');
+    expect(result.topic).toBe('epld04/command/led/orange');
     expect(result.payload).toBe('off');
   });
 
@@ -80,5 +81,12 @@ describe('mqtt composer', () => {
     expect(lockTopicToDevicePrefix('epld01', 'events/rpc')).toBe('epld01/events/rpc');
     expect(lockTopicToDevicePrefix('epld01', 'epld09/events/rpc')).toBe('epld01/events/rpc');
     expect(lockTopicToDevicePrefix('epld01', 'epld01/events/rpc')).toBe('epld01/events/rpc');
+  });
+
+  it('normalizes legacy switch command topics to led command topics', () => {
+    expect(normalizeLegacyLedCommandTopic('epld01/command/switch:0')).toBe('epld01/command/led/green');
+    expect(normalizeLegacyLedCommandTopic('/epld01/command/switch:1')).toBe('/epld01/command/led/orange');
+    expect(normalizeLegacyLedCommandTopic('command/switch:0')).toBe('command/led/green');
+    expect(normalizeLegacyLedCommandTopic('epld01/command/led/green')).toBe('epld01/command/led/green');
   });
 });

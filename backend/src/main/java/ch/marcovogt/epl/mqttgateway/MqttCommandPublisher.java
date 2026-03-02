@@ -1,5 +1,10 @@
 package ch.marcovogt.epl.mqttgateway;
 
+import ch.marcovogt.epl.admin.AppSettingsService;
+import ch.marcovogt.epl.authsession.AuthService;
+import ch.marcovogt.epl.common.DeviceIdMapping;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.stereotype.Service;
@@ -8,10 +13,21 @@ import org.springframework.stereotype.Service;
 public class MqttCommandPublisher {
 
     private final MqttGatewayClient mqttGatewayClient;
+    private final AuthService authService;
+    private final AppSettingsService appSettingsService;
+    private final PublishSourceContext publishSourceContext;
     private final AtomicLong rpcRequestId = new AtomicLong(1000);
 
-    public MqttCommandPublisher(MqttGatewayClient mqttGatewayClient) {
+    public MqttCommandPublisher(
+            MqttGatewayClient mqttGatewayClient,
+            AuthService authService,
+            AppSettingsService appSettingsService,
+            PublishSourceContext publishSourceContext
+    ) {
         this.mqttGatewayClient = mqttGatewayClient;
+        this.authService = authService;
+        this.appSettingsService = appSettingsService;
+        this.publishSourceContext = publishSourceContext;
     }
 
     public void publishLedGreen(String deviceId, boolean on) {
@@ -60,11 +76,44 @@ public class MqttCommandPublisher {
             throw new IllegalArgumentException("topic must not contain MQTT wildcards");
         }
 
+        if (publishBroadcastCommandTopicIfMatched(normalizedTopic, payload, qos, retained)) {
+            return;
+        }
+
         if (publishNormalizedCommandTopicIfMatched(normalizedTopic, payload)) {
             return;
         }
 
         mqttGatewayClient.publish(normalizedTopic, payload, qos, retained);
+    }
+
+    private boolean publishBroadcastCommandTopicIfMatched(String topic, String payload, int qos, boolean retained) {
+        BroadcastCommandType commandType = parseBroadcastCommandTopic(topic);
+        if (commandType == null) {
+            return false;
+        }
+
+        if (commandType == BroadcastCommandType.LED_GREEN || commandType == BroadcastCommandType.LED_ORANGE) {
+            boolean targetOn = parseLedTargetState(payload);
+            String normalizedPayload = targetOn ? "on" : "off";
+            mqttGatewayClient.publish(topic, normalizedPayload, qos, retained);
+            fanOutToPhysicalDevices(deviceId -> {
+                if (commandType == BroadcastCommandType.LED_GREEN) {
+                    publishLedGreen(deviceId, targetOn);
+                } else {
+                    publishLedOrange(deviceId, targetOn);
+                }
+            });
+            return true;
+        }
+
+        if (commandType == BroadcastCommandType.COUNTER_RESET) {
+            mqttGatewayClient.publish(topic, "{}", qos, retained);
+            fanOutToPhysicalDevices(this::publishCounterReset);
+            return true;
+        }
+
+        return false;
     }
 
     private boolean publishNormalizedCommandTopicIfMatched(String topic, String payload) {
@@ -86,6 +135,33 @@ public class MqttCommandPublisher {
             return true;
         }
         return false;
+    }
+
+    private void fanOutToPhysicalDevices(DeviceCommandAction action) {
+        for (String deviceId : resolveFanOutDeviceIds()) {
+            publishSourceContext.runWithSource(PublishedEventSourceTracker.INTERNAL_FANOUT_SOURCE, () -> action.publish(deviceId));
+        }
+    }
+
+    private List<String> resolveFanOutDeviceIds() {
+        LinkedHashSet<String> deviceIds = new LinkedHashSet<>();
+        for (String groupKey : authService.listStudentGroupKeys()) {
+            if (groupKey == null || groupKey.isBlank()) {
+                continue;
+            }
+            String normalized = groupKey.trim().toLowerCase(Locale.ROOT);
+            if (DeviceIdMapping.isPhysicalDeviceId(normalized)) {
+                deviceIds.add(normalized);
+            }
+        }
+        String adminDeviceId = appSettingsService.getAdminDeviceId();
+        if (adminDeviceId != null && !adminDeviceId.isBlank()) {
+            String normalized = adminDeviceId.trim().toLowerCase(Locale.ROOT);
+            if (DeviceIdMapping.isPhysicalDeviceId(normalized)) {
+                deviceIds.add(normalized);
+            }
+        }
+        return List.copyOf(deviceIds);
     }
 
     private CommandTopic parseCommandTopic(String topic) {
@@ -135,6 +211,23 @@ public class MqttCommandPublisher {
         return null;
     }
 
+    private BroadcastCommandType parseBroadcastCommandTopic(String topic) {
+        String normalized = topic == null ? "" : topic.trim();
+        if (normalized.startsWith("/")) {
+            normalized = normalized.substring(1);
+        }
+        if (equalsIgnoreCase(normalized, "command/led/green")) {
+            return BroadcastCommandType.LED_GREEN;
+        }
+        if (equalsIgnoreCase(normalized, "command/led/orange")) {
+            return BroadcastCommandType.LED_ORANGE;
+        }
+        if (equalsIgnoreCase(normalized, "command/counter/reset")) {
+            return BroadcastCommandType.COUNTER_RESET;
+        }
+        return null;
+    }
+
     private boolean parseLedTargetState(String rawPayload) {
         String normalized = normalizePayloadToken(rawPayload);
         return switch (normalized) {
@@ -169,5 +262,16 @@ public class MqttCommandPublisher {
     }
 
     private record CommandTopic(String deviceId, String commandType) {
+    }
+
+    @FunctionalInterface
+    private interface DeviceCommandAction {
+        void publish(String deviceId);
+    }
+
+    private enum BroadcastCommandType {
+        LED_GREEN,
+        LED_ORANGE,
+        COUNTER_RESET
     }
 }

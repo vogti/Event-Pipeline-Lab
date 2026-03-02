@@ -118,6 +118,10 @@ public class CanonicalEventNormalizer {
             return payloadDeviceName;
         }
 
+        if (isBroadcastCommandTopic(topic)) {
+            return "broadcast";
+        }
+
         return null;
     }
 
@@ -172,6 +176,15 @@ public class CanonicalEventNormalizer {
 
         if (topic.endsWith("/events/rpc")) {
             return normalizeRpcNotification(payloadNode);
+        }
+        if (startsWithIgnoreCase(topic, "command/led/green")) {
+            return "command.led.green";
+        }
+        if (startsWithIgnoreCase(topic, "command/led/orange")) {
+            return "command.led.orange";
+        }
+        if (startsWithIgnoreCase(topic, "command/counter/reset")) {
+            return "command.counter.reset";
         }
         if (topic.contains("/command/led/green")) {
             return "command.led.green";
@@ -248,6 +261,20 @@ public class CanonicalEventNormalizer {
             } else if (segments.length == 2 && !segments[1].isBlank()) {
                 normalized = segments[1];
             }
+        }
+
+        if (isBroadcastCommandTopic(normalized)) {
+            String lowerEventType = eventType == null ? "" : eventType.toLowerCase(Locale.ROOT);
+            if (lowerEventType.equals("command.led.green")) {
+                return "command/led/green";
+            }
+            if (lowerEventType.equals("command.led.orange")) {
+                return "command/led/orange";
+            }
+            if (lowerEventType.equals("command.counter.reset")) {
+                return "command/counter/reset";
+            }
+            return normalized;
         }
 
         String resolvedDeviceId = (deviceId == null || deviceId.isBlank()) ? "unknown" : deviceId.trim();
@@ -746,8 +773,29 @@ public class CanonicalEventNormalizer {
         String normalizedTopic = topic.toLowerCase(Locale.ROOT);
         return normalizedTopic.contains("/command/led/")
                 || normalizedTopic.contains("/cmd/led/")
+                || normalizedTopic.startsWith("command/led/")
                 || normalizedTopic.contains("/command/switch:0")
                 || normalizedTopic.contains("/command/switch:1");
+    }
+
+    private boolean isBroadcastCommandTopic(String topic) {
+        if (topic == null || topic.isBlank()) {
+            return false;
+        }
+        String normalized = topic.trim().toLowerCase(Locale.ROOT);
+        while (normalized.startsWith("/")) {
+            normalized = normalized.substring(1);
+        }
+        return "command/led/green".equals(normalized)
+                || "command/led/orange".equals(normalized)
+                || "command/counter/reset".equals(normalized);
+    }
+
+    private boolean startsWithIgnoreCase(String value, String prefix) {
+        if (value == null || prefix == null) {
+            return false;
+        }
+        return value.regionMatches(true, 0, prefix, 0, prefix.length());
     }
 
     private String normalizeControlToken(String rawPayload) {

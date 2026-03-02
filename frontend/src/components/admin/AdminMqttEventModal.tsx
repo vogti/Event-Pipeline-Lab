@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { I18nKey } from '../../i18n';
 import {
   lockTopicToDevicePrefix,
+  normalizeLegacyLedCommandTopic,
   normalizeMqttTemplateForTarget,
   supportedMqttTemplates,
   topicSuffixForLockedPrefix
@@ -38,8 +39,6 @@ interface AdminMqttEventModalProps {
   enableLedTab?: boolean;
   hidePayloadFields?: boolean;
   simpleMode?: boolean;
-  showSimpleModeToggle?: boolean;
-  onSimpleModeChange?: (simpleMode: boolean) => void;
   topicPrefixLock?: string | null;
   enableLedBlinkControls?: boolean;
   initialTab?: 'guided' | 'raw' | 'led';
@@ -95,8 +94,6 @@ export function AdminMqttEventModal({
   enableLedTab = true,
   hidePayloadFields = false,
   simpleMode = false,
-  showSimpleModeToggle = false,
-  onSimpleModeChange,
   topicPrefixLock = null,
   enableLedBlinkControls = false,
   initialTab
@@ -122,6 +119,17 @@ export function AdminMqttEventModal({
       onDraftChange('rawPayload', payload);
     }
   }, [activeTab, draft.deviceId, draft.ledColor, draft.ledOn, hidePayloadFields, onDraftChange]);
+
+  useEffect(() => {
+    const normalizedRawTopic = normalizeLegacyLedCommandTopic(draft.rawTopic);
+    if (normalizedRawTopic !== draft.rawTopic) {
+      onDraftChange('rawTopic', normalizedRawTopic);
+    }
+    const normalizedCustomTopic = normalizeLegacyLedCommandTopic(draft.customTopic);
+    if (normalizedCustomTopic !== draft.customTopic) {
+      onDraftChange('customTopic', normalizedCustomTopic);
+    }
+  }, [draft.customTopic, draft.rawTopic, onDraftChange]);
 
   const normalizedPrefixLock = (topicPrefixLock ?? '').trim().toLowerCase();
   const prefixLockActive = normalizedPrefixLock.length > 0;
@@ -240,26 +248,6 @@ export function AdminMqttEventModal({
             </button>
           ) : null}
         </div>
-
-        {showSimpleModeToggle && onSimpleModeChange ? (
-          <div className="mqtt-compose-simple-mode-row">
-            <span className="muted">{t('pipelineViewMode')}</span>
-            <button
-              className={`button tiny ${simpleMode ? 'active' : 'secondary'}`}
-              type="button"
-              onClick={() => onSimpleModeChange(true)}
-            >
-              {t('pipelineViewModeSimple')}
-            </button>
-            <button
-              className={`button tiny ${!simpleMode ? 'active' : 'secondary'}`}
-              type="button"
-              onClick={() => onSimpleModeChange(false)}
-            >
-              {t('pipelineViewModeAdvanced')}
-            </button>
-          </div>
-        ) : null}
 
         {activeTab === 'led' ? (
           <div className="mqtt-compose-grid">

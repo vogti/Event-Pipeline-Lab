@@ -127,6 +127,7 @@ import {
   buildGuidedMqttMessage,
   createMqttEventDraft,
   lockTopicToDevicePrefix,
+  normalizeLegacyLedCommandTopic,
   normalizeMqttTemplateForTarget,
   resolveMqttDeviceId
 } from './app/mqtt-composer';
@@ -135,7 +136,6 @@ const PIPELINE_AUTOSAVE_DEBOUNCE_MS = 650;
 const VIRTUAL_DEVICE_AUTOSAVE_DEBOUNCE_MS = 160;
 const STUDENT_PIPELINE_SIMPLIFIED_STORAGE_KEY = 'epl.student.pipeline.simplifiedView';
 const ADMIN_PIPELINE_SIMPLIFIED_STORAGE_KEY = 'epl.admin.pipeline.simplifiedView';
-const ADMIN_MQTT_SIMPLIFIED_STORAGE_KEY = 'epl.admin.mqtt.simplifiedView';
 
 function processingSectionSignature(value: PipelineProcessingSection | null | undefined): string {
   return JSON.stringify(value ?? null);
@@ -701,20 +701,6 @@ export default function App() {
       return true;
     }
   });
-  const [adminMqttSimplifiedView, setAdminMqttSimplifiedView] = useState<boolean>(() => {
-    if (typeof window === 'undefined') {
-      return false;
-    }
-    try {
-      const stored = window.localStorage.getItem(ADMIN_MQTT_SIMPLIFIED_STORAGE_KEY);
-      if (stored === null) {
-        return false;
-      }
-      return stored === 'true';
-    } catch {
-      return false;
-    }
-  });
   const [adminPipelineSimplifiedView, setAdminPipelineSimplifiedView] = useState<boolean>(() => {
     if (typeof window === 'undefined') {
       return false;
@@ -1007,20 +993,6 @@ export default function App() {
       // Ignore storage failures; this preference is best-effort.
     }
   }, [studentPipelineSimplifiedView]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-    try {
-      window.localStorage.setItem(
-        ADMIN_MQTT_SIMPLIFIED_STORAGE_KEY,
-        adminMqttSimplifiedView ? 'true' : 'false'
-      );
-    } catch {
-      // Ignore storage failures; this preference is best-effort.
-    }
-  }, [adminMqttSimplifiedView]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -3670,12 +3642,16 @@ export default function App() {
 
   const setMqttDraftField = useCallback(<K extends keyof MqttEventDraft>(key: K, value: MqttEventDraft[K]) => {
     setMqttEventDraft((previous) => {
-      if (previous[key] === value) {
+      let nextValue = value;
+      if (key === 'rawTopic' || key === 'customTopic') {
+        nextValue = normalizeLegacyLedCommandTopic(String(value)) as MqttEventDraft[K];
+      }
+      if (previous[key] === nextValue) {
         return previous;
       }
       return {
         ...previous,
-        [key]: value
+        [key]: nextValue
       };
     });
   }, []);
@@ -3750,10 +3726,13 @@ export default function App() {
   const setStudentMqttDraftField = useCallback(<K extends keyof MqttEventDraft>(key: K, value: MqttEventDraft[K]) => {
     setStudentMqttEventDraft((previous) => {
       let nextValue = value;
+      if (key === 'rawTopic' || key === 'customTopic') {
+        nextValue = normalizeLegacyLedCommandTopic(String(nextValue)) as MqttEventDraft[K];
+      }
       if ((key === 'rawTopic' || key === 'customTopic') && studentSelectedTopicPrefixDeviceId) {
         nextValue = lockTopicToDevicePrefix(
           studentSelectedTopicPrefixDeviceId,
-          String(value)
+          String(nextValue)
         ) as MqttEventDraft[K];
       }
       if (previous[key] === nextValue) {
@@ -3867,7 +3846,7 @@ export default function App() {
       const guided = buildGuidedMqttMessage(nextDraft);
       return {
         ...nextDraft,
-        rawTopic: guided.topic,
+        rawTopic: normalizeLegacyLedCommandTopic(guided.topic),
         rawPayload: guided.payload
       };
     });
@@ -3925,11 +3904,11 @@ export default function App() {
         : guided.topic;
       return {
         ...nextDraft,
-        rawTopic: lockedGuidedTopic,
+        rawTopic: normalizeLegacyLedCommandTopic(lockedGuidedTopic),
         rawPayload: guided.payload,
         customTopic: normalizedDeviceId
-          ? lockTopicToDevicePrefix(normalizedDeviceId, nextDraft.customTopic)
-          : nextDraft.customTopic
+          ? normalizeLegacyLedCommandTopic(lockTopicToDevicePrefix(normalizedDeviceId, nextDraft.customTopic))
+          : normalizeLegacyLedCommandTopic(nextDraft.customTopic)
       };
     });
     setStudentMqttModalOpen(true);
@@ -3969,7 +3948,9 @@ export default function App() {
     const requestedTopic = (
       studentMqttComposerMode === 'raw' ? studentMqttEventDraft.rawTopic : guidedStudentMqttMessage.topic
     ).trim();
-    const topic = lockTopicToDevicePrefix(studentSelectedTopicPrefixDeviceId, requestedTopic).trim();
+    const topic = normalizeLegacyLedCommandTopic(
+      lockTopicToDevicePrefix(studentSelectedTopicPrefixDeviceId, requestedTopic)
+    ).trim();
     const payload = (
       studentMqttComposerMode === 'raw' ? studentMqttEventDraft.rawPayload : guidedStudentMqttMessage.payload
     ).trim();
@@ -4032,7 +4013,9 @@ export default function App() {
       return;
     }
 
-    const topic = (mqttComposerMode === 'raw' ? mqttEventDraft.rawTopic : guidedMqttMessage.topic).trim();
+    const topic = normalizeLegacyLedCommandTopic(
+      mqttComposerMode === 'raw' ? mqttEventDraft.rawTopic : guidedMqttMessage.topic
+    ).trim();
     const payload = (mqttComposerMode === 'raw' ? mqttEventDraft.rawPayload : guidedMqttMessage.payload).trim();
 
     if (!topic) {
@@ -5681,9 +5664,7 @@ export default function App() {
           onTemplateChange={setMqttTemplate}
           onDeviceIdChange={setMqttDeviceId}
           onDraftChange={setMqttDraftField}
-          simpleMode={adminMqttSimplifiedView}
-          showSimpleModeToggle
-          onSimpleModeChange={setAdminMqttSimplifiedView}
+          simpleMode={adminPipelineSimplifiedView}
         />
       ) : null}
 

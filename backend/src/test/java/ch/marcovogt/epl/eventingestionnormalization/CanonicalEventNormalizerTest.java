@@ -259,6 +259,21 @@ class CanonicalEventNormalizerTest {
     }
 
     @Test
+    void shouldNormalizeBroadcastLedCommandTopicWithoutDevicePrefix() {
+        String topic = "command/led/green";
+        byte[] payload = "on".getBytes(StandardCharsets.UTF_8);
+
+        NormalizedEvent normalized = normalizer.normalize(topic, payload, Instant.parse("2026-03-02T08:00:00Z"));
+
+        assertThat(normalized.event().getDeviceId()).isEqualTo("broadcast");
+        assertThat(normalized.event().getTopic()).isEqualTo("command/led/green");
+        assertThat(normalized.event().getEventType()).isEqualTo("command.led.green");
+        assertThat(normalized.event().getCategory()).isEqualTo(EventCategory.COMMAND);
+        assertThat(normalized.event().isInternal()).isFalse();
+        assertThat(normalized.event().isValid()).isTrue();
+    }
+
+    @Test
     void shouldMarkOnlineEventsAsInternal() {
         String topic = "epld01/online";
         byte[] payload = "true".getBytes(StandardCharsets.UTF_8);
