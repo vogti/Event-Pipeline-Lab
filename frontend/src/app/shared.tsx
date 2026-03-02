@@ -207,6 +207,17 @@ interface FeedScenarioDisturbanceResult {
   nextReleaseAt: number | null;
 }
 
+function disturbedIngestTimestamp(original: TimestampValue, releaseAtEpochMs: number): TimestampValue {
+  if (!Number.isFinite(releaseAtEpochMs)) {
+    return original;
+  }
+  const iso = new Date(releaseAtEpochMs).toISOString();
+  if (iso === 'Invalid Date') {
+    return original;
+  }
+  return iso;
+}
+
 function buildFeedScenarioDisturbances(
   events: CanonicalEvent[],
   scenarioOverlays: string[] | null | undefined,
@@ -253,7 +264,7 @@ function buildFeedScenarioDisturbances(
       continue;
     }
 
-    const delayOffset = delayMs > 0 ? hashRange(eventId, 'delay', 0, delayMs) : 0;
+    const delayOffset = delayMs > 0 ? delayMs : 0;
     const reorderOffset =
       outOfOrderPct > 0 && reorderBufferMs > 0 && hashPct(eventId, 'ooo') < outOfOrderPct
         ? hashRange(eventId, 'ooodelta', -reorderBufferMs, reorderBufferMs)
@@ -263,6 +274,7 @@ function buildFeedScenarioDisturbances(
     addIfReleased(
       {
         ...event,
+        ingestTs: disturbedIngestTimestamp(event.ingestTs, releaseAt),
         scenarioFlags: withScenarioFlag(event, 'disturbed')
       },
       releaseAt,
@@ -275,6 +287,7 @@ function buildFeedScenarioDisturbances(
         {
           ...event,
           id: `${event.id}::dup`,
+          ingestTs: disturbedIngestTimestamp(event.ingestTs, duplicateReleaseAt),
           scenarioFlags: withScenarioFlag(event, 'duplicate')
         },
         duplicateReleaseAt,

@@ -747,6 +747,8 @@ export default function App() {
   const adminDataRef = useRef<AdminViewData | null>(null);
   const adminPageRef = useRef(adminPage);
   const deferredAdminFeedRef = useRef<CanonicalEvent[]>([]);
+  const studentVisibleFeedIdsRef = useRef<Set<string>>(new Set());
+  const studentVisibleFeedInitializedRef = useRef(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const recentFeedClearTimerRef = useRef<number | null>(null);
   const studentFeedSourceManualRef = useRef(false);
@@ -4354,6 +4356,26 @@ export default function App() {
       return feedMatchesTopic(event, studentTopicFilter);
     });
   }, [studentFeedSourceEvents, studentShowInternal, studentTopicFilter]);
+
+  useEffect(() => {
+    if (session?.role !== 'STUDENT') {
+      studentVisibleFeedInitializedRef.current = false;
+      studentVisibleFeedIdsRef.current = new Set();
+      return;
+    }
+    const nextIds = new Set(studentVisibleFeed.map((event) => event.id));
+    if (!studentVisibleFeedInitializedRef.current) {
+      studentVisibleFeedInitializedRef.current = true;
+      studentVisibleFeedIdsRef.current = nextIds;
+      return;
+    }
+    const previousIds = studentVisibleFeedIdsRef.current;
+    const newlyVisible = studentVisibleFeed.filter((event) => !previousIds.has(event.id));
+    studentVisibleFeedIdsRef.current = nextIds;
+    if (newlyVisible.length > 0) {
+      markFeedEventsRecent(newlyVisible);
+    }
+  }, [markFeedEventsRecent, session?.role, studentVisibleFeed]);
 
   const adminBeforeDisturbancesFeedSource = useMemo(() => {
     if (!adminData || session?.role !== 'ADMIN') {

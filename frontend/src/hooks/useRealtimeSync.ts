@@ -219,6 +219,7 @@ export function useRealtimeSync({
       }
       const queued = studentPipelineFeedQueue;
       studentPipelineFeedQueue = [];
+      markFeedEventsRecent(queued);
       setStudentPipelineFeed((previous) => mergeEventsBounded(previous, queued, MAX_FEED_EVENTS));
     };
 

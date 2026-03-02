@@ -75,11 +75,21 @@ describe('shared helpers', () => {
       createEvent({ id: 'delayed-b', ingestTs: '2026-01-01T10:00:01Z' })
     ];
 
-    const beforeRelease = applyFeedScenarioDisturbances(events, ['delay:1000ms'], baseTs - 1);
+    const beforeRelease = applyFeedScenarioDisturbances(events, ['delay:1000ms'], baseTs + 999);
     expect(beforeRelease).toEqual([]);
 
     const afterRelease = applyFeedScenarioDisturbances(events, ['delay:1000ms'], baseTs + 2500);
     expect(afterRelease.length).toBeGreaterThan(0);
+
+    const expectedIngestById = new Map(
+      events.map((event) => {
+        const ingestBase = Date.parse(event.ingestTs as string);
+        return [event.id, new Date(ingestBase + 1000).toISOString()];
+      })
+    );
+    for (const disturbedEvent of afterRelease) {
+      expect(disturbedEvent.ingestTs).toBe(expectedIngestById.get(disturbedEvent.id));
+    }
   });
 
   it('reports next release timestamp for pending delayed events', () => {
