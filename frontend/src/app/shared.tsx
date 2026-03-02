@@ -39,6 +39,7 @@ import { parsePipelineScenarioOverlays } from './pipeline-scenarios';
 const TOKEN_STORAGE_KEY = 'epl.sessionToken';
 const LANGUAGE_STORAGE_KEY = 'epl.languageOverride';
 const MAX_FEED_EVENTS = 200;
+const MAX_FEED_SOURCE_EVENTS = 2000;
 const SYSTEM_DATA_PART_ORDER: SystemDataPart[] = [
   'APP_SETTINGS',
   'TASK_STATE',
@@ -167,7 +168,7 @@ function mergeEventsBounded(
 }
 
 function clampFeed(items: CanonicalEvent[]): CanonicalEvent[] {
-  return mergeEventsBounded([], items, MAX_FEED_EVENTS);
+  return mergeEventsBounded([], items, MAX_FEED_SOURCE_EVENTS);
 }
 
 function stableHash(input: string): number {
@@ -1672,6 +1673,7 @@ export {
   TOKEN_STORAGE_KEY,
   LANGUAGE_STORAGE_KEY,
   MAX_FEED_EVENTS,
+  MAX_FEED_SOURCE_EVENTS,
   SYSTEM_DATA_PART_ORDER,
   isAdminFeedHotPage,
   CATEGORY_OPTIONS,

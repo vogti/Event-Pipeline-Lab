@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   applyFeedScenarioDisturbances,
   buildDeviceTelemetrySnapshots,
+  clampFeed,
   eventValueSummary,
   extractCounterValueFromPayload,
   mergeIpAddressCache,
@@ -139,6 +140,18 @@ describe('shared helpers', () => {
 
     expect(merged).toHaveLength(2);
     expect(merged.map((event) => event.id)).toEqual(['event-c', 'event-a']);
+  });
+
+  it('keeps a larger bounded source buffer for disturbance scheduling', () => {
+    const source = Array.from({ length: 350 }).map((_, index) =>
+      createEvent({
+        id: `buffer-${index}`,
+        ingestTs: `2026-01-01T10:${String(index % 60).padStart(2, '0')}:${String(index % 60).padStart(2, '0')}Z`
+      })
+    );
+
+    const clamped = clampFeed(source);
+    expect(clamped.length).toBe(350);
   });
 
   it('maps LED state_changed output payload to on/off value summary', () => {

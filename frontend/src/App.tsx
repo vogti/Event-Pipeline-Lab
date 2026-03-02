@@ -38,6 +38,7 @@ import {
 import {
   TOKEN_STORAGE_KEY,
   MAX_FEED_EVENTS,
+  MAX_FEED_SOURCE_EVENTS,
   isAdminFeedHotPage,
   createSystemDataPartSelection,
   selectedSystemDataParts,
@@ -829,7 +830,7 @@ export default function App() {
     deferredAdminFeedRef.current = mergeEventsBounded(
       deferredAdminFeedRef.current,
       events,
-      MAX_FEED_EVENTS
+      MAX_FEED_SOURCE_EVENTS
     );
   }, []);
 
@@ -851,7 +852,7 @@ export default function App() {
         if (!previous) {
           return previous;
         }
-        const nextFeed = mergeEventsBounded(previous.events, deferredEvents, MAX_FEED_EVENTS);
+        const nextFeed = mergeEventsBounded(previous.events, deferredEvents, MAX_FEED_SOURCE_EVENTS);
         if (nextFeed === previous.events) {
           return previous;
         }
@@ -1232,7 +1233,7 @@ export default function App() {
         api.studentBootstrap(activeToken),
         api.studentPipeline(activeToken),
         api.scenarios(activeToken),
-        api.eventsFeed(activeToken, { limit: MAX_FEED_EVENTS, includeInternal: true, stage: 'AFTER_PIPELINE' })
+        api.eventsFeed(activeToken, { limit: MAX_FEED_SOURCE_EVENTS, includeInternal: true, stage: 'AFTER_PIPELINE' })
       ]);
       const pipeline = normalizePipelineView(pipelineRaw);
       setStudentData({
@@ -1265,8 +1266,8 @@ export default function App() {
       api.adminGroups(activeToken),
       api.adminSettings(activeToken),
       api.adminStreamSources(activeToken),
-      api.eventsFeed(activeToken, { limit: MAX_FEED_EVENTS, includeInternal: true }),
-      api.eventsFeed(activeToken, { limit: MAX_FEED_EVENTS, includeInternal: true, stage: 'AFTER_PIPELINE' }),
+      api.eventsFeed(activeToken, { limit: MAX_FEED_SOURCE_EVENTS, includeInternal: true }),
+      api.eventsFeed(activeToken, { limit: MAX_FEED_SOURCE_EVENTS, includeInternal: true, stage: 'AFTER_PIPELINE' }),
       api.adminSystemStatus(activeToken),
       logModeStatusPromise,
       api.adminScenarios(activeToken)
@@ -4102,8 +4103,8 @@ export default function App() {
         api.adminDevices(token),
         api.adminVirtualDevices(token),
         api.adminGroups(token),
-        api.eventsFeed(token, { limit: MAX_FEED_EVENTS, includeInternal: true }),
-        api.eventsFeed(token, { limit: MAX_FEED_EVENTS, includeInternal: true, stage: 'AFTER_PIPELINE' }),
+        api.eventsFeed(token, { limit: MAX_FEED_SOURCE_EVENTS, includeInternal: true }),
+        api.eventsFeed(token, { limit: MAX_FEED_SOURCE_EVENTS, includeInternal: true, stage: 'AFTER_PIPELINE' }),
         api.adminSettings(token),
         api.adminStreamSources(token),
         api.adminSystemStatus(token),
@@ -4426,12 +4427,14 @@ export default function App() {
   ]);
 
   const studentVisibleFeed = useMemo(() => {
-    return studentFeedSourceEvents.filter((event) => {
-      if (!studentShowInternal && (event.isInternal || isTelemetryEvent(event))) {
-        return false;
-      }
-      return feedMatchesTopic(event, studentTopicFilter);
-    });
+    return studentFeedSourceEvents
+      .filter((event) => {
+        if (!studentShowInternal && (event.isInternal || isTelemetryEvent(event))) {
+          return false;
+        }
+        return feedMatchesTopic(event, studentTopicFilter);
+      })
+      .slice(0, MAX_FEED_EVENTS);
   }, [studentFeedSourceEvents, studentShowInternal, studentTopicFilter]);
 
   useEffect(() => {
@@ -4553,28 +4556,31 @@ export default function App() {
   }, [nextDisturbanceReleaseAt]);
 
   const adminVisibleFeed = useMemo(() => {
-    return adminFeedSourceEvents.filter((event) => {
-      if (!adminIncludeInternal && (event.isInternal || isTelemetryEvent(event))) {
-        return false;
-      }
-
-      return feedMatchesTopic(event, adminTopicFilter);
-    });
+    return adminFeedSourceEvents
+      .filter((event) => {
+        if (!adminIncludeInternal && (event.isInternal || isTelemetryEvent(event))) {
+          return false;
+        }
+        return feedMatchesTopic(event, adminTopicFilter);
+      })
+      .slice(0, MAX_FEED_EVENTS);
   }, [adminFeedSourceEvents, adminIncludeInternal, adminTopicFilter]);
 
   const adminPipelineVisibleFeed = useMemo(() => {
-    return adminAfterPipelineDisturbedFeedSource.filter((event) => {
-      if (
-        adminPipelineGroupKey.trim() &&
-        event.groupKey?.trim().toLowerCase() !== adminPipelineGroupKey.trim().toLowerCase()
-      ) {
-        return false;
-      }
-      if (!adminIncludeInternal && (event.isInternal || isTelemetryEvent(event))) {
-        return false;
-      }
-      return feedMatchesTopic(event, adminTopicFilter);
-    });
+    return adminAfterPipelineDisturbedFeedSource
+      .filter((event) => {
+        if (
+          adminPipelineGroupKey.trim() &&
+          event.groupKey?.trim().toLowerCase() !== adminPipelineGroupKey.trim().toLowerCase()
+        ) {
+          return false;
+        }
+        if (!adminIncludeInternal && (event.isInternal || isTelemetryEvent(event))) {
+          return false;
+        }
+        return feedMatchesTopic(event, adminTopicFilter);
+      })
+      .slice(0, MAX_FEED_EVENTS);
   }, [
     adminAfterPipelineDisturbedFeedSource,
     adminIncludeInternal,

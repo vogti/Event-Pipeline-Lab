@@ -1,7 +1,7 @@
 import { useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import { api } from '../api';
 import {
-  MAX_FEED_EVENTS,
+  MAX_FEED_SOURCE_EVENTS,
   buildDeviceTelemetrySnapshots,
   extractIpAddressesFromEvents,
   extractTaskInfo,
@@ -148,7 +148,7 @@ export function useRealtimeSync({
     let studentPipelineFeedQueue: CanonicalEvent[] = [];
     let adminFeedQueue: CanonicalEvent[] = [];
     let adminPipelineFeedQueue: CanonicalEvent[] = [];
-    const maxPendingFeedEvents = Math.max(MAX_FEED_EVENTS * 6, 500);
+    const maxPendingFeedEvents = Math.max(MAX_FEED_SOURCE_EVENTS * 3, 500);
     const adminDeviceStatusQueue = new Map<string, DeviceStatus>();
     let closed = false;
     const ownStudentDeviceId = session.role === 'STUDENT'
@@ -190,7 +190,7 @@ export function useRealtimeSync({
         if (!previous) {
           return previous;
         }
-        const nextFeed = mergeEventsBounded(previous.feed, queued, MAX_FEED_EVENTS);
+        const nextFeed = mergeEventsBounded(previous.feed, queued, MAX_FEED_SOURCE_EVENTS);
         if (nextFeed === previous.feed) {
           return previous;
         }
@@ -220,7 +220,7 @@ export function useRealtimeSync({
       const queued = studentPipelineFeedQueue;
       studentPipelineFeedQueue = [];
       markFeedEventsRecent(queued);
-      setStudentPipelineFeed((previous) => mergeEventsBounded(previous, queued, MAX_FEED_EVENTS));
+      setStudentPipelineFeed((previous) => mergeEventsBounded(previous, queued, MAX_FEED_SOURCE_EVENTS));
     };
 
     const queueStudentPipelineFeedEvent = (eventPayload: CanonicalEvent) => {
@@ -287,7 +287,7 @@ export function useRealtimeSync({
       }
       const queued = adminPipelineFeedQueue;
       adminPipelineFeedQueue = [];
-      setAdminPipelineFeed((previous) => mergeEventsBounded(previous, queued, MAX_FEED_EVENTS));
+      setAdminPipelineFeed((previous) => mergeEventsBounded(previous, queued, MAX_FEED_SOURCE_EVENTS));
     };
 
     const queueAdminPipelineFeedEvent = (eventPayload: CanonicalEvent) => {
