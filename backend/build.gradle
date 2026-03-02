@@ -6,7 +6,7 @@ plugins {
 
 group = 'ch.marcovogt.epl'
 version = '0.1.0-SNAPSHOT'
-description = 'Event Pipeline Lab backend (Phase 1+2 foundation)'
+description = 'Event Pipeline Lab backend'
 
 def deploymentInfoDir = layout.buildDirectory.dir('generated/resources/deployment')
 
