@@ -39,6 +39,7 @@ interface AdminTasksSectionProps {
   onStudentEventVisibilityScopeChange: (scope: StudentDeviceScope) => void;
   onStudentCommandTargetScopeChange: (scope: StudentDeviceScope) => void;
   onStudentSendEventEnabledChange: (enabled: boolean) => void;
+  onStudentDeviceViewDisturbedChange: (disturbed: boolean) => void;
   onToggleAllowedBlock: (blockType: string, enabled: boolean) => void;
   onScenarioOverlaysChange: (scenarioOverlays: string[]) => void;
   onSaveTaskConfig: () => void;
@@ -89,6 +90,7 @@ export function AdminTasksSection({
   onStudentEventVisibilityScopeChange,
   onStudentCommandTargetScopeChange,
   onStudentSendEventEnabledChange,
+  onStudentDeviceViewDisturbedChange,
   onToggleAllowedBlock,
   onScenarioOverlaysChange,
   onSaveTaskConfig,
@@ -414,6 +416,15 @@ export function AdminTasksSection({
                     onChange={onScenarioOverlaysChange}
                   />
                 </div>
+
+                <label className="checkbox-inline pipeline-field">
+                  <input
+                    type="checkbox"
+                    checked={editingTaskConfig.studentDeviceViewDisturbed}
+                    onChange={(event) => onStudentDeviceViewDisturbedChange(event.target.checked)}
+                  />
+                  <span>{t('taskDisturbancesStudentDeviceViewDisturbed')}</span>
+                </label>
 
                 <button
                   className="button small"

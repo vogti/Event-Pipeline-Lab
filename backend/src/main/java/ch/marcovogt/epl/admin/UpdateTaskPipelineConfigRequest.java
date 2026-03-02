@@ -16,6 +16,7 @@ public record UpdateTaskPipelineConfigRequest(
         @NotNull List<String> scenarioOverlays,
         @NotNull StudentDeviceScope studentEventVisibilityScope,
         @NotNull StudentDeviceScope studentCommandTargetScope,
-        boolean studentSendEventEnabled
+        boolean studentSendEventEnabled,
+        boolean studentDeviceViewDisturbed
 ) {
 }

@@ -302,7 +302,8 @@ export const api = {
     scenarioOverlays: string[],
     studentEventVisibilityScope: StudentDeviceScope,
     studentCommandTargetScope: StudentDeviceScope,
-    studentSendEventEnabled: boolean
+    studentSendEventEnabled: boolean,
+    studentDeviceViewDisturbed: boolean
   ): Promise<TaskPipelineConfig> {
     return request<TaskPipelineConfig>(
       '/api/admin/task-pipeline-config',
@@ -316,7 +317,8 @@ export const api = {
           scenarioOverlays,
           studentEventVisibilityScope,
           studentCommandTargetScope,
-          studentSendEventEnabled
+          studentSendEventEnabled,
+          studentDeviceViewDisturbed
         })
       },
       token

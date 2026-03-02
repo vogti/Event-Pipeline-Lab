@@ -1405,6 +1405,7 @@ export default function App() {
   const studentCommandTargetScope = normalizeStudentDeviceScope(
     studentData?.capabilities.studentCommandTargetScope
   );
+  const studentDeviceViewDisturbed = Boolean(studentData?.capabilities.studentDeviceViewDisturbed);
   const studentOwnDeviceId = (session?.groupKey ?? '').trim();
   const studentAdminDeviceId = (studentData?.settings.adminDeviceId ?? '').trim();
   const studentSendEventTargetTypeOptions = useMemo<MqttComposerTargetType[]>(
@@ -1427,7 +1428,7 @@ export default function App() {
     () => normalizeTopicPrefixDeviceId(studentMqttEventDraft.deviceId),
     [studentMqttEventDraft.deviceId]
   );
-  const studentSelectedDeviceState = studentOwnDeviceId
+  const studentSelectedDeviceStateBase = studentOwnDeviceId
     ? studentDeviceStatesById[studentOwnDeviceId] ?? null
     : null;
 
@@ -2765,6 +2766,18 @@ export default function App() {
     });
   }, []);
 
+  const changeTaskPipelineStudentDeviceViewDisturbed = useCallback((disturbed: boolean) => {
+    setAdminTaskPipelineConfigDraft((previous) => {
+      if (!previous) {
+        return previous;
+      }
+      return {
+        ...previous,
+        studentDeviceViewDisturbed: disturbed
+      };
+    });
+  }, []);
+
   const toggleTaskPipelineAllowedBlock = useCallback((blockType: string, enabled: boolean) => {
     setAdminTaskPipelineConfigDraft((previous) => {
       if (!previous) {
@@ -2832,7 +2845,8 @@ export default function App() {
         adminTaskPipelineConfigDraft.scenarioOverlays,
         normalizeStudentDeviceScope(adminTaskPipelineConfigDraft.studentEventVisibilityScope),
         normalizeStudentDeviceScope(adminTaskPipelineConfigDraft.studentCommandTargetScope),
-        Boolean(adminTaskPipelineConfigDraft.studentSendEventEnabled)
+        Boolean(adminTaskPipelineConfigDraft.studentSendEventEnabled),
+        Boolean(adminTaskPipelineConfigDraft.studentDeviceViewDisturbed)
       );
       setAdminTaskPipelineConfig(updated);
       setAdminTaskPipelineConfigDraft(updated);
@@ -4312,6 +4326,55 @@ export default function App() {
     );
   }, [disturbanceNowEpochMs, feedScenarioConfig?.scenarioOverlays, studentData]);
 
+  const studentSelectedDeviceState = useMemo(() => {
+    if (!studentOwnDeviceId) {
+      return null;
+    }
+
+    const baseline = studentSelectedDeviceStateBase;
+    if (!studentDeviceViewDisturbed) {
+      return baseline;
+    }
+
+    const snapshot = buildDeviceTelemetrySnapshots(studentBeforePipelineDisturbedFeedSource)[studentOwnDeviceId];
+    const baseState: StudentDeviceState = baseline ?? {
+      deviceId: studentOwnDeviceId,
+      online: false,
+      lastSeen: null,
+      rssi: null,
+      temperatureC: null,
+      humidityPct: null,
+      brightness: null,
+      counterValue: null,
+      buttonRedPressed: null,
+      buttonBlackPressed: null,
+      ledGreenOn: null,
+      ledOrangeOn: null,
+      uptimeMs: null,
+      uptimeIngestTs: null,
+      updatedAt: null
+    };
+
+    return {
+      ...baseState,
+      temperatureC: snapshot?.temperatureC ?? null,
+      humidityPct: snapshot?.humidityPct ?? null,
+      brightness: snapshot?.brightness ?? null,
+      counterValue: snapshot?.counterValue ?? null,
+      buttonRedPressed: snapshot?.buttonRedPressed ?? null,
+      buttonBlackPressed: snapshot?.buttonBlackPressed ?? null,
+      ledGreenOn: snapshot?.ledGreenOn ?? null,
+      ledOrangeOn: snapshot?.ledOrangeOn ?? null,
+      uptimeMs: snapshot?.uptimeMs ?? null,
+      uptimeIngestTs: snapshot?.uptimeIngestTs ?? null
+    };
+  }, [
+    studentBeforePipelineDisturbedFeedSource,
+    studentDeviceViewDisturbed,
+    studentOwnDeviceId,
+    studentSelectedDeviceStateBase
+  ]);
+
   const studentAfterPipelineDisturbedFeedSource = useMemo(() => {
     return applyFeedScenarioDisturbances(
       studentPipelineFeed,
@@ -5442,6 +5505,7 @@ export default function App() {
                   onStudentEventVisibilityScopeChange={changeTaskPipelineStudentEventVisibilityScope}
                   onStudentCommandTargetScopeChange={changeTaskPipelineStudentCommandTargetScope}
                   onStudentSendEventEnabledChange={changeTaskPipelineStudentSendEventEnabled}
+                  onStudentDeviceViewDisturbedChange={changeTaskPipelineStudentDeviceViewDisturbed}
                   onToggleAllowedBlock={toggleTaskPipelineAllowedBlock}
                   onScenarioOverlaysChange={changeTaskPipelineScenarioOverlays}
                   onSaveTaskConfig={saveAdminTaskPipelineConfig}

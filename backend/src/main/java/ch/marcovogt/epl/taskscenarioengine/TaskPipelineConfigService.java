@@ -65,6 +65,7 @@ public class TaskPipelineConfigService {
                                 : override.getStudentCommandTargetScope()
                 ),
                 override.isStudentSendEventEnabled(),
+                override.isStudentDeviceViewDisturbed(),
                 base.ingestFilters(),
                 scenarioOverlays,
                 base.sinkTargets(),
@@ -97,6 +98,7 @@ public class TaskPipelineConfigService {
                 normalizeScope(pipeline.studentEventVisibilityScope()),
                 normalizeScope(pipeline.studentCommandTargetScope()),
                 pipeline.studentSendEventEnabled(),
+                pipeline.studentDeviceViewDisturbed(),
                 availableBlocks(),
                 MIN_SLOT_COUNT,
                 MAX_SLOT_COUNT,
@@ -117,6 +119,7 @@ public class TaskPipelineConfigService {
             StudentDeviceScope studentEventVisibilityScope,
             StudentDeviceScope studentCommandTargetScope,
             boolean studentSendEventEnabled,
+            boolean studentDeviceViewDisturbed,
             String actor
     ) {
         int normalizedSlotCount = clampSlotCountStrict(slotCount);
@@ -139,6 +142,7 @@ public class TaskPipelineConfigService {
         state.setStudentEventVisibilityScope(normalizedEventScope);
         state.setStudentCommandTargetScope(normalizedCommandScope);
         state.setStudentSendEventEnabled(studentSendEventEnabled);
+        state.setStudentDeviceViewDisturbed(studentDeviceViewDisturbed);
         state.setUpdatedAt(Instant.now(clock));
         state.setUpdatedBy(actor == null || actor.isBlank() ? "system" : actor);
         repository.save(state);

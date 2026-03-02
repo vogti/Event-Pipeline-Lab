@@ -39,6 +39,9 @@ public class TaskPipelineConfigState {
     @Column(name = "student_send_event_enabled", nullable = false)
     private boolean studentSendEventEnabled;
 
+    @Column(name = "student_device_view_disturbed", nullable = false)
+    private boolean studentDeviceViewDisturbed;
+
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
@@ -107,6 +110,14 @@ public class TaskPipelineConfigState {
 
     public void setStudentSendEventEnabled(boolean studentSendEventEnabled) {
         this.studentSendEventEnabled = studentSendEventEnabled;
+    }
+
+    public boolean isStudentDeviceViewDisturbed() {
+        return studentDeviceViewDisturbed;
+    }
+
+    public void setStudentDeviceViewDisturbed(boolean studentDeviceViewDisturbed) {
+        this.studentDeviceViewDisturbed = studentDeviceViewDisturbed;
     }
 
     public Instant getUpdatedAt() {

@@ -108,6 +108,7 @@ public class AdminTaskController {
                 body.studentEventVisibilityScope(),
                 body.studentCommandTargetScope(),
                 body.studentSendEventEnabled(),
+                body.studentDeviceViewDisturbed(),
                 principal.username()
         );
 
@@ -122,7 +123,8 @@ public class AdminTaskController {
                         "scenarioOverlays", updated.scenarioOverlays(),
                         "studentEventVisibilityScope", updated.studentEventVisibilityScope(),
                         "studentCommandTargetScope", updated.studentCommandTargetScope(),
-                        "studentSendEventEnabled", updated.studentSendEventEnabled()
+                        "studentSendEventEnabled", updated.studentSendEventEnabled(),
+                        "studentDeviceViewDisturbed", updated.studentDeviceViewDisturbed()
                 )
         );
 

@@ -33,6 +33,7 @@ public class TaskStateService {
             true,
             true,
             true,
+            false,
             true,
             true,
             List.of("*"),
@@ -221,6 +222,7 @@ public class TaskStateService {
             StudentDeviceScope studentEventVisibilityScope,
             StudentDeviceScope studentCommandTargetScope,
             boolean studentSendEventEnabled,
+            boolean studentDeviceViewDisturbed,
             String actor
     ) {
         TaskDefinition baseline = resolveTaskById(taskId);
@@ -233,6 +235,7 @@ public class TaskStateService {
                 studentEventVisibilityScope,
                 studentCommandTargetScope,
                 studentSendEventEnabled,
+                studentDeviceViewDisturbed,
                 actor
         );
         invalidateActiveTaskCache();
@@ -633,6 +636,9 @@ public class TaskStateService {
                 pipeline != null
                         ? pipeline.studentSendEventEnabled()
                         : base.studentSendEventEnabled(),
+                pipeline != null
+                        ? pipeline.studentDeviceViewDisturbed()
+                        : base.studentDeviceViewDisturbed(),
                 base.canFilterByTopic(),
                 base.showInternalEventsToggle(),
                 base.allowedConfigOptions(),
