@@ -434,6 +434,62 @@ class PipelineObservabilityServiceTest {
     }
 
     @Test
+    void filterDeviceOwnAndAdminScopeShouldAllowOwnAndLecturerEvents() {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(
+                        0,
+                        "FILTER_DEVICE",
+                        java.util.Map.of("deviceScope", "OWN_AND_ADMIN_DEVICE", "lecturerDeviceId", "epld99")
+                ))
+        );
+        CanonicalEventDto ownEvent = eventAt(
+                "own-pass",
+                "epld01",
+                "epld01/event/button/black",
+                "button.black.press",
+                EventCategory.BUTTON,
+                "{\"state\":true}",
+                null,
+                Instant.parse("2026-02-26T15:00:00Z"),
+                false
+        );
+        CanonicalEventDto lecturerEvent = eventAt(
+                "lecturer-pass-own-admin",
+                "epld99",
+                "epld99/event/button/black",
+                "button.black.press",
+                EventCategory.BUTTON,
+                "{\"state\":true}",
+                null,
+                Instant.parse("2026-02-26T15:00:01Z"),
+                false
+        );
+        CanonicalEventDto otherEvent = eventAt(
+                "other-drop-own-admin",
+                "epld02",
+                "epld02/event/button/black",
+                "button.black.press",
+                EventCategory.BUTTON,
+                "{\"state\":true}",
+                null,
+                Instant.parse("2026-02-26T15:00:02Z"),
+                false
+        );
+
+        CanonicalEventDto ownPass = service.recordEvent("task_intro", "epld01", processing, ownEvent);
+        CanonicalEventDto lecturerPass = service.recordEvent("task_intro", "epld01", processing, lecturerEvent);
+        CanonicalEventDto otherDrop = service.recordEvent("task_intro", "epld01", processing, otherEvent);
+        PipelineBlockObservabilityDto block = service.snapshot("task_intro", "epld01", processing).blocks().get(0);
+
+        assertThat(ownPass).isNotNull();
+        assertThat(lecturerPass).isNotNull();
+        assertThat(otherDrop).isNull();
+        assertThat(block.dropReasons()).containsEntry("device_filtered", 1L);
+    }
+
+    @Test
     void filterTopicShouldResolveRawTopicAliasAndPrefixedCompatibility() {
         PipelineProcessingSection processing = new PipelineProcessingSection(
                 "CONSTRAINED",

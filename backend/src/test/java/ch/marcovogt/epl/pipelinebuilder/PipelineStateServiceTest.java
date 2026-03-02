@@ -305,6 +305,43 @@ class PipelineStateServiceTest {
     }
 
     @Test
+    void taskScopeFilterShouldUseStudentEventVisibilityScopeInsteadOfLegacyDeviceScope() {
+        when(taskStateService.getActiveTask()).thenReturn(taskWithEventScope(
+                StudentDeviceScope.OWN_DEVICE,
+                "ALL_DEVICES"
+        ));
+
+        PipelineViewDto view = service.getStudentViewForGroup("epld01");
+
+        PipelineSlot filterSlot = view.processing().slots().stream()
+                .filter(slot -> slot.index() == 0)
+                .findFirst()
+                .orElseThrow();
+        assertThat(filterSlot.blockType()).isEqualTo("FILTER_DEVICE");
+        assertThat(filterSlot.config()).containsEntry("deviceScope", "OWN_DEVICE");
+    }
+
+    @Test
+    void taskScopeFilterShouldSupportOwnAndAdminScopeAndIncludeLecturerDeviceId() {
+        when(appSettingsService.getAdminDeviceId()).thenReturn("epld99");
+        when(taskStateService.getActiveTask()).thenReturn(taskWithEventScope(
+                StudentDeviceScope.OWN_AND_ADMIN_DEVICE,
+                "GROUP_DEVICES"
+        ));
+
+        PipelineViewDto view = service.getStudentViewForGroup("epld01");
+
+        PipelineSlot filterSlot = view.processing().slots().stream()
+                .filter(slot -> slot.index() == 0)
+                .findFirst()
+                .orElseThrow();
+        assertThat(filterSlot.blockType()).isEqualTo("FILTER_DEVICE");
+        assertThat(filterSlot.config())
+                .containsEntry("deviceScope", "OWN_AND_ADMIN_DEVICE")
+                .containsEntry("lecturerDeviceId", "epld99");
+    }
+
+    @Test
     void ingestRoutingShouldProcessExternalEventsForAllPipelineGroups() {
         when(authService.listStudentGroupKeys()).thenReturn(List.of("epld01", "epld02"));
         when(appSettingsService.getAdminDeviceId()).thenReturn("epld99");
@@ -375,6 +412,45 @@ class PipelineStateServiceTest {
                         "LIVE_MQTT",
                         "GROUP_DEVICES",
                         StudentDeviceScope.OWN_DEVICE,
+                        StudentDeviceScope.OWN_DEVICE,
+                        false,
+                        false,
+                        List.of(),
+                        List.of(),
+                        List.of("DEVICE_CONTROL", "VIRTUAL_SIGNAL"),
+                        "Goal"
+                )
+        );
+    }
+
+    private TaskDefinition taskWithEventScope(StudentDeviceScope scope, String legacyDeviceScope) {
+        return new TaskDefinition(
+                "task_intro",
+                "Einführung",
+                "Intro",
+                "Desc",
+                "Desc",
+                "Desc",
+                "Desc",
+                new TaskCapabilities(
+                        false,
+                        true,
+                        false,
+                        true,
+                        false,
+                        List.of(),
+                        List.of(),
+                        scope,
+                        StudentDeviceScope.OWN_DEVICE
+                ),
+                new PipelineTaskConfig(
+                        true,
+                        false,
+                        5,
+                        PipelineBlockLibrary.allBlocks(),
+                        "LIVE_MQTT",
+                        legacyDeviceScope,
+                        scope,
                         StudentDeviceScope.OWN_DEVICE,
                         false,
                         false,

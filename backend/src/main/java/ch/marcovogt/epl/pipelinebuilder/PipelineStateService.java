@@ -15,6 +15,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -1060,7 +1061,8 @@ public class PipelineStateService {
         PipelineProcessingSection base = processing == null
                 ? new PipelineProcessingSection("CONSTRAINED", 1, List.of())
                 : processing;
-        String fixedScope = normalizeTaskDeviceScope(config == null ? null : config.deviceScope());
+        String fixedScope = resolveTaskFilterScope(config);
+        String adminDeviceId = appSettingsService.getAdminDeviceId();
 
         Map<Integer, PipelineSlot> shifted = new java.util.HashMap<>();
         List<PipelineSlot> sourceSlots = base.slots() == null ? List.of() : base.slots();
@@ -1084,15 +1086,19 @@ public class PipelineStateService {
         int effectiveSlotCount = Math.max(requestedSlots, highestIndex + 1);
         effectiveSlotCount = Math.min(MAX_PROCESSING_SLOT_COUNT, effectiveSlotCount);
 
+        HashMap<String, Object> fixedScopeConfig = new HashMap<>();
+        fixedScopeConfig.put("deviceScope", fixedScope);
+        fixedScopeConfig.put(TASK_SCOPE_LOCKED_KEY, true);
+        fixedScopeConfig.put(TASK_SCOPE_ORIGIN_KEY, TASK_SCOPE_ORIGIN_VALUE);
+        if (adminDeviceId != null && !adminDeviceId.isBlank()) {
+            fixedScopeConfig.put("lecturerDeviceId", adminDeviceId.trim());
+        }
+
         List<PipelineSlot> resolved = new ArrayList<>();
         resolved.add(new PipelineSlot(
                 0,
                 "FILTER_DEVICE",
-                Map.of(
-                        "deviceScope", fixedScope,
-                        TASK_SCOPE_LOCKED_KEY, true,
-                        TASK_SCOPE_ORIGIN_KEY, TASK_SCOPE_ORIGIN_VALUE
-                )
+                Map.copyOf(fixedScopeConfig)
         ));
         for (int index = 1; index < effectiveSlotCount; index++) {
             PipelineSlot existing = shifted.get(index);
@@ -1169,6 +1175,30 @@ public class PipelineStateService {
             return "GROUP_DEVICES";
         }
         return normalized;
+    }
+
+    private String resolveTaskFilterScope(PipelineTaskConfig config) {
+        if (config == null) {
+            return "OWN_DEVICE";
+        }
+        StudentDeviceScope scope = config.studentEventVisibilityScope();
+        if (scope != null) {
+            return switch (scope) {
+                case ALL_DEVICES -> "ALL_DEVICES";
+                case ADMIN_DEVICE -> "ADMIN_DEVICE";
+                case OWN_AND_ADMIN_DEVICE -> "OWN_AND_ADMIN_DEVICE";
+                case OWN_DEVICE -> "OWN_DEVICE";
+            };
+        }
+
+        String legacyScope = normalizeTaskDeviceScope(config.deviceScope());
+        if ("ALL_DEVICES".equals(legacyScope)) {
+            return "ALL_DEVICES";
+        }
+        if ("SINGLE_DEVICE".equals(legacyScope)) {
+            return "LECTURER_DEVICE";
+        }
+        return "OWN_DEVICE";
     }
 
     private String canonicalBlock(String raw) {

@@ -72,3 +72,25 @@ describe('api login retry', () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });
+
+describe('events feed limit clamping', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('clamps requested limit to backend max to avoid validation failures', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ status: 200, body: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await api.eventsFeed('token-1', { limit: 2000, includeInternal: true });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [path] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const parsed = new URL(path, 'http://localhost');
+    expect(parsed.pathname).toBe('/api/events/feed');
+    expect(parsed.searchParams.get('limit')).toBe('500');
+  });
+});

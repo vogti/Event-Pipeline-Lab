@@ -374,15 +374,23 @@ public class PipelineObservabilityService {
                     }
                     yield BlockResult.drop("device_filtered", state.backlogDepth);
                 }
-                if ("LECTURER_DEVICE".equals(normalizedScope) || "SINGLE_DEVICE".equals(normalizedScope)) {
-                    String requiredDeviceId = firstNonBlank(
-                            configString(blockConfig, "lecturerDeviceId"),
-                            configString(blockConfig, "deviceId")
-                    );
-                    if (requiredDeviceId.isBlank()) {
+                String requiredDeviceId = firstNonBlank(
+                        configString(blockConfig, "lecturerDeviceId"),
+                        configString(blockConfig, "deviceId")
+                );
+                if ("OWN_AND_ADMIN_DEVICE".equals(normalizedScope)) {
+                    if (groupKey.equalsIgnoreCase(eventGroup)) {
                         yield BlockResult.pass(next, state.backlogDepth);
                     }
-                    if (requiredDeviceId.equalsIgnoreCase(event.deviceId)) {
+                    if (!requiredDeviceId.isBlank() && requiredDeviceId.equalsIgnoreCase(event.deviceId)) {
+                        yield BlockResult.pass(next, state.backlogDepth);
+                    }
+                    yield BlockResult.drop("device_filtered", state.backlogDepth);
+                }
+                if ("ADMIN_DEVICE".equals(normalizedScope)
+                        || "LECTURER_DEVICE".equals(normalizedScope)
+                        || "SINGLE_DEVICE".equals(normalizedScope)) {
+                    if (!requiredDeviceId.isBlank() && requiredDeviceId.equalsIgnoreCase(event.deviceId)) {
                         yield BlockResult.pass(next, state.backlogDepth);
                     }
                     yield BlockResult.drop("device_filtered", state.backlogDepth);

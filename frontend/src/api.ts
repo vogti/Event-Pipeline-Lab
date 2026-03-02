@@ -48,6 +48,8 @@ export class ApiError extends Error {
 
 type QueryValue = string | number | boolean | null | undefined;
 
+const MAX_EVENTS_FEED_LIMIT = 500;
+
 function withQuery(path: string, query: Record<string, QueryValue>): string {
   const params = new URLSearchParams();
   Object.entries(query).forEach(([key, value]) => {
@@ -101,6 +103,14 @@ function messageFromErrorPayload(payload: unknown, fallback: string): string {
     return payload;
   }
   return fallback;
+}
+
+function clampEventsFeedLimit(limit?: number): number | undefined {
+  if (typeof limit !== 'number' || !Number.isFinite(limit)) {
+    return undefined;
+  }
+  const rounded = Math.trunc(limit);
+  return Math.max(1, Math.min(MAX_EVENTS_FEED_LIMIT, rounded));
 }
 
 async function request<T>(
@@ -810,7 +820,7 @@ export const api = {
   ): Promise<CanonicalEvent[]> {
     return request<CanonicalEvent[]>(
       withQuery('/api/events/feed', {
-        limit: args.limit,
+        limit: clampEventsFeedLimit(args.limit),
         topicContains: args.topicContains,
         category: args.category,
         includeInternal: args.includeInternal,

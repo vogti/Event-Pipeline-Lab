@@ -120,6 +120,12 @@ function normalizeSlotDeviceScope(raw: unknown): string {
   if (normalized === 'ALL_DEVICES') {
     return 'ALL_DEVICES';
   }
+  if (normalized === 'ADMIN_DEVICE') {
+    return 'ADMIN_DEVICE';
+  }
+  if (normalized === 'OWN_AND_ADMIN_DEVICE') {
+    return 'OWN_AND_ADMIN_DEVICE';
+  }
   if (normalized === 'LECTURER_DEVICE' || normalized === 'OWN_DEVICE') {
     return normalized;
   }
@@ -130,6 +136,12 @@ function slotDeviceScopeLabel(t: (key: I18nKey) => string, raw: unknown): string
   const normalized = normalizeSlotDeviceScope(raw);
   if (normalized === 'LECTURER_DEVICE') {
     return t('pipelineDeviceScopeLecturer');
+  }
+  if (normalized === 'ADMIN_DEVICE') {
+    return t('pipelineDeviceScopeLecturer');
+  }
+  if (normalized === 'OWN_AND_ADMIN_DEVICE') {
+    return t('pipelineDeviceScopeOwnLecturer');
   }
   if (normalized === 'ALL_DEVICES') {
     return t('pipelineDeviceScopeAll');
