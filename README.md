@@ -1,29 +1,125 @@
-# Event Pipeline Lab (EPL) - Phase 1 + Phase 2 + PBV Stage 1-6
+# Event Pipeline Lab (EPL)
 
-This repository currently delivers:
+A reliable, interactive teaching platform for **event-driven data pipelines**.
 
-- **Phase 1**: reliable MQTT ingestion, canonical normalization, persistence, bounded live feeds, device health
-- **Phase 2**: auth/session, task activation + capability gating, group shared config + presence sync, admin/student REST APIs, authenticated WebSocket channels, and React frontend dashboards
-- **PBV Stage 1**: task-bound Pipeline Builder state model (Input/Processing/Sink), constrained processing slots, student/admin APIs, real-time per-group pipeline sync, and initial PBV UI in student/admin
-- **PBV Stage 2**: task-level PBV configuration controls (student visibility, allowed processing blocks, slot count), admin compare view across groups, and active-task live propagation
-- **PBV Stage 6**: optional Kafka-backed log mode (status, offsets, replay controls in admin PBV)
-- **External stream sources (new)**: admin-managed integration for public streams with enable/disable, runtime status, endpoint config, and ingestion into EPL event feed + pipeline path (starting with Wikimedia EventStream)
+EPL is designed for live classroom use with physical EPLD devices, virtual backup devices, real-time collaboration, and didactically controlled scenarios.
 
-Backend package namespace: `ch.marcovogt.epl`.
-Build system: **Gradle**.
-Configuration style: classical config files and Docker Compose service env values (no `.env` files required).
+## Table of Contents
 
-## Stack
+- [Overview](#overview)
+- [Core Capabilities](#core-capabilities)
+- [Architecture](#architecture)
+- [Technology Stack](#technology-stack)
+- [Repository Structure](#repository-structure)
+- [Quick Start (One Command)](#quick-start-one-command)
+- [First Login and Device Provisioning](#first-login-and-device-provisioning)
+- [MQTT Topics and Canonical Events](#mqtt-topics-and-canonical-events)
+- [Pipeline Builder View (PBV)](#pipeline-builder-view-pbv)
+- [External Stream Sources](#external-stream-sources)
+- [Operations](#operations)
+- [Cloudflare Tunnel (Optional Public Access)](#cloudflare-tunnel-optional-public-access)
+- [Local Development and Tests](#local-development-and-tests)
+- [Troubleshooting](#troubleshooting)
+
+## Overview
+
+EPL is a modular monolith with:
+
+- **Backend**: Java 25 + Spring Boot 4
+- **Frontend**: React + Vite + TypeScript
+- **Infrastructure**: PostgreSQL, Mosquitto MQTT, optional Redpanda (Kafka-compatible), optional cloudflared tunnel
+
+The platform supports:
+
+- real EPLD device ingestion over MQTT
+- canonical event normalization and persistence
+- real-time WebSocket updates for student and admin UIs
+- group-shared state and multi-user synchronization
+- configurable tasks/capabilities
+- disturbance/scenario simulation for teaching
+- pipeline modeling with constrained block-based processing
+
+## Core Capabilities
+
+### Reliability and Observability
+
+- bounded in-memory event buffers (backend and frontend)
+- PostgreSQL persistence for canonical events
+- health endpoints and system status dashboard
+- backend rolling file logs (`/app/logs/epl-backend.log`)
+- admin audit logging for critical actions
+
+### User Roles and Collaboration
+
+- `ADMIN` and `STUDENT` roles
+- multiple concurrent student sessions per group account
+- real-time group synchronization across browser tabs/devices
+- pseudonym/display-name support for students
+- DE/EN language switching
+
+### Device Handling
+
+- physical device health/status (online/offline, last seen, RSSI)
+- strict provisioning workflow for discovered devices
+- virtual devices per physical group with live controls
+- optional virtual-device mirror mode to physical topics
+
+### Event Processing and Teaching Controls
+
+- task activation and server-side capability gating
+- disturbance overlays (duplicates, delay, drops, out-of-order)
+- event feed modes (before pipeline / after pipeline)
+- pipeline builder with configurable processing blocks and sink blocks
+- per-block observability (in/out/drop/error/latency/state)
+
+### Admin Platform Features
+
+- device overview and commands
+- groups overview + reset group progress
+- task management (create/edit/reorder/delete where allowed)
+- disturbances page and global scenario control
+- stream source management (Wikimedia EventStream integration)
+- system status page with DB size, event-rate graph, CPU/RAM, websocket sessions
+- data export/import (ZIP archive with schema + selected parts)
+
+## Architecture
+
+Communication model:
+
+1. `EPLD <-> MQTT broker`
+2. `Backend <-> MQTT broker`
+3. `Frontend <-> Backend (HTTP + WebSocket)`
+
+Authority model:
+
+- backend is **server-authoritative**
+- permissions/capabilities are enforced backend-side
+
+Persistence model:
+
+- PostgreSQL for events, auth/session, task/group state, app settings
+- Flyway for schema migration
+
+## Technology Stack
 
 - Java 25
 - Spring Boot 4.x
-- Spring Web, WebSocket, Security, Data JPA, Validation, Actuator
+- Spring Web / WebSocket / Security / Data JPA / Validation / Actuator
 - Eclipse Paho MQTT client
 - PostgreSQL + Flyway
-- React + Vite + TypeScript frontend (`frontend/`)
-- Docker Compose with `postgres`, `mosquitto`, `backend`, optional `cloudflared`
+- React + Vite + TypeScript
+- Docker Compose
+- Mosquitto (MQTT)
+- Redpanda (optional Kafka-compatible log mode)
+- cloudflared (optional public tunnel)
 
-## Project Structure
+Backend package namespace: `ch.marcovogt.epl`
+
+Build tool: **Gradle**
+
+Configuration style: classical config files and Compose environment variables.
+
+## Repository Structure
 
 ```text
 Event-Pipeline-Lab/
@@ -32,111 +128,186 @@ Event-Pipeline-Lab/
       admin/
       authsession/
       deviceregistryhealth/
-      mqttgateway/
-      eventingestionnormalization/
       eventfeedquery/
+      eventingestionnormalization/
+      externalsources/
+      groupcollaborationsync/
+      mqttgateway/
+      pipelinebuilder/
       realtimewebsocket/
       taskscenarioengine/
-      externalsources/
-      pipelinebuilder/
-      groupcollaborationsync/
-      auditlogging/
-      config/
+      virtualdevice/
     src/main/resources/
       application.yml
       db/migration/
-        V1__init_phase1_schema.sql
-        V2__json_columns_to_text.sql
-        V3__phase2_auth_task_group.sql
-        V4__app_settings_time_format_24h.sql
-        V5__virtual_devices.sql
-        V6__virtual_device_brightness_voltage.sql
-        V7__reconcile_groups_and_virtual_devices_to_physical_devices.sql
-        V8__cleanup_virtual_rows_from_device_status.sql
-        V9__pipeline_builder_state.sql
-        V10__task_pipeline_config.sql
-        V11__task_pipeline_config_scenarios.sql
-        V21__external_stream_sources.sql
-    Dockerfile
     build.gradle
-    settings.gradle
+    Dockerfile
   frontend/
+    src/
     Dockerfile
     nginx.conf
   infra/
     mosquitto/mosquitto.conf
     cloudflared/config.yml.example
   docker-compose.yml
+  README.md
 ```
 
-## Docker Compose Services
+## Quick Start (One Command)
 
-1. `postgres`
-2. `mosquitto`
-3. `backend`
-4. `frontend`
-5. `cloudflared` (optional, profile: `public`, token mode)
+### Prerequisites
 
-## Run Locally
+- Docker + Docker Compose
+- 4+ GB RAM available for containers
+
+### Start everything
 
 ```bash
-docker compose up --build -d
+docker compose up -d --build
 ```
 
-Backend build metadata is generated automatically by Gradle during backend build and shown in the user-menu "About EPL" modal:
-- Git short hash (linked to the GitHub commit)
-- Build date/time
-- Working-directory state at build time (`clean` / `uncommitted changes`)
+This starts:
 
-Run with public tunnel enabled:
+- `postgres`
+- `mosquitto`
+- `backend`
+- `frontend`
+
+Optional services:
+
+- `kafka` via profile `logmode`
+- `cloudflared` via profile `public`
+
+### Access
+
+- Frontend: <http://localhost:5173>
+- Backend health: <http://localhost:8080/actuator/health>
+
+### Verify runtime status
 
 ```bash
-export CLOUDFLARE_TUNNEL_TOKEN='<token-from-cloudflare>'
-export EPL_CLOUDFLARE_ENABLED=true
-export EPL_CLOUDFLARE_HOSTNAME=epl.marcovogt.ch
-docker compose --profile public up --build -d
+docker compose ps
+docker compose logs backend --tail=120
+docker compose logs frontend --tail=120
 ```
 
-## Pipeline Builder Roadmap
+## First Login and Device Provisioning
 
-PBV is implemented in staged increments to keep lecture reliability high.
+### Default admin account
 
-1. **Stage 1 (implemented)**  
-   - Persist pipeline state per `task + group`  
-   - Add lecturer-mode template (`task_lecturer_mode`)  
-   - Student/Admin PBV APIs  
-   - WebSocket event `pipeline.state.updated`  
-   - Initial UI: Input (read-only for students), Processing slots (task-gated), Sink (read-only for students)
-2. **Stage 2 (implemented)**  
-   - Task editor controls for allowed block presets/ranges  
-   - Better admin compare view across groups  
-   - Explicit PBV visibility toggle per task
-3. **Stage 3 (implemented)**  
-   - Scenario engine controls in PBV (duplicates/delay/drop/out-of-order)  
-   - Student transparency badges for active disturbances
-4. **Stage 4 (implemented)**  
-   - Block-level observability counters/latency/backlog  
-   - Sample-event inspector + transform diff view (bounded ring buffers)
-5. **Stage 5 (implemented)**  
-   - Stateful block introspection (window/dedup store size, TTL, reset)  
-   - Restart semantics (state lost vs retained simulation)
-6. **Stage 6 (implemented)**  
-   - Optional Kafka-backed log mode integration  
-   - Admin PBV log mode status (`topic`, connectivity, earliest/latest offset)  
-   - Admin PBV replay from offset with bounded record count  
-   - Replay events update PBV observability in real time
+- Username: `admin`
+- PIN: `admin123`
 
-## External Stream Sources (Wikimedia EventStream)
+### Student accounts
 
-Admin UI:
+Student accounts are provisioned automatically for discovered physical devices.
 
-- Open **Stream Sources** page
-- Enable/disable source ingestion
-- Configure source endpoint URL
-- See runtime status (online/offline), last connected/event, last error
-- Reset and inspect counter (`events since reset`)
+Provisioning behavior:
 
-Backend API:
+1. a physical device `epldNN...` is discovered from MQTT traffic
+2. backend creates/aligns:
+   - student account `epldNN...`
+   - group key `epldNN...`
+   - random 4-digit PIN (on first creation)
+   - virtual device `eplvdNN...`
+3. admin can view/change PIN in UI or via admin device PIN API
+
+If a physical device is configured as **admin device**, student login for that device is disabled, but its virtual device remains available.
+
+## MQTT Topics and Canonical Events
+
+### Inbound topic support (examples)
+
+- canonical-style: `epld/{deviceId}/event/...`, `epld/{deviceId}/status/...`
+- Shelly-style: `{deviceId}/events/rpc`, `{deviceId}/telemetry`, `{deviceId}/online`
+
+### Canonical event model (stored in PostgreSQL)
+
+Key fields include:
+
+- `id` (UUID)
+- `deviceId`
+- `source`
+- `topic`
+- `eventType`
+- `category`
+- `payloadJson`
+- `deviceTs` and `ingestTs`
+- `valid`, `validationErrors`
+- `isInternal`
+- `scenarioFlags`
+- `groupKey`
+- `sequenceNo`
+
+Feed API:
+
+- `GET /api/events/feed`
+- stage param: `BEFORE_PIPELINE` or `AFTER_PIPELINE`
+
+## Pipeline Builder View (PBV)
+
+PBV models event flow as:
+
+- **Input**
+- **Processing**
+- **Sink / Output**
+
+### Processing blocks
+
+Current block library:
+
+- `FILTER_SOURCE` (backend type: `FILTER_DEVICE`)
+- `FILTER_TOPIC`
+- `EXTRACT_VALUE`
+- `TRANSFORM_PAYLOAD`
+- `FILTER_RATE_LIMIT`
+- `DEDUP`
+- `WINDOW_AGGREGATE`
+- `MICRO_BATCH`
+
+### Sink blocks
+
+- `EVENT_FEED` (always present)
+- `VIRTUAL_SIGNAL` (always present)
+- `SEND_EVENT` (multiple allowed)
+- `SHOW_PAYLOAD` (single)
+
+### Collaboration and synchronization
+
+- per-task/per-group pipeline state
+- real-time updates via WebSocket
+- autosave behavior in UI (no manual save required)
+
+### Log mode (optional)
+
+Enable Kafka-compatible log mode:
+
+```bash
+docker compose --profile logmode up -d --build
+```
+
+Admin endpoints:
+
+- `GET /api/admin/pipeline/log-mode/status`
+- `POST /api/admin/pipeline/log-mode/replay`
+
+## External Stream Sources
+
+Admin page: **Stream Sources**
+
+Current built-in source:
+
+- Wikimedia EventStream (`wikimedia.eventstream`)
+
+Capabilities:
+
+- enable/disable source
+- configure endpoint URL
+- online/offline status
+- event counter since reset
+- reset counter
+
+API:
 
 - `GET /api/admin/stream-sources`
 - `POST /api/admin/stream-sources/{sourceId}/enable`
@@ -144,48 +315,9 @@ Backend API:
 - `POST /api/admin/stream-sources/{sourceId}/config`
 - `POST /api/admin/stream-sources/{sourceId}/counter/reset`
 
-Current built-in source:
+## Operations
 
-- `wikimedia.eventstream` (`https://stream.wikimedia.org/v2/stream/recentchange`)
-
-Note:
-
-- For PBV projection (`After Pipeline` feed), configure an admin device in Settings.  
-  External stream events are routed through that lecturer/admin pipeline context.
-
-External stream runtime tuning (`backend/src/main/resources/application.yml`):
-
-- `EPL_EXTERNAL_WIKIMEDIA_CONNECT_TIMEOUT_MS` (default `5000`)
-- `EPL_EXTERNAL_WIKIMEDIA_READ_TIMEOUT_MS` (default `3000`)
-- `EPL_EXTERNAL_WIKIMEDIA_RECONNECT_DELAY_MS` (default `3000`)
-- `EPL_EXTERNAL_WIKIMEDIA_DISABLED_POLL_DELAY_MS` (default `1500`)
-- `EPL_EXTERNAL_WIKIMEDIA_MAX_PAYLOAD_BYTES` (default `524288`)
-- `EPL_EXTERNAL_WIKIMEDIA_USER_AGENT` (default `EventPipelineLab/1.0 (+https://epl.marcovogt.ch)`)
-
-## Stage 6 Log Mode (Kafka-backed)
-
-Start stack with Kafka/Redpanda enabled:
-
-```bash
-docker compose --profile logmode up -d --build
-```
-
-Backend log mode env (already wired in `docker-compose.yml`):
-
-- `EPL_LOG_MODE_KAFKA_ENABLED=true`
-- `EPL_LOG_MODE_KAFKA_BOOTSTRAP_SERVERS=kafka:9092`
-- `EPL_LOG_MODE_KAFKA_TOPIC=epl.events.log`
-
-Admin API:
-
-- `GET /api/admin/pipeline/log-mode/status`
-- `POST /api/admin/pipeline/log-mode/replay`
-
-## Update Running Deployment
-
-Run these commands from the repository root on the target VM.
-
-### Standard update (recommended)
+### Update running deployment
 
 ```bash
 git pull
@@ -193,372 +325,153 @@ docker compose build backend frontend
 docker compose up -d backend frontend
 ```
 
-### One-command update
+Or one-step rebuild/restart:
 
 ```bash
 docker compose up -d --build
 ```
 
-### Verify after update
+### Stop / start / restart
 
 ```bash
-docker compose ps
-docker run --rm --network epl_default curlimages/curl:8.12.1 -sS http://backend:8080/actuator/health
-docker compose logs backend --tail=80
+docker compose stop
+docker compose start
+docker compose restart backend frontend
 ```
 
-Notes:
-
-- Flyway migrations run automatically when backend starts.
-- Existing Postgres data is kept (no volume deletion in the commands above).
-- If you use the optional public tunnel, also make sure these variables are set in the shell:
+### Logs
 
 ```bash
-export CLOUDFLARE_TUNNEL_TOKEN='<token-from-cloudflare>'
-export EPL_CLOUDFLARE_ENABLED=true
-export EPL_CLOUDFLARE_HOSTNAME=epl.marcovogt.ch
+docker compose logs -f backend
+docker compose logs -f frontend
+docker compose logs -f mosquitto
+docker compose logs -f postgres
 ```
 
-- Then update/restart tunnel + frontend/backend with:
-
-```bash
-docker compose --profile public up -d backend frontend cloudflared
-```
-
-Frontend UI:
-
-- [http://localhost:5173](http://localhost:5173)
-
-Backend API (direct, optional):
-
-- [http://localhost:8080](http://localhost:8080)
-
-Health check:
-
-```bash
-docker run --rm --network epl_default curlimages/curl:8.12.1 -sS http://backend:8080/actuator/health
-```
-
-Expected: `{"status":"UP",...}`
-
-## Frontend Run (Phase 2 UI)
-
-```bash
-npm --prefix frontend install
-npm --prefix frontend run dev
-```
-
-Vite runs on `http://localhost:5173` and proxies `/api` + `/ws` to backend.
-For one-command stack startup, prefer Docker Compose.
-
-## Default Credentials
-
-- Admin: `admin` / `admin123`
-
-Student group accounts are **not** pre-seeded with fixed PINs anymore.
-They are provisioned automatically when a physical device is first discovered via MQTT.
-
-## Strict Device Provisioning Procedure
-
-1. Physical device sends first MQTT message (for example `epld/epld07/status/heartbeat`).
-2. Backend auto-creates (if missing):
-   - Student account `epld07` (group `epld07`, enabled)
-   - Random 4-digit PIN (for first creation only)
-   - Virtual device `eplvd07` mapped to `epld07`
-3. Admin retrieves or changes PIN:
-   - UI: device settings modal in admin device page
-   - API:
-
-```bash
-ADMIN_TOKEN=$(docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST http://backend:8080/api/auth/login -H 'Content-Type: application/json' -d '{"username":"admin","pin":"admin123"}' | sed -n 's/.*"sessionToken":"\([^"]*\)".*/\1/p')
-docker run --rm --network epl_default curlimages/curl:8.12.1 -sS http://backend:8080/api/admin/devices/epld07/pin -H "X-EPL-Session: ${ADMIN_TOKEN}"
-docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST http://backend:8080/api/admin/devices/epld07/pin -H "X-EPL-Session: ${ADMIN_TOKEN}" -H 'Content-Type: application/json' -d '{"pin":"1234"}'
-```
-
-Flyway migration `V7__reconcile_groups_and_virtual_devices_to_physical_devices.sql` enforces strict alignment on deployment updates:
-
-- removes student groups/virtual devices without a discovered physical `epldNN...`
-- creates missing student groups/virtual devices for discovered physical devices
-- normalizes account-to-group mapping (`username == group_key`)
-
-## MQTT Ingestion Test
-
-Publish canonical EPL event:
-
-```bash
-docker compose exec -T mosquitto mosquitto_pub -h localhost -t epld/epld01/event/button -m '{"button":"black","action":"press"}'
-```
-
-Check admin events feed (auth required):
-
-```bash
-ADMIN_TOKEN=$(docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST http://backend:8080/api/auth/login -H 'Content-Type: application/json' -d '{"username":"admin","pin":"admin123"}' | sed -n 's/.*"sessionToken":"\([^"]*\)".*/\1/p')
-docker run --rm --network epl_default curlimages/curl:8.12.1 -sS "http://backend:8080/api/admin/events?limit=20" -H "X-EPL-Session: ${ADMIN_TOKEN}"
-```
-
-## Phase 2 API Smoke Test
-
-```bash
-# Admin login
-ADMIN_TOKEN=$(docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST http://backend:8080/api/auth/login -H 'Content-Type: application/json' -d '{"username":"admin","pin":"admin123"}' | sed -n 's/.*"sessionToken":"\([^"]*\)".*/\1/p')
-
-# Admin task list + activate
-
-docker run --rm --network epl_default curlimages/curl:8.12.1 -sS http://backend:8080/api/admin/tasks -H "X-EPL-Session: ${ADMIN_TOKEN}"
-docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST http://backend:8080/api/admin/task/activate -H "X-EPL-Session: ${ADMIN_TOKEN}" -H 'Content-Type: application/json' -d '{"taskId":"task_commands"}'
-
-# Student login + bootstrap
-# ensure physical device epld01 is discovered at least once
-docker compose exec -T mosquitto mosquitto_pub -h localhost -t epld/epld01/status/heartbeat -m '{"online":true}'
-# ensure PIN first (replace 1234 as needed)
-docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST http://backend:8080/api/admin/devices/epld01/pin -H "X-EPL-Session: ${ADMIN_TOKEN}" -H 'Content-Type: application/json' -d '{"pin":"1234"}'
-STUDENT_TOKEN=$(docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST http://backend:8080/api/auth/login -H 'Content-Type: application/json' -d '{"username":"epld01","pin":"1234"}' | sed -n 's/.*"sessionToken":"\([^"]*\)".*/\1/p')
-docker run --rm --network epl_default curlimages/curl:8.12.1 -sS http://backend:8080/api/student/bootstrap -H "X-EPL-Session: ${STUDENT_TOKEN}"
-
-# Student config update (capability-gated)
-docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST http://backend:8080/api/student/config -H "X-EPL-Session: ${STUDENT_TOKEN}" -H 'Content-Type: application/json' -d '{"config":{"displayMode":"compact","commandPanel":true}}'
-
-# Student command (allowed for own group device)
-docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST http://backend:8080/api/student/command -H "X-EPL-Session: ${STUDENT_TOKEN}" -H 'Content-Type: application/json' -d '{"deviceId":"epld01","command":"LED_GREEN","on":true}'
-
-# System status (admin)
-docker run --rm --network epl_default curlimages/curl:8.12.1 -sS http://backend:8080/api/admin/system-status -H "X-EPL-Session: ${ADMIN_TOKEN}"
-
-# Reset stored events (admin, destructive)
-docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST http://backend:8080/api/admin/system-status/events/reset -H "X-EPL-Session: ${ADMIN_TOKEN}" -H 'Content-Type: application/json' -d '{"confirm":true}'
-```
-
-## Pipeline Builder API (Stage 1-5)
-
-```bash
-# Student: load own group pipeline for active task
-docker run --rm --network epl_default curlimages/curl:8.12.1 -sS \
-  http://backend:8080/api/student/pipeline \
-  -H "X-EPL-Session: ${STUDENT_TOKEN}"
-
-# Student: update processing slots
-docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST \
-  http://backend:8080/api/student/pipeline \
-  -H "X-EPL-Session: ${STUDENT_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d '{"processing":{"mode":"CONSTRAINED","slotCount":5,"slots":[{"index":0,"blockType":"FILTER_DEVICE","config":{}},{"index":1,"blockType":"PARSE_VALIDATE","config":{}},{"index":2,"blockType":"NONE","config":{}},{"index":3,"blockType":"NONE","config":{}},{"index":4,"blockType":"ROUTE","config":{}}]}}'
-
-# Admin: load pipeline view for a group (active task context)
-docker run --rm --network epl_default curlimages/curl:8.12.1 -sS \
-  "http://backend:8080/api/admin/pipeline?groupKey=epld01" \
-  -H "X-EPL-Session: ${ADMIN_TOKEN}"
-
-# Admin: update pipeline for a group
-docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST \
-  http://backend:8080/api/admin/pipeline \
-  -H "X-EPL-Session: ${ADMIN_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d '{"groupKey":"epld01","input":{"mode":"LIVE_MQTT","deviceScope":"GROUP_DEVICES","ingestFilters":[],"scenarioOverlays":["delay:300ms"]},"processing":{"mode":"CONSTRAINED","slotCount":5,"slots":[{"index":0,"blockType":"FILTER_DEVICE","config":{}},{"index":1,"blockType":"DEDUP","config":{}},{"index":2,"blockType":"WINDOW_AGGREGATE","config":{}},{"index":3,"blockType":"ROUTE","config":{}},{"index":4,"blockType":"NONE","config":{}}]},"sink":{"targets":["DEVICE_CONTROL"],"goal":"Trigger green LED when threshold reached"}}'
-
-# Admin: compare current active-task pipelines across groups
-docker run --rm --network epl_default curlimages/curl:8.12.1 -sS \
-  http://backend:8080/api/admin/pipeline/compare \
-  -H "X-EPL-Session: ${ADMIN_TOKEN}"
-
-# Admin: read PBV task config override/effective values
-docker run --rm --network epl_default curlimages/curl:8.12.1 -sS \
-  "http://backend:8080/api/admin/task-pipeline-config?taskId=task_intro" \
-  -H "X-EPL-Session: ${ADMIN_TOKEN}"
-
-# Admin: update PBV task config (visibility + slot range + allowed blocks + scenarios)
-docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST \
-  http://backend:8080/api/admin/task-pipeline-config \
-  -H "X-EPL-Session: ${ADMIN_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d '{"taskId":"task_intro","visibleToStudents":true,"slotCount":5,"allowedProcessingBlocks":["FILTER_DEVICE","PARSE_VALIDATE","ROUTE"],"scenarioOverlays":["duplicates:10%","delay:300ms","drops:5%","out_of_order:10%"]}'
-```
-
-Realtime events:
-
-- `pipeline.state.updated` (full PBV view on config/state changes)
-- `pipeline.observability.updated` (high-frequency observability snapshots per task/group)
-
-State controls:
-
-```bash
-# Admin: reset stateful stores (dedup/window/micro-batch) for one group
-docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST \
-  http://backend:8080/api/admin/pipeline/state/control \
-  -H "X-EPL-Session: ${ADMIN_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d '{"groupKey":"epld01","action":"RESET_STATE"}'
-
-# Admin: simulate restart with state lost
-docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST \
-  http://backend:8080/api/admin/pipeline/state/control \
-  -H "X-EPL-Session: ${ADMIN_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d '{"groupKey":"epld01","action":"RESTART_STATE_LOST"}'
-
-# Admin: simulate restart with state retained
-docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST \
-  http://backend:8080/api/admin/pipeline/state/control \
-  -H "X-EPL-Session: ${ADMIN_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d '{"groupKey":"epld01","action":"RESTART_STATE_RETAINED"}'
-
-# Student (if task allows): reset own group state
-docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST \
-  http://backend:8080/api/student/pipeline/state/reset \
-  -H "X-EPL-Session: ${STUDENT_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d '{"action":"RESET_STATE"}'
-```
-
-## System Data Export / Import
-
-UI path:
-
-- `System Status` -> `Data export` / `Data import`
-- Select which sections should be exported/imported.
-- Import flow is 2-step: `Verify import` first, then `Import selected`.
-
-Archive format:
-
-- Export produces a ZIP archive.
-- `schema.json` contains format/schema metadata and the list of exported parts.
-- Each selected part is stored as its own JSON file under `parts/`.
-
-CLI example:
-
-```bash
-# Export selected sections to a ZIP archive
-docker run --rm --network epl_default curlimages/curl:8.12.1 -sS -X POST \
-  http://backend:8080/api/admin/system-status/export \
-  -H "X-EPL-Session: ${ADMIN_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d '{"parts":["APP_SETTINGS","TASK_STATE","GROUP_STATE","AUTH_ACCOUNTS","DEVICE_STATUS","VIRTUAL_DEVICE_STATE","EVENT_DATA"]}' \
-  > /tmp/epl-system-export.zip
-
-# Verify an import archive (multipart upload)
-docker run --rm --network epl_default -v /tmp:/tmp curlimages/curl:8.12.1 -sS -X POST \
-  http://backend:8080/api/admin/system-status/import/verify \
-  -H "X-EPL-Session: ${ADMIN_TOKEN}" \
-  -F "file=@/tmp/epl-system-export.zip;type=application/zip"
-
-# Apply selected sections from the import archive (multipart upload)
-docker run --rm --network epl_default -v /tmp:/tmp curlimages/curl:8.12.1 -sS -X POST \
-  http://backend:8080/api/admin/system-status/import/apply \
-  -H "X-EPL-Session: ${ADMIN_TOKEN}" \
-  -F "file=@/tmp/epl-system-export.zip;type=application/zip" \
-  -F "selectedParts=APP_SETTINGS" \
-  -F "selectedParts=TASK_STATE" \
-  -F "selectedParts=GROUP_STATE"
-```
-
-## WebSocket Channels
-
-- Admin: `ws://localhost:8080/ws/admin?token=<adminSessionToken>`
-- Student: `ws://localhost:8080/ws/student?token=<studentSessionToken>`
-
-Server push event types include:
-
-- `task.updated`
-- `capabilities.updated`
-- `group.presence.updated`
-- `group.config.updated`
-- `event.feed.append`
-- `device.status.updated`
-- `admin.groups.updated`
-- `pipeline.state.updated`
-- `settings.updated`
-- `ws.ping`
-- `error.notification`
-
-## Logging
-
-Backend writes rolling file logs to:
+Backend file logs are written to:
 
 - container path: `/app/logs/epl-backend.log`
 - compose volume: `backend_logs`
 
-Also available via:
+### Health checks
 
 ```bash
-docker compose logs -f backend
+docker compose ps
+docker run --rm --network epl_default curlimages/curl:8.12.1 -sS http://backend:8080/actuator/health
 ```
 
-## Cloudflare Tunnel (optional)
+### Data export/import
+
+In Admin UI: `System Status` page.
+
+- export selected sections as ZIP
+- verify import archive first
+- selectively apply imported sections
+
+Archive format:
+
+- `schema.json` metadata
+- per-part JSON payloads under `parts/`
+
+## Cloudflare Tunnel (Optional Public Access)
+
+Public hostname target: `epl.marcovogt.ch`
+
+### Start with tunnel profile
 
 ```bash
-export CLOUDFLARE_TUNNEL_TOKEN='<token-from-cloudflare>'
-export EPL_CLOUDFLARE_ENABLED=true
-export EPL_CLOUDFLARE_HOSTNAME=epl.marcovogt.ch
-docker compose --profile public up -d cloudflared
-```
-
-### Target hostname
-
-- Public URL: [https://epl.marcovogt.ch](https://epl.marcovogt.ch)
-- Local fallback stays available at [http://localhost:5173](http://localhost:5173)
-
-### One-time Cloudflare setup (Named Tunnel)
-
-Prerequisites:
-
-- `marcovogt.ch` is managed in Cloudflare DNS.
-- `cloudflared` CLI is installed on the VM (or temporarily on a workstation with Cloudflare access).
-
-Create and route tunnel:
-
-```bash
-cloudflared tunnel login
-cloudflared tunnel create epl
-cloudflared tunnel route dns epl epl.marcovogt.ch
-cloudflared tunnel token epl
-```
-
-Copy the printed token and export it in the shell before starting compose:
-
-```bash
-export CLOUDFLARE_TUNNEL_TOKEN='<token-from-cloudflare>'
+export CLOUDFLARE_TUNNEL_TOKEN='<your-token>'
 export EPL_CLOUDFLARE_ENABLED=true
 export EPL_CLOUDFLARE_HOSTNAME=epl.marcovogt.ch
 docker compose --profile public up -d --build
 ```
 
-### Operational checks
+### Tunnel checks
 
 ```bash
 docker compose --profile public ps
-docker compose logs cloudflared --tail=80
-docker run --rm curlimages/curl:8.12.1 -sS https://epl.marcovogt.ch
+docker compose logs cloudflared --tail=120
 ```
 
-In the EPL Admin UI (`System Status` page), a new `Cloudflare tunnel` card shows:
-
-- connection state (`connected` / `disconnected` / `disabled`)
-- hostname
-- HA connection count (from cloudflared metrics)
-- last probe timestamp and any probe error text
-
-### HTTPS / SSL certificates
-
-- Public TLS for [https://epl.marcovogt.ch](https://epl.marcovogt.ch) is terminated at Cloudflare with Cloudflare-managed certificates.
-- No additional Let's Encrypt certificate is required for the public endpoint when using Cloudflare Tunnel.
-- EPL frontend now enforces HTTPS redirect for the public hostname (`epl.marcovogt.ch`) while keeping local fallback (`http://localhost:5173`) unchanged.
-
-Quick check:
+### Temporarily disable tunnel
 
 ```bash
-docker run --rm curlimages/curl:8.12.1 -sSI https://epl.marcovogt.ch | head -n 5
-docker run --rm curlimages/curl:8.12.1 -sSI http://epl.marcovogt.ch | head -n 5
+docker compose --profile public stop cloudflared
 ```
 
-Expected:
+or fully remove it:
 
-- HTTPS returns `200`.
-- HTTP returns `301` redirect to `https://epl.marcovogt.ch/...`.
+```bash
+docker compose --profile public rm -sf cloudflared
+```
 
-### Optional config-file mode
 
-If you prefer config-file mode instead of token mode, use:
+## Local Development and Tests
 
-- `infra/cloudflared/config.yml.example`
+### Frontend (local)
 
-Keep `metrics: 0.0.0.0:2000` enabled so tunnel status remains visible in EPL.
+```bash
+npm --prefix frontend install
+npm --prefix frontend run dev
+npm --prefix frontend run test
+npm --prefix frontend run build
+```
+
+### Backend tests
+
+```bash
+cd backend
+./gradlew test
+```
+
+### Full stack smoke check
+
+```bash
+docker compose up -d --build
+docker compose ps
+```
+
+## Troubleshooting
+
+### 1) Login returns 502 / Bad Gateway
+
+- Check backend health:
+
+```bash
+docker compose ps
+docker compose logs backend --tail=200
+```
+
+- Ensure frontend proxy can reach backend (`backend:8080` inside compose network).
+
+### 2) WebSocket disconnected in UI
+
+- Check `/ws` proxy path in `frontend/nginx.conf`
+- Check backend websocket handler logs
+- Verify no reverse proxy timeout is interrupting upgraded connections
+
+### 3) Events appear to “stop” after some seconds
+
+Typical causes:
+
+- active topic/source filters in feed view
+- pipeline blocks intentionally dropping/filtering events
+- disturbances (delay/drop/out-of-order) affecting visible timing/order
+
+Quick checks:
+
+- switch feed topic filter to empty
+- compare `BEFORE_PIPELINE` and `AFTER_PIPELINE`
+- inspect PBV block counters (`in/out/drop`) and drop reasons
+
+### 4) No student accounts visible
+
+Student accounts are created for discovered physical devices.
+If no device has published MQTT events yet, no student groups will be provisioned.
+
+### 5) Cloudflare tunnel up but hostname unreachable
+
+- verify Cloudflare DNS route for tunnel
+- verify token and profile usage
+- verify cloudflared origin target is `frontend:80` (not `localhost:5173` inside container)
+
