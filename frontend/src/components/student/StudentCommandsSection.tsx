@@ -141,14 +141,14 @@ export function StudentCommandsSection({
             <span className="metric-icon">
               <MetricIcon kind="counter" />
             </span>
-            <span className="metric-text">{counterValue}</span>
+            <span className="metric-text metric-text-counter">{counterValue}</span>
           </button>
         ) : (
           <div className="device-metric">
             <span className="metric-icon">
               <MetricIcon kind="counter" />
             </span>
-            <span className="metric-text">{counterValue}</span>
+            <span className="metric-text metric-text-counter">{counterValue}</span>
           </div>
         )}
         <div className="device-metric full">

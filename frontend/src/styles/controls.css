@@ -297,6 +297,18 @@
   line-height: 1.2;
 }
 
+.student-command-metrics .metric-text-counter {
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.student-command-metrics .state-label {
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
 .student-led-controls {
   margin: 0.35rem 0 0.55rem;
 }
