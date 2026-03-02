@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.LongSupplier;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -51,6 +52,7 @@ public class PipelineObservabilityService {
     private final int maxSamplesPerBlock;
     private final int latencyWindowSize;
     private final int maxGroupStates;
+    private final LongSupplier nanoTimeSupplier;
     private final LinkedHashMap<String, GroupState> stateByKey;
 
     @Autowired
@@ -67,7 +69,8 @@ public class PipelineObservabilityService {
                 sampleEvery,
                 maxSamplesPerBlock,
                 latencyWindowSize,
-                maxGroupStates
+                maxGroupStates,
+                System::nanoTime
         );
     }
 
@@ -79,12 +82,33 @@ public class PipelineObservabilityService {
             int latencyWindowSize,
             int maxGroupStates
     ) {
+        this(
+                objectMapper,
+                clock,
+                sampleEvery,
+                maxSamplesPerBlock,
+                latencyWindowSize,
+                maxGroupStates,
+                System::nanoTime
+        );
+    }
+
+    PipelineObservabilityService(
+            ObjectMapper objectMapper,
+            Clock clock,
+            int sampleEvery,
+            int maxSamplesPerBlock,
+            int latencyWindowSize,
+            int maxGroupStates,
+            LongSupplier nanoTimeSupplier
+    ) {
         this.objectMapper = objectMapper;
         this.clock = clock;
         this.sampleEvery = Math.max(1, Math.min(sampleEvery, 1000));
         this.maxSamplesPerBlock = Math.max(10, Math.min(maxSamplesPerBlock, 2000));
         this.latencyWindowSize = Math.max(50, Math.min(latencyWindowSize, 5000));
         this.maxGroupStates = Math.max(4, Math.min(maxGroupStates, 1000));
+        this.nanoTimeSupplier = nanoTimeSupplier == null ? System::nanoTime : nanoTimeSupplier;
         this.stateByKey = new LinkedHashMap<>(32, 0.75f, true);
     }
 
@@ -116,7 +140,7 @@ public class PipelineObservabilityService {
                 blockState.nonInternalInCount += 1L;
             }
             boolean sampled = shouldSample(blockState.inCount);
-            long startedNs = System.nanoTime();
+            long startedNs = nanoTimeSupplier.getAsLong();
 
             RuntimeEvent inputCopy = runtimeEvent.copy(objectMapper);
             BlockResult result;
@@ -130,7 +154,7 @@ public class PipelineObservabilityService {
                     blockState.nonInternalDropCount += 1L;
                 }
                 incrementDropReason(blockState, "error");
-                double latencyMs = latencyMs(startedNs, blockType);
+                double latencyMs = latencyMs(startedNs);
                 appendLatency(blockState, latencyMs);
                 if (sampled) {
                     appendSample(blockState, sampleFor(inputCopy, null, true, "error", index, blockType));
@@ -139,7 +163,7 @@ public class PipelineObservabilityService {
                 break;
             }
 
-            double latencyMs = latencyMs(startedNs, blockType);
+            double latencyMs = latencyMs(startedNs);
             appendLatency(blockState, latencyMs);
             blockState.backlogDepth = Math.max(result.backlogDepth, 0);
 
@@ -1123,16 +1147,9 @@ public class PipelineObservabilityService {
         return observedEvents <= 1 || observedEvents % sampleEvery == 0;
     }
 
-    private double latencyMs(long startedNs, String blockType) {
-        long elapsedNs = System.nanoTime() - startedNs;
-        double baseline = switch (blockType == null ? "" : blockType.toUpperCase(Locale.ROOT)) {
-            case "FILTER_DEVICE", "FILTER_DEVICE_TOPIC", "FILTER_TOPIC", "EXTRACT_VALUE", "TRANSFORM_PAYLOAD",
-                    "FILTER_RATE_LIMIT" -> 0.20;
-            case "DEDUP" -> 0.35;
-            case "WINDOW_AGGREGATE", "MICRO_BATCH" -> 0.45;
-            default -> 0.10;
-        };
-        double calculated = elapsedNs / 1_000_000.0d + baseline;
+    private double latencyMs(long startedNs) {
+        long elapsedNs = Math.max(0L, nanoTimeSupplier.getAsLong() - startedNs);
+        double calculated = elapsedNs / 1_000_000.0d;
         return Math.round(calculated * 1000.0d) / 1000.0d;
     }
 

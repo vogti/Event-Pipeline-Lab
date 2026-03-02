@@ -11,6 +11,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -30,6 +31,35 @@ class PipelineObservabilityServiceTest {
                 64,
                 64
         );
+    }
+
+    @Test
+    void shouldMeasureLatencyFromNanoClockWithoutSyntheticBaseline() {
+        AtomicLong nanos = new AtomicLong(1_000_000_000L);
+        PipelineObservabilityService deterministicLatencyService = new PipelineObservabilityService(
+                objectMapper,
+                Clock.fixed(Instant.parse("2026-02-26T15:00:00Z"), ZoneOffset.UTC),
+                1,
+                3,
+                64,
+                64,
+                () -> nanos.getAndAdd(200_000L)
+        );
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(0, "EXTRACT_VALUE", java.util.Map.of()))
+        );
+
+        deterministicLatencyService.recordEvent("task_intro", "epld01", processing, event("lat-1", "{\"v\":1}"));
+        deterministicLatencyService.recordEvent("task_intro", "epld01", processing, event("lat-2", "{\"v\":2}"));
+        deterministicLatencyService.recordEvent("task_intro", "epld01", processing, event("lat-3", "{\"v\":3}"));
+
+        PipelineObservabilityDto snapshot = deterministicLatencyService.snapshot("task_intro", "epld01", processing);
+        PipelineBlockObservabilityDto block = snapshot.blocks().get(0);
+
+        assertThat(block.latencyP50Ms()).isEqualTo(0.2d);
+        assertThat(block.latencyP95Ms()).isEqualTo(0.2d);
     }
 
     @Test

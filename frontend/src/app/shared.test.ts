@@ -166,6 +166,18 @@ describe('shared helpers', () => {
     expect(eventValueSummary(ledEvent)).toBe('on');
   });
 
+  it('prefers transformed scalar payload over event-type semantic fallback', () => {
+    const transformedButtonEvent = createEvent({
+      id: 'event-transform-button',
+      topic: 'epld01/event/button/black',
+      eventType: 'button.black.press',
+      category: 'BUTTON',
+      payloadJson: '"on"'
+    });
+
+    expect(eventValueSummary(transformedButtonEvent)).toBe('on');
+  });
+
   it('does not show a value for telemetry events', () => {
     const telemetryEvent = createEvent({
       id: 'event-telemetry',

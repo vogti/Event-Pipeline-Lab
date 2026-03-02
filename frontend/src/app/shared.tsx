@@ -1036,16 +1036,19 @@ function eventValueSummary(event: CanonicalEvent): string {
   if (lowerEventType === 'status.system' || lowerEventType.startsWith('status.system.')) {
     return '';
   }
+
+  const parsedPayload = tryParsePayload(event.payloadJson);
+  if (parsedPayload === null) {
+    return '';
+  }
+  if (typeof parsedPayload === 'string' || typeof parsedPayload === 'number') {
+    return String(parsedPayload);
+  }
   if (lowerEventType.endsWith('.press')) {
     return 'pressed';
   }
   if (lowerEventType.endsWith('.release')) {
     return 'released';
-  }
-
-  const parsedPayload = tryParsePayload(event.payloadJson);
-  if (parsedPayload === null) {
-    return '';
   }
 
   if (lowerEventType === 'status.mqtt' || lowerEventType.startsWith('status.mqtt.')) {
