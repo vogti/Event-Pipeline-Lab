@@ -148,6 +148,7 @@ export function useRealtimeSync({
     let studentPipelineFeedQueue: CanonicalEvent[] = [];
     let adminFeedQueue: CanonicalEvent[] = [];
     let adminPipelineFeedQueue: CanonicalEvent[] = [];
+    const maxPendingFeedEvents = Math.max(MAX_FEED_EVENTS * 6, 500);
     const adminDeviceStatusQueue = new Map<string, DeviceStatus>();
     let closed = false;
     const ownStudentDeviceId = session.role === 'STUDENT'
@@ -202,6 +203,9 @@ export function useRealtimeSync({
 
     const queueStudentFeedEvent = (eventPayload: CanonicalEvent) => {
       studentFeedQueue.push(eventPayload);
+      if (studentFeedQueue.length > maxPendingFeedEvents) {
+        studentFeedQueue.splice(0, studentFeedQueue.length - maxPendingFeedEvents);
+      }
       if (studentFeedFlushTimer !== null) {
         return;
       }
@@ -220,6 +224,9 @@ export function useRealtimeSync({
 
     const queueStudentPipelineFeedEvent = (eventPayload: CanonicalEvent) => {
       studentPipelineFeedQueue.push(eventPayload);
+      if (studentPipelineFeedQueue.length > maxPendingFeedEvents) {
+        studentPipelineFeedQueue.splice(0, studentPipelineFeedQueue.length - maxPendingFeedEvents);
+      }
       if (studentPipelineFeedFlushTimer !== null) {
         return;
       }
@@ -263,6 +270,9 @@ export function useRealtimeSync({
 
     const queueAdminFeedEvent = (eventPayload: CanonicalEvent) => {
       adminFeedQueue.push(eventPayload);
+      if (adminFeedQueue.length > maxPendingFeedEvents) {
+        adminFeedQueue.splice(0, adminFeedQueue.length - maxPendingFeedEvents);
+      }
       if (adminFeedFlushTimer !== null) {
         return;
       }
@@ -281,6 +291,9 @@ export function useRealtimeSync({
 
     const queueAdminPipelineFeedEvent = (eventPayload: CanonicalEvent) => {
       adminPipelineFeedQueue.push(eventPayload);
+      if (adminPipelineFeedQueue.length > maxPendingFeedEvents) {
+        adminPipelineFeedQueue.splice(0, adminPipelineFeedQueue.length - maxPendingFeedEvents);
+      }
       if (adminPipelineFeedFlushTimer !== null) {
         return;
       }

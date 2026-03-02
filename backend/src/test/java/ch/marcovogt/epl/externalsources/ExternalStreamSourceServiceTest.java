@@ -3,6 +3,8 @@ package ch.marcovogt.epl.externalsources;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.Instant;
@@ -28,7 +30,7 @@ class ExternalStreamSourceServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ExternalStreamSourceService(stateRepository, jdbcTemplate);
+        service = new ExternalStreamSourceService(stateRepository, jdbcTemplate, java.time.Duration.ofSeconds(3));
     }
 
     @Test
@@ -85,6 +87,27 @@ class ExternalStreamSourceServiceTest {
 
         assertThat(updated.enabled()).isFalse();
         assertThat(updated.online()).isFalse();
+    }
+
+    @Test
+    void listSourcesShouldReuseCounterCacheWithinTtl() {
+        ExternalStreamSourceState state = state(
+                true,
+                "https://stream.wikimedia.org/v2/stream/recentchange",
+                Instant.parse("2026-03-01T11:00:00Z")
+        );
+        when(stateRepository.existsById(ExternalStreamSourceIds.WIKIMEDIA_EVENTSTREAM)).thenReturn(true);
+        when(stateRepository.findAllByOrderBySourceIdAsc()).thenReturn(List.of(state));
+        when(jdbcTemplate.queryForObject(any(String.class), eq(Long.class), eq(state.getSourceId()), any()))
+                .thenReturn(7L);
+
+        List<ExternalStreamSourceDto> first = service.listSources();
+        List<ExternalStreamSourceDto> second = service.listSources();
+
+        assertThat(first).hasSize(1);
+        assertThat(second).hasSize(1);
+        assertThat(second.getFirst().eventsSinceReset()).isEqualTo(7L);
+        verify(jdbcTemplate, times(1)).queryForObject(any(String.class), eq(Long.class), eq(state.getSourceId()), any());
     }
 
     private ExternalStreamSourceState state(boolean enabled, String endpointUrl, Instant counterResetAt) {

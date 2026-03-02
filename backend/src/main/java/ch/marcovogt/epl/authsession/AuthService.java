@@ -22,21 +22,28 @@ public class AuthService {
     private final AppSettingsService appSettingsService;
     private final Duration sessionTtl;
     private final Duration presenceWindow;
+    private final Duration groupKeyCacheTtl;
     private final Clock clock;
+    private volatile List<String> cachedStudentGroupKeys;
+    private volatile Instant cachedStudentGroupKeysAt;
 
     public AuthService(
             AuthAccountRepository authAccountRepository,
             AuthSessionRepository authSessionRepository,
             AppSettingsService appSettingsService,
             @Value("${epl.auth.session-ttl:PT8H}") Duration sessionTtl,
-            @Value("${epl.auth.presence-window:PT45S}") Duration presenceWindow
+            @Value("${epl.auth.presence-window:PT45S}") Duration presenceWindow,
+            @Value("${epl.auth.group-key-cache-ttl:PT2S}") Duration groupKeyCacheTtl
     ) {
         this.authAccountRepository = authAccountRepository;
         this.authSessionRepository = authSessionRepository;
         this.appSettingsService = appSettingsService;
         this.sessionTtl = sessionTtl;
         this.presenceWindow = presenceWindow;
+        this.groupKeyCacheTtl = sanitizeGroupKeyCacheTtl(groupKeyCacheTtl);
         this.clock = Clock.systemUTC();
+        this.cachedStudentGroupKeys = List.of();
+        this.cachedStudentGroupKeysAt = Instant.EPOCH;
     }
 
     @Transactional
@@ -127,14 +134,40 @@ public class AuthService {
 
     @Transactional(readOnly = true)
     public List<String> listStudentGroupKeys() {
+        Instant now = Instant.now(clock);
+        List<String> cached = cachedStudentGroupKeys;
+        if (cached != null
+                && !groupKeyCacheTtl.isZero()
+                && now.isBefore(cachedStudentGroupKeysAt.plus(groupKeyCacheTtl))) {
+            return cached;
+        }
+        return refreshStudentGroupKeys(now);
+    }
+
+    private List<String> refreshStudentGroupKeys(Instant now) {
+        Instant snapshotTs = now == null ? Instant.now(clock) : now;
         String adminDeviceId = appSettingsService.getAdminDeviceId();
-        return authAccountRepository.findByRoleAndEnabledTrueOrderByUsernameAsc(AppRole.STUDENT)
+        List<String> resolved = authAccountRepository.findByRoleAndEnabledTrueOrderByUsernameAsc(AppRole.STUDENT)
                 .stream()
                 .map(AuthAccount::getGroupKey)
                 .filter(groupKey -> groupKey != null && !groupKey.isBlank())
                 .filter(groupKey -> adminDeviceId == null || !adminDeviceId.equalsIgnoreCase(groupKey))
                 .distinct()
                 .toList();
+        cachedStudentGroupKeys = resolved;
+        cachedStudentGroupKeysAt = snapshotTs;
+        return resolved;
+    }
+
+    private Duration sanitizeGroupKeyCacheTtl(Duration ttl) {
+        if (ttl == null || ttl.isNegative()) {
+            return Duration.ZERO;
+        }
+        Duration max = Duration.ofSeconds(30);
+        if (ttl.compareTo(max) > 0) {
+            return max;
+        }
+        return ttl;
     }
 
     @Transactional(readOnly = true)

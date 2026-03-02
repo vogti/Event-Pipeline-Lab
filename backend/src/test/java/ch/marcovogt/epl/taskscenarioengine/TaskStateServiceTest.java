@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -52,7 +53,8 @@ class TaskStateServiceTest {
                 taskPipelineConfigStateRepository,
                 taskCatalog,
                 taskPipelineConfigService,
-                new ObjectMapper()
+                new ObjectMapper(),
+                java.time.Duration.ofSeconds(2)
         );
     }
 
@@ -88,6 +90,24 @@ class TaskStateServiceTest {
         TaskDefinition active = service.getActiveTask();
 
         assertThat(active.id()).isEqualTo("task_intro");
+    }
+
+    @Test
+    void getActiveTaskShouldUseCacheWithinTtl() {
+        TaskState state = new TaskState();
+        state.setId((short) 1);
+        state.setActiveTaskId("task_intro");
+        when(taskStateRepository.findById((short) 1)).thenReturn(Optional.of(state));
+        when(taskPipelineConfigService.applyOverrides(any(TaskDefinition.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        TaskDefinition first = service.getActiveTask();
+        TaskDefinition second = service.getActiveTask();
+
+        assertThat(first.id()).isEqualTo("task_intro");
+        assertThat(second.id()).isEqualTo("task_intro");
+        verify(taskStateRepository, times(2)).findById((short) 1);
+        verify(taskPipelineConfigService, times(1)).applyOverrides(any(TaskDefinition.class));
     }
 
     @Test

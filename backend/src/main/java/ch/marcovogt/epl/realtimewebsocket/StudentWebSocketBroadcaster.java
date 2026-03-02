@@ -69,12 +69,20 @@ public class StudentWebSocketBroadcaster {
         }
 
         WsEnvelope envelope = new WsEnvelope(type, payload, Instant.now());
-        sessions.forEach(session -> send(session, envelope));
+        String json = serializeEnvelope(envelope);
+        if (json == null) {
+            return;
+        }
+        sessions.forEach(session -> send(session, json));
     }
 
     public void broadcastToAll(String type, Object payload) {
         WsEnvelope envelope = new WsEnvelope(type, payload, Instant.now());
-        allSessions.forEach(session -> send(session, envelope));
+        String json = serializeEnvelope(envelope);
+        if (json == null) {
+            return;
+        }
+        allSessions.forEach(session -> send(session, json));
     }
 
     public List<String> activeGroupKeys() {
@@ -86,13 +94,20 @@ public class StudentWebSocketBroadcaster {
     }
 
     private void send(WebSocketSession session, WsEnvelope envelope) {
+        String json = serializeEnvelope(envelope);
+        if (json == null) {
+            return;
+        }
+        send(session, json);
+    }
+
+    private void send(WebSocketSession session, String json) {
         if (!session.isOpen()) {
             unregister(session);
             return;
         }
 
         try {
-            String json = objectMapper.writeValueAsString(envelope);
             synchronized (session) {
                 session.sendMessage(new TextMessage(json));
             }
@@ -108,6 +123,15 @@ public class StudentWebSocketBroadcaster {
             session.close();
         } catch (IOException ignored) {
             // ignore close failures
+        }
+    }
+
+    private String serializeEnvelope(WsEnvelope envelope) {
+        try {
+            return objectMapper.writeValueAsString(envelope);
+        } catch (IOException ex) {
+            log.warn("Failed to serialize student WS envelope type={}: {}", envelope.type(), ex.getMessage());
+            return null;
         }
     }
 }

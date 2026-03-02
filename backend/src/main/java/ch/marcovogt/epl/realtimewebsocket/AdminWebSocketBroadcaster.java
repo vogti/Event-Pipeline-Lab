@@ -57,17 +57,28 @@ public class AdminWebSocketBroadcaster {
     }
 
     private void broadcast(WsEnvelope envelope) {
-        sessions.forEach(session -> send(session, envelope));
+        String json = serializeEnvelope(envelope);
+        if (json == null) {
+            return;
+        }
+        sessions.forEach(session -> send(session, json));
     }
 
     private void send(WebSocketSession session, WsEnvelope envelope) {
+        String json = serializeEnvelope(envelope);
+        if (json == null) {
+            return;
+        }
+        send(session, json);
+    }
+
+    private void send(WebSocketSession session, String json) {
         if (!session.isOpen()) {
             sessions.remove(session);
             return;
         }
 
         try {
-            String json = objectMapper.writeValueAsString(envelope);
             synchronized (session) {
                 session.sendMessage(new TextMessage(json));
             }
@@ -83,6 +94,15 @@ public class AdminWebSocketBroadcaster {
             session.close();
         } catch (IOException ignored) {
             // ignore close failures
+        }
+    }
+
+    private String serializeEnvelope(WsEnvelope envelope) {
+        try {
+            return objectMapper.writeValueAsString(envelope);
+        } catch (IOException ex) {
+            log.warn("Failed to serialize WS envelope type={}: {}", envelope.type(), ex.getMessage());
+            return null;
         }
     }
 }

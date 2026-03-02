@@ -9,9 +9,11 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Optional;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -36,7 +38,8 @@ class AuthServiceCaseInsensitiveLoginTest {
                 authSessionRepository,
                 appSettingsService,
                 java.time.Duration.ofHours(8),
-                java.time.Duration.ofSeconds(45)
+                java.time.Duration.ofSeconds(45),
+                java.time.Duration.ofSeconds(2)
         );
     }
 
@@ -63,5 +66,24 @@ class AuthServiceCaseInsensitiveLoginTest {
         ArgumentCaptor<AuthSession> sessionCaptor = ArgumentCaptor.forClass(AuthSession.class);
         verify(authSessionRepository).save(sessionCaptor.capture());
         assertThat(sessionCaptor.getValue().getUsername()).isEqualTo("epld01");
+    }
+
+    @Test
+    void listStudentGroupKeysShouldUseCacheWithinTtl() {
+        AuthAccount groupAccount = new AuthAccount();
+        groupAccount.setUsername("epld01");
+        groupAccount.setRole(AppRole.STUDENT);
+        groupAccount.setGroupKey("epld01");
+        groupAccount.setEnabled(true);
+
+        when(appSettingsService.getAdminDeviceId()).thenReturn(null);
+        when(authAccountRepository.findByRoleAndEnabledTrueOrderByUsernameAsc(AppRole.STUDENT))
+                .thenReturn(List.of(groupAccount));
+
+        assertThat(authService.listStudentGroupKeys()).containsExactly("epld01");
+        assertThat(authService.listStudentGroupKeys()).containsExactly("epld01");
+
+        verify(authAccountRepository, times(1))
+                .findByRoleAndEnabledTrueOrderByUsernameAsc(AppRole.STUDENT);
     }
 }

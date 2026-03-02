@@ -46,8 +46,11 @@ export function useAdminSystemStatusPolling({
 
     loadStatus().catch((error) => reportBackgroundError('adminSystemStatus', error));
     intervalId = window.setInterval(() => {
+      if (document.hidden) {
+        return;
+      }
       loadStatus().catch((error) => reportBackgroundError('adminSystemStatus', error));
-    }, 5000);
+    }, 7000);
 
     return () => {
       cancelled = true;

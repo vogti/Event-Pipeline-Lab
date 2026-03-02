@@ -927,8 +927,11 @@ export default function App() {
 
     void refresh();
     const timerId = window.setInterval(() => {
+      if (document.hidden) {
+        return;
+      }
       void refresh();
-    }, 2500);
+    }, 5000);
 
     return () => {
       cancelled = true;
@@ -940,6 +943,14 @@ export default function App() {
     if (adminPage !== 'devices') {
       return;
     }
+    const initialEvents = adminDataRef.current?.events ?? [];
+    if (initialEvents.length > 0) {
+      const initialSnapshots = buildDeviceTelemetrySnapshots(initialEvents);
+      if (Object.keys(initialSnapshots).length > 0) {
+        setAdminDeviceSnapshots((previous) => mergeTelemetrySnapshotCache(previous, initialSnapshots));
+      }
+    }
+
     const deferredEvents = deferredAdminFeedRef.current;
     if (deferredEvents.length === 0) {
       return;
@@ -1808,18 +1819,6 @@ export default function App() {
   }, [adminData]);
 
   useEffect(() => {
-    const adminEvents = adminData?.events;
-    if (!adminEvents || adminPage !== 'devices') {
-      return;
-    }
-
-    const latestSnapshots = buildDeviceTelemetrySnapshots(adminEvents);
-    if (Object.keys(latestSnapshots).length > 0) {
-      setAdminDeviceSnapshots((previous) => mergeTelemetrySnapshotCache(previous, latestSnapshots));
-    }
-  }, [adminData?.events, adminPage]);
-
-  useEffect(() => {
     const adminDevices = adminData?.devices;
     const adminEvents = adminData?.events;
     if (!adminDevices || !adminEvents || adminPage !== 'devices') {
@@ -1840,7 +1839,7 @@ export default function App() {
         adminDevices.map((device) => device.deviceId)
       )
     );
-  }, [adminData?.devices, adminData?.events, adminPage]);
+  }, [adminData?.devices, adminPage]);
 
   useEffect(() => {
     const adminDevices = adminData?.devices;
@@ -3095,7 +3094,7 @@ export default function App() {
     };
 
     runRefresh();
-    const timerId = window.setInterval(runRefresh, 1500);
+    const timerId = window.setInterval(runRefresh, 2500);
     return () => {
       window.clearInterval(timerId);
     };

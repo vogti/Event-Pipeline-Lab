@@ -2,12 +2,14 @@ package ch.marcovogt.epl.externalsources;
 
 import java.sql.Timestamp;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -33,15 +35,20 @@ public class ExternalStreamSourceService {
 
     private final ExternalStreamSourceStateRepository stateRepository;
     private final JdbcTemplate jdbcTemplate;
+    private final Duration counterCacheTtl;
     private final Clock clock;
+    private final ConcurrentMap<String, Boolean> enabledBySource = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, ExternalStreamRuntimeStatus> runtimeBySource = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, SourceCounterSnapshot> counterBySource = new ConcurrentHashMap<>();
 
     public ExternalStreamSourceService(
             ExternalStreamSourceStateRepository stateRepository,
-            JdbcTemplate jdbcTemplate
+            JdbcTemplate jdbcTemplate,
+            @Value("${epl.external-sources.counter-cache-ttl:PT3S}") Duration counterCacheTtl
     ) {
         this.stateRepository = stateRepository;
         this.jdbcTemplate = jdbcTemplate;
+        this.counterCacheTtl = sanitizeCounterCacheTtl(counterCacheTtl);
         this.clock = Clock.systemUTC();
     }
 
@@ -67,6 +74,7 @@ public class ExternalStreamSourceService {
         state.setUpdatedAt(Instant.now(clock));
         state.setUpdatedBy(normalizeActor(actor));
         ExternalStreamSourceState saved = stateRepository.save(state);
+        enabledBySource.put(saved.getSourceId(), saved.isEnabled());
         if (!enabled) {
             markRuntimeDisconnected(saved.getSourceId(), null);
         }
@@ -90,13 +98,20 @@ public class ExternalStreamSourceService {
         state.setUpdatedAt(Instant.now(clock));
         state.setUpdatedBy(normalizeActor(actor));
         ExternalStreamSourceState saved = stateRepository.save(state);
+        counterBySource.remove(saved.getSourceId());
         return toDto(saved);
     }
 
     @Transactional(readOnly = true)
     public boolean isEnabled(String sourceId) {
         String normalized = normalizeSourceId(sourceId);
-        return stateRepository.findById(normalized).map(ExternalStreamSourceState::isEnabled).orElse(false);
+        Boolean cached = enabledBySource.get(normalized);
+        if (cached != null) {
+            return cached;
+        }
+        boolean resolved = stateRepository.findById(normalized).map(ExternalStreamSourceState::isEnabled).orElse(false);
+        enabledBySource.put(normalized, resolved);
+        return resolved;
     }
 
     @Transactional(readOnly = true)
@@ -157,6 +172,8 @@ public class ExternalStreamSourceService {
             state.setUpdatedAt(now);
             state.setUpdatedBy("system");
             stateRepository.save(state);
+            enabledBySource.put(sourceId, false);
+            counterBySource.remove(sourceId);
         }
     }
 
@@ -170,11 +187,15 @@ public class ExternalStreamSourceService {
             created.setCounterResetAt(now);
             created.setUpdatedAt(now);
             created.setUpdatedBy("system");
-            return stateRepository.save(created);
+            ExternalStreamSourceState saved = stateRepository.save(created);
+            enabledBySource.put(sourceId, saved.isEnabled());
+            counterBySource.remove(sourceId);
+            return saved;
         });
     }
 
     private ExternalStreamSourceDto toDto(ExternalStreamSourceState state) {
+        enabledBySource.put(state.getSourceId(), state.isEnabled());
         ExternalStreamRuntimeStatus runtime = runtimeBySource.get(state.getSourceId());
         boolean online = state.isEnabled() && runtime != null && runtime.online();
         Instant counterResetAt = coalesce(state.getCounterResetAt(), Instant.EPOCH);
@@ -196,13 +217,44 @@ public class ExternalStreamSourceService {
     }
 
     private long readEventsSinceReset(String sourceId, Instant counterResetAt) {
+        Instant now = Instant.now(clock);
+        SourceCounterSnapshot cached = counterBySource.get(sourceId);
+        if (!isCounterCacheExpired(cached, counterResetAt, now)) {
+            return cached.count();
+        }
         Long value = jdbcTemplate.queryForObject(
                 COUNT_EVENTS_SINCE_RESET_SQL,
                 Long.class,
                 sourceId,
                 Timestamp.from(counterResetAt)
         );
-        return value == null ? 0L : value;
+        long resolved = value == null ? 0L : value;
+        counterBySource.put(sourceId, new SourceCounterSnapshot(resolved, counterResetAt, now));
+        return resolved;
+    }
+
+    private boolean isCounterCacheExpired(SourceCounterSnapshot cached, Instant resetAt, Instant now) {
+        if (cached == null) {
+            return true;
+        }
+        if (!cached.resetAt().equals(resetAt)) {
+            return true;
+        }
+        if (counterCacheTtl.isZero()) {
+            return true;
+        }
+        return now.isAfter(cached.cachedAt().plus(counterCacheTtl));
+    }
+
+    private Duration sanitizeCounterCacheTtl(Duration ttl) {
+        if (ttl == null || ttl.isNegative()) {
+            return Duration.ZERO;
+        }
+        Duration max = Duration.ofMinutes(1);
+        if (ttl.compareTo(max) > 0) {
+            return max;
+        }
+        return ttl;
     }
 
     private String normalizeSourceId(String sourceId) {
@@ -264,5 +316,12 @@ public class ExternalStreamSourceService {
             case ExternalStreamSourceIds.WIKIMEDIA_EVENTSTREAM -> DEFAULT_WIKIMEDIA_ENDPOINT;
             default -> "";
         };
+    }
+
+    private record SourceCounterSnapshot(
+            long count,
+            Instant resetAt,
+            Instant cachedAt
+    ) {
     }
 }

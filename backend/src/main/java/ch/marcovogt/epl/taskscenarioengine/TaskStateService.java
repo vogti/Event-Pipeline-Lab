@@ -6,6 +6,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.text.Normalizer;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -14,6 +15,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -45,7 +47,9 @@ public class TaskStateService {
     private final TaskCatalog taskCatalog;
     private final TaskPipelineConfigService taskPipelineConfigService;
     private final ObjectMapper objectMapper;
+    private final Duration activeTaskCacheTtl;
     private final Clock clock;
+    private volatile CachedActiveTask cachedActiveTask;
 
     public TaskStateService(
             TaskStateRepository taskStateRepository,
@@ -53,7 +57,8 @@ public class TaskStateService {
             TaskPipelineConfigStateRepository taskPipelineConfigStateRepository,
             TaskCatalog taskCatalog,
             TaskPipelineConfigService taskPipelineConfigService,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            @Value("${epl.task.active-cache-ttl:PT2S}") Duration activeTaskCacheTtl
     ) {
         this.taskStateRepository = taskStateRepository;
         this.taskDefinitionStateRepository = taskDefinitionStateRepository;
@@ -61,7 +66,9 @@ public class TaskStateService {
         this.taskCatalog = taskCatalog;
         this.taskPipelineConfigService = taskPipelineConfigService;
         this.objectMapper = objectMapper;
+        this.activeTaskCacheTtl = sanitizeActiveTaskCacheTtl(activeTaskCacheTtl);
         this.clock = Clock.systemUTC();
+        this.cachedActiveTask = null;
     }
 
     @Transactional(readOnly = true)
@@ -83,14 +90,7 @@ public class TaskStateService {
 
     @Transactional(readOnly = true)
     public TaskDefinition getActiveTask() {
-        TaskState state = loadOrCreateState();
-        LinkedHashMap<String, TaskDefinition> resolved = resolveTaskDefinitions();
-        String activeTaskId = resolveActiveTaskId(state, resolved);
-        TaskDefinition base = resolved.get(activeTaskId);
-        if (base == null) {
-            throw new ResponseStatusException(BAD_REQUEST, "No tasks configured");
-        }
-        return taskPipelineConfigService.applyOverrides(base);
+        return getOrLoadCachedActiveTask().task();
     }
 
     @Transactional
@@ -102,6 +102,7 @@ public class TaskStateService {
         state.setUpdatedAt(Instant.now(clock));
         state.setUpdatedBy(normalizeActor(actor));
         taskStateRepository.save(state);
+        invalidateActiveTaskCache();
         return taskPipelineConfigService.applyOverrides(definition);
     }
 
@@ -118,6 +119,7 @@ public class TaskStateService {
         state.setUpdatedAt(Instant.now(clock));
         state.setUpdatedBy(normalizeActor(actor));
         taskStateRepository.save(state);
+        invalidateActiveTaskCache();
 
         return listTasksWithActive();
     }
@@ -185,6 +187,7 @@ public class TaskStateService {
         taskState.setUpdatedAt(now);
         taskState.setUpdatedBy(normalizedActor);
         taskStateRepository.save(taskState);
+        invalidateActiveTaskCache();
 
         return listTasksWithActive();
     }
@@ -199,7 +202,7 @@ public class TaskStateService {
 
     @Transactional(readOnly = true)
     public TaskCapabilities currentStudentCapabilities() {
-        return effectiveStudentCapabilities(getActiveTask());
+        return getOrLoadCachedActiveTask().studentCapabilities();
     }
 
     @Transactional(readOnly = true)
@@ -221,7 +224,7 @@ public class TaskStateService {
             String actor
     ) {
         TaskDefinition baseline = resolveTaskById(taskId);
-        return taskPipelineConfigService.update(
+        TaskPipelineConfigDto updated = taskPipelineConfigService.update(
                 baseline,
                 visibleToStudents,
                 slotCount,
@@ -232,6 +235,8 @@ public class TaskStateService {
                 studentSendEventEnabled,
                 actor
         );
+        invalidateActiveTaskCache();
+        return updated;
     }
 
     @Transactional(readOnly = true)
@@ -276,6 +281,7 @@ public class TaskStateService {
         state.setUpdatedAt(Instant.now(clock));
         state.setUpdatedBy(normalizeActor(actor));
         taskDefinitionStateRepository.save(state);
+        invalidateActiveTaskCache();
 
         TaskDefinition updated = taskPipelineConfigService.applyOverrides(resolveTaskById(normalizedTaskId));
         return TaskInfoDto.from(updated, updated.id().equals(getActiveTask().id()));
@@ -330,9 +336,69 @@ public class TaskStateService {
         taskState.setUpdatedAt(Instant.now(clock));
         taskState.setUpdatedBy(normalizeActor(actor));
         taskStateRepository.save(taskState);
+        invalidateActiveTaskCache();
 
         TaskDefinition created = taskPipelineConfigService.applyOverrides(resolveTaskById(normalizedTaskId));
         return TaskInfoDto.from(created, false);
+    }
+
+    private CachedActiveTask getOrLoadCachedActiveTask() {
+        CachedActiveTask cached = cachedActiveTask;
+        Instant now = Instant.now(clock);
+        if (!isActiveTaskCacheExpired(cached, now)) {
+            return cached;
+        }
+        synchronized (this) {
+            CachedActiveTask current = cachedActiveTask;
+            Instant currentNow = Instant.now(clock);
+            if (!isActiveTaskCacheExpired(current, currentNow)) {
+                return current;
+            }
+            TaskDefinition activeTask = resolveActiveTaskFromStore();
+            CachedActiveTask refreshed = new CachedActiveTask(
+                    activeTask,
+                    effectiveStudentCapabilities(activeTask),
+                    currentNow
+            );
+            cachedActiveTask = refreshed;
+            return refreshed;
+        }
+    }
+
+    private TaskDefinition resolveActiveTaskFromStore() {
+        TaskState state = loadOrCreateState();
+        LinkedHashMap<String, TaskDefinition> resolved = resolveTaskDefinitions();
+        String activeTaskId = resolveActiveTaskId(state, resolved);
+        TaskDefinition base = resolved.get(activeTaskId);
+        if (base == null) {
+            throw new ResponseStatusException(BAD_REQUEST, "No tasks configured");
+        }
+        return taskPipelineConfigService.applyOverrides(base);
+    }
+
+    private boolean isActiveTaskCacheExpired(CachedActiveTask cached, Instant now) {
+        if (cached == null) {
+            return true;
+        }
+        if (activeTaskCacheTtl.isZero()) {
+            return true;
+        }
+        return now.isAfter(cached.cachedAt().plus(activeTaskCacheTtl));
+    }
+
+    private Duration sanitizeActiveTaskCacheTtl(Duration ttl) {
+        if (ttl == null || ttl.isNegative()) {
+            return Duration.ZERO;
+        }
+        Duration max = Duration.ofMinutes(1);
+        if (ttl.compareTo(max) > 0) {
+            return max;
+        }
+        return ttl;
+    }
+
+    private void invalidateActiveTaskCache() {
+        cachedActiveTask = null;
     }
 
     private TaskState loadOrCreateState() {
@@ -689,5 +755,12 @@ public class TaskStateService {
                     "Failed to serialize task state: " + ex.getMessage().toLowerCase(Locale.ROOT)
             );
         }
+    }
+
+    private record CachedActiveTask(
+            TaskDefinition task,
+            TaskCapabilities studentCapabilities,
+            Instant cachedAt
+    ) {
     }
 }

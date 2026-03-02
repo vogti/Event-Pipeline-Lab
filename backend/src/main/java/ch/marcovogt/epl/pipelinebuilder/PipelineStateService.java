@@ -277,10 +277,11 @@ public class PipelineStateService {
 
     @Transactional
     public List<PipelineEventProcessingResult> recordObservabilityAndProjectEvents(CanonicalEventDto eventDto) {
-        LinkedHashSet<String> groupKeys = resolveTargetGroupKeys(eventDto);
+        PipelineExecutionContext context = createExecutionContext(true);
+        LinkedHashSet<String> groupKeys = resolveTargetGroupKeys(eventDto, context.adminDeviceId());
         List<PipelineEventProcessingResult> results = new ArrayList<>();
         for (String groupKey : groupKeys) {
-            PipelineEventProcessingResult result = recordObservabilityAndProjectEvent(eventDto, true, groupKey);
+            PipelineEventProcessingResult result = recordObservabilityAndProjectEvent(eventDto, true, groupKey, context);
             if (result != null) {
                 results.add(result);
             }
@@ -290,14 +291,16 @@ public class PipelineStateService {
 
     @Transactional
     public PipelineObservabilityUpdateDto recordObservabilityEvent(CanonicalEventDto eventDto) {
-        String resolvedGroupKey = resolveSingleGroupKey(eventDto);
+        PipelineExecutionContext context = createExecutionContext(false);
+        String resolvedGroupKey = resolveSingleGroupKey(eventDto, context.adminDeviceId());
         if (resolvedGroupKey == null || resolvedGroupKey.isBlank()) {
             return null;
         }
         PipelineEventProcessingResult result = recordObservabilityAndProjectEvent(
                 eventDto,
                 false,
-                normalizeGroupKey(resolvedGroupKey)
+                normalizeGroupKey(resolvedGroupKey),
+                context
         );
         return result == null ? null : result.observabilityUpdate();
     }
@@ -306,29 +309,32 @@ public class PipelineStateService {
             CanonicalEventDto eventDto,
             boolean executeSinks
     ) {
-        String resolvedGroupKey = resolveSingleGroupKey(eventDto);
+        PipelineExecutionContext context = createExecutionContext(executeSinks);
+        String resolvedGroupKey = resolveSingleGroupKey(eventDto, context.adminDeviceId());
         if (resolvedGroupKey == null || resolvedGroupKey.isBlank()) {
             return null;
         }
-        return recordObservabilityAndProjectEvent(eventDto, executeSinks, normalizeGroupKey(resolvedGroupKey));
+        return recordObservabilityAndProjectEvent(
+                eventDto,
+                executeSinks,
+                normalizeGroupKey(resolvedGroupKey),
+                context
+        );
     }
 
     private PipelineEventProcessingResult recordObservabilityAndProjectEvent(
             CanonicalEventDto eventDto,
             boolean executeSinks,
-            String groupKey
+            String groupKey,
+            PipelineExecutionContext context
     ) {
-        TaskDefinition task = taskStateService.getActiveTask();
-        PipelineTaskConfig config = task.pipeline();
-        PipelineStatePayload defaults = defaultPayload(config);
+        TaskDefinition task = context.task();
+        PipelineTaskConfig config = context.config();
+        PipelineStatePayload defaults = context.defaults();
 
         PipelineState groupState = loadOrCreate(task.id(), PipelineOwnerType.GROUP, groupKey, defaults);
         PipelineStatePayload groupPayload = deserializeOrDefault(groupState.getStateJson(), defaults);
-
-        PipelineState globalState = config.lecturerMode()
-                ? loadOrCreate(task.id(), PipelineOwnerType.ADMIN_GLOBAL, GLOBAL_OWNER_KEY, defaults)
-                : null;
-        PipelineStatePayload effective = effectivePayload(config, groupPayload, globalState, defaults);
+        PipelineStatePayload effective = effectivePayload(config, groupPayload, context.globalPayload(), defaults);
         PipelineProcessingSection effectiveProcessing = withTaskDeviceScopeFilter(config, effective.processing());
 
         CanonicalEventDto projected = pipelineObservabilityService.recordEvent(
@@ -339,16 +345,14 @@ public class PipelineStateService {
         );
         PipelineSinkRuntimeUpdateDto sinkRuntimeUpdate = null;
         if (projected != null && executeSinks) {
-            StudentDeviceScope sinkTargetScope = taskStateService.currentStudentCapabilities().studentCommandTargetScope();
-            String adminDeviceId = appSettingsService.getAdminDeviceId();
             PipelineSinkRuntimeSection sinkRuntime = pipelineSinkExecutionService.processProjectedEvent(
                     task.id(),
                     groupKey,
                     effective.sink(),
                     projected,
-                    sinkTargetScope == null ? StudentDeviceScope.OWN_DEVICE : sinkTargetScope,
+                    context.sinkTargetScope(),
                     groupKey,
-                    adminDeviceId
+                    context.adminDeviceId()
             );
             sinkRuntimeUpdate = new PipelineSinkRuntimeUpdateDto(task.id(), groupKey, sinkRuntime);
         }
@@ -364,7 +368,32 @@ public class PipelineStateService {
         );
     }
 
-    private LinkedHashSet<String> resolveTargetGroupKeys(CanonicalEventDto eventDto) {
+    private PipelineExecutionContext createExecutionContext(boolean executeSinks) {
+        TaskDefinition task = taskStateService.getActiveTask();
+        PipelineTaskConfig config = task.pipeline();
+        PipelineStatePayload defaults = defaultPayload(config);
+        PipelineState globalState = config.lecturerMode()
+                ? loadOrCreate(task.id(), PipelineOwnerType.ADMIN_GLOBAL, GLOBAL_OWNER_KEY, defaults)
+                : null;
+        PipelineStatePayload globalPayload = globalState == null
+                ? null
+                : deserializeOrDefault(globalState.getStateJson(), defaults);
+        StudentDeviceScope sinkTargetScope = StudentDeviceScope.OWN_DEVICE;
+        if (executeSinks) {
+            StudentDeviceScope configuredScope = taskStateService.currentStudentCapabilities().studentCommandTargetScope();
+            sinkTargetScope = configuredScope == null ? StudentDeviceScope.OWN_DEVICE : configuredScope;
+        }
+        return new PipelineExecutionContext(
+                task,
+                config,
+                defaults,
+                globalPayload,
+                sinkTargetScope,
+                appSettingsService.getAdminDeviceId()
+        );
+    }
+
+    private LinkedHashSet<String> resolveTargetGroupKeys(CanonicalEventDto eventDto, String adminDeviceId) {
         LinkedHashSet<String> groupKeys = new LinkedHashSet<>();
         for (String configuredGroupKey : authService.listStudentGroupKeys()) {
             if (configuredGroupKey == null || configuredGroupKey.isBlank()) {
@@ -372,13 +401,12 @@ public class PipelineStateService {
             }
             groupKeys.add(normalizeGroupKey(configuredGroupKey));
         }
-        String adminDeviceId = appSettingsService.getAdminDeviceId();
         if (adminDeviceId != null && !adminDeviceId.isBlank()) {
             groupKeys.add(normalizeGroupKey(adminDeviceId));
         }
 
         if (groupKeys.isEmpty()) {
-            String resolved = resolveSingleGroupKey(eventDto);
+            String resolved = resolveSingleGroupKey(eventDto, adminDeviceId);
             if (resolved != null && !resolved.isBlank()) {
                 groupKeys.add(normalizeGroupKey(resolved));
             }
@@ -386,13 +414,12 @@ public class PipelineStateService {
         return groupKeys;
     }
 
-    private String resolveSingleGroupKey(CanonicalEventDto eventDto) {
+    private String resolveSingleGroupKey(CanonicalEventDto eventDto, String adminDeviceId) {
         String resolvedGroupKey = eventDto.groupKey();
         if (resolvedGroupKey == null || resolvedGroupKey.isBlank()) {
             resolvedGroupKey = DeviceIdMapping.groupKeyForDevice(eventDto.deviceId()).orElse(null);
         }
         if (resolvedGroupKey == null || resolvedGroupKey.isBlank()) {
-            String adminDeviceId = appSettingsService.getAdminDeviceId();
             if (adminDeviceId != null && !adminDeviceId.isBlank()) {
                 resolvedGroupKey = adminDeviceId.trim().toLowerCase();
             }
@@ -573,8 +600,20 @@ public class PipelineStateService {
             PipelineState globalState,
             PipelineStatePayload defaults
     ) {
+        PipelineStatePayload globalPayload = globalState == null
+                ? null
+                : deserializeOrDefault(globalState.getStateJson(), defaults);
+        return effectivePayload(config, groupPayload, globalPayload, defaults);
+    }
+
+    private PipelineStatePayload effectivePayload(
+            PipelineTaskConfig config,
+            PipelineStatePayload groupPayload,
+            PipelineStatePayload globalPayload,
+            PipelineStatePayload defaults
+    ) {
         List<String> globalScenarioOverlays = feedScenarioService.getConfig().scenarioOverlays();
-        if (!config.lecturerMode() || globalState == null) {
+        if (!config.lecturerMode() || globalPayload == null) {
             PipelineInputSection groupInput = groupPayload.input();
             PipelineSinkSection groupSink = groupPayload.sink() == null ? defaults.sink() : groupPayload.sink();
             PipelineInputSection resolvedInput = new PipelineInputSection(
@@ -585,7 +624,6 @@ public class PipelineStateService {
             );
             return new PipelineStatePayload(resolvedInput, groupPayload.processing(), groupSink);
         }
-        PipelineStatePayload globalPayload = deserializeOrDefault(globalState.getStateJson(), defaults);
         PipelineInputSection globalInput = globalPayload.input();
         PipelineSinkSection groupSink = groupPayload.sink() == null ? defaults.sink() : groupPayload.sink();
         PipelineInputSection resolvedInput = new PipelineInputSection(
@@ -1183,6 +1221,16 @@ public class PipelineStateService {
             }
         }
         return List.copyOf(unique);
+    }
+
+    private record PipelineExecutionContext(
+            TaskDefinition task,
+            PipelineTaskConfig config,
+            PipelineStatePayload defaults,
+            PipelineStatePayload globalPayload,
+            StudentDeviceScope sinkTargetScope,
+            String adminDeviceId
+    ) {
     }
 
     private String normalizeGroupKey(String groupKey) {

@@ -113,7 +113,7 @@ public class MqttGatewayClient implements SmartLifecycle {
                 publishedEventSourceTracker.register(topic, payload, source);
             }
             client.publish(topic, payload.getBytes(StandardCharsets.UTF_8), qos, retained);
-            log.info("MQTT publish topic={} qos={} retained={}", topic, qos, retained);
+            log.debug("MQTT publish topic={} qos={} retained={}", topic, qos, retained);
         } catch (MqttException ex) {
             throw new IllegalStateException("Failed to publish MQTT command", ex);
         }
