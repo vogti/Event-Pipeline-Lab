@@ -4,6 +4,7 @@ import {
   buildDeviceTelemetrySnapshots,
   clampFeed,
   eventValueSummary,
+  eventFeedKey,
   extractCounterValueFromPayload,
   mergeIpAddressCache,
   mergeEventsBounded,
@@ -140,6 +141,52 @@ describe('shared helpers', () => {
 
     expect(merged).toHaveLength(2);
     expect(merged.map((event) => event.id)).toEqual(['event-c', 'event-a']);
+  });
+
+  it('keeps projected events from different groups even when they share the same id', () => {
+    const existing = [
+      createEvent({
+        id: 'projected-1',
+        groupKey: 'epld01',
+        ingestTs: '2026-01-01T10:00:00Z'
+      })
+    ];
+    const incoming = [
+      createEvent({
+        id: 'projected-1',
+        groupKey: 'epld02',
+        ingestTs: '2026-01-01T10:00:00Z'
+      })
+    ];
+
+    const merged = mergeEventsBounded(existing, incoming, 10);
+
+    expect(merged).toHaveLength(2);
+    expect(new Set(merged.map((event) => eventFeedKey(event)))).toEqual(
+      new Set(['epld01::projected-1', 'epld02::projected-1'])
+    );
+  });
+
+  it('deduplicates repeated projected events for the same group and id', () => {
+    const existing = [
+      createEvent({
+        id: 'projected-repeat',
+        groupKey: 'epld01',
+        ingestTs: '2026-01-01T10:00:00Z'
+      })
+    ];
+    const incoming = [
+      createEvent({
+        id: 'projected-repeat',
+        groupKey: 'epld01',
+        ingestTs: '2026-01-01T10:00:01Z'
+      })
+    ];
+
+    const merged = mergeEventsBounded(existing, incoming, 10);
+
+    expect(merged).toHaveLength(1);
+    expect(eventFeedKey(merged[0])).toBe('epld01::projected-repeat');
   });
 
   it('keeps a larger bounded source buffer for disturbance scheduling', () => {

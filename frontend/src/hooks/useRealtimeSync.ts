@@ -50,6 +50,7 @@ import type {
 interface UseRealtimeSyncParams {
   session: AuthMe | null;
   token: string | null;
+  markWsActivity: () => void;
   studentPauseRef: MutableRefObject<boolean>;
   adminPauseRef: MutableRefObject<boolean>;
   adminDataRef: MutableRefObject<AdminViewData | null>;
@@ -94,6 +95,7 @@ interface UseRealtimeSyncParams {
 export function useRealtimeSync({
   session,
   token,
+  markWsActivity,
   studentPauseRef,
   adminPauseRef,
   adminDataRef,
@@ -794,6 +796,7 @@ export function useRealtimeSync({
       );
 
       socket.onopen = () => {
+        markWsActivity();
         if (!closed) {
           setWsConnection('connected');
         }
@@ -804,6 +807,7 @@ export function useRealtimeSync({
       };
 
       socket.onmessage = (event) => {
+        markWsActivity();
         try {
           const envelope = parseWsEnvelope(event.data);
           handleEnvelope(envelope);
@@ -871,6 +875,7 @@ export function useRealtimeSync({
     adminPauseRef,
     flushDeferredAdminFeedEvents,
     markFeedEventsRecent,
+    markWsActivity,
     onAdminPipelineObserved,
     onAdminPipelineObservabilityUpdated,
     onAdminPipelineSinkRuntimeUpdated,

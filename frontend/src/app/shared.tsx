@@ -130,9 +130,14 @@ function compareByNewestIngestTs(a: CanonicalEvent, b: CanonicalEvent): number {
   const aEpoch = timestampToEpochMillis(a.ingestTs) ?? Number.MIN_SAFE_INTEGER;
   const bEpoch = timestampToEpochMillis(b.ingestTs) ?? Number.MIN_SAFE_INTEGER;
   if (aEpoch === bEpoch) {
-    return b.id.localeCompare(a.id);
+    return eventFeedKey(b).localeCompare(eventFeedKey(a));
   }
   return bEpoch - aEpoch;
+}
+
+function eventFeedKey(event: CanonicalEvent): string {
+  const normalizedGroupKey = (event.groupKey ?? '').trim().toLowerCase();
+  return `${normalizedGroupKey}::${event.id}`;
 }
 
 function mergeEventsBounded(
@@ -144,13 +149,14 @@ function mergeEventsBounded(
     return existing;
   }
 
-  const byId = new Map(existing.map((event) => [event.id, event]));
+  const byId = new Map(existing.map((event) => [eventFeedKey(event), event]));
   let changed = false;
   for (const event of incoming) {
-    if (byId.has(event.id)) {
+    const key = eventFeedKey(event);
+    if (byId.has(key)) {
       continue;
     }
-    byId.set(event.id, event);
+    byId.set(key, event);
     changed = true;
   }
   if (!changed) {
@@ -160,7 +166,10 @@ function mergeEventsBounded(
   const merged = Array.from(byId.values()).sort(compareByNewestIngestTs).slice(0, maxSize);
   if (
     merged.length === existing.length &&
-    merged.every((event, index) => event.id === existing[index]?.id)
+    merged.every((event, index) => {
+      const previous = existing[index];
+      return previous ? eventFeedKey(event) === eventFeedKey(previous) : false;
+    })
   ) {
     return existing;
   }
@@ -1688,6 +1697,7 @@ export {
   AdminIcon,
   timestampToEpochMillis,
   compareByNewestIngestTs,
+  eventFeedKey,
   mergeEventsBounded,
   clampFeed,
   applyFeedScenarioDisturbances,

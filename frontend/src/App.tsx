@@ -71,6 +71,7 @@ import {
   isTelemetryEvent,
   formatBrightnessMeasurement,
   eventValueSummary,
+  eventFeedKey,
   buildDeviceTelemetrySnapshots,
   mergeTelemetrySnapshotCache,
   mergeIpAddressCache,
@@ -747,6 +748,9 @@ export default function App() {
 
   const studentPauseRef = useRef(studentFeedPaused);
   const adminPauseRef = useRef(adminFeedPaused);
+  const wsLastActivityAtRef = useRef<number>(Date.now());
+  const wsBackfillInFlightRef = useRef(false);
+  const wsBackfillLastRunAtRef = useRef<number>(0);
   const adminDataRef = useRef<AdminViewData | null>(null);
   const adminPageRef = useRef(adminPage);
   const deferredAdminFeedRef = useRef<CanonicalEvent[]>([]);
@@ -771,6 +775,10 @@ export default function App() {
   const reportBackgroundError = useCallback((context: string, error: unknown) => {
     const message = toErrorMessage(error);
     console.warn(`[EPL UI background] ${context}: ${message}`);
+  }, []);
+
+  const markWsActivity = useCallback(() => {
+    wsLastActivityAtRef.current = Date.now();
   }, []);
 
   const pushToast = useCallback((text: string) => {
@@ -806,10 +814,11 @@ export default function App() {
       let changed = false;
       const next = { ...previous };
       for (const event of events) {
-        if (next[event.id]) {
+        const key = eventFeedKey(event);
+        if (next[key]) {
           continue;
         }
-        next[event.id] = true;
+        next[key] = true;
         changed = true;
       }
       return changed ? next : previous;
@@ -1999,6 +2008,7 @@ export default function App() {
   useRealtimeSync({
     session,
     token,
+    markWsActivity,
     studentPauseRef,
     adminPauseRef,
     adminDataRef,
@@ -2036,6 +2046,100 @@ export default function App() {
     onAdminPipelineSinkRuntimeUpdated: applyAdminPipelineSinkRuntimeFromWs,
     onAdminPipelineObserved: applyAdminPipelineObservedFromWs
   });
+
+  useEffect(() => {
+    if (!session || !token) {
+      return;
+    }
+    const intervalId = window.setInterval(() => {
+      const now = Date.now();
+      if (now - wsLastActivityAtRef.current < 6000) {
+        return;
+      }
+      if (wsBackfillInFlightRef.current || now - wsBackfillLastRunAtRef.current < 5000) {
+        return;
+      }
+      if (session.role === 'STUDENT' && studentPauseRef.current) {
+        return;
+      }
+      if (session.role === 'ADMIN' && adminPauseRef.current) {
+        return;
+      }
+
+      wsBackfillInFlightRef.current = true;
+      wsBackfillLastRunAtRef.current = now;
+      const limit = 120;
+
+      if (session.role === 'STUDENT') {
+        Promise.all([
+          api.eventsFeed(token, { limit, includeInternal: true, stage: 'BEFORE_PIPELINE' }),
+          api.eventsFeed(token, { limit, includeInternal: true, stage: 'AFTER_PIPELINE' })
+        ])
+          .then(([beforePipeline, afterPipeline]) => {
+            if (beforePipeline.length > 0) {
+              setStudentData((previous) => {
+                if (!previous) {
+                  return previous;
+                }
+                const nextFeed = mergeEventsBounded(previous.feed, beforePipeline, MAX_FEED_SOURCE_EVENTS);
+                if (nextFeed === previous.feed) {
+                  return previous;
+                }
+                return {
+                  ...previous,
+                  feed: nextFeed
+                };
+              });
+            }
+            if (afterPipeline.length > 0) {
+              setStudentPipelineFeed((previous) =>
+                mergeEventsBounded(previous, afterPipeline, MAX_FEED_SOURCE_EVENTS)
+              );
+            }
+          })
+          .catch((error) => reportBackgroundError('wsBackfill.student', error))
+          .finally(() => {
+            wsBackfillInFlightRef.current = false;
+          });
+        return;
+      }
+
+      Promise.all([
+        api.eventsFeed(token, { limit, includeInternal: true, stage: 'BEFORE_PIPELINE' }),
+        api.eventsFeed(token, { limit, includeInternal: true, stage: 'AFTER_PIPELINE' })
+      ])
+        .then(([beforePipeline, afterPipeline]) => {
+          if (beforePipeline.length > 0) {
+            setAdminData((previous) => {
+              if (!previous) {
+                return previous;
+              }
+              const nextFeed = mergeEventsBounded(previous.events, beforePipeline, MAX_FEED_SOURCE_EVENTS);
+              if (nextFeed === previous.events) {
+                return previous;
+              }
+              return {
+                ...previous,
+                events: nextFeed
+              };
+            });
+          }
+          if (afterPipeline.length > 0) {
+            setAdminPipelineFeed((previous) =>
+              mergeEventsBounded(previous, afterPipeline, MAX_FEED_SOURCE_EVENTS)
+            );
+          }
+        })
+        .catch((error) => reportBackgroundError('wsBackfill.admin', error))
+        .finally(() => {
+          wsBackfillInFlightRef.current = false;
+        });
+    }, 3000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [reportBackgroundError, session, token]);
 
   useEffect(() => {
     if (!feedScenarioConfig) {
@@ -4443,14 +4547,14 @@ export default function App() {
       studentVisibleFeedIdsRef.current = new Set();
       return;
     }
-    const nextIds = new Set(studentVisibleFeed.map((event) => event.id));
+    const nextIds = new Set(studentVisibleFeed.map((event) => eventFeedKey(event)));
     if (!studentVisibleFeedInitializedRef.current) {
       studentVisibleFeedInitializedRef.current = true;
       studentVisibleFeedIdsRef.current = nextIds;
       return;
     }
     const previousIds = studentVisibleFeedIdsRef.current;
-    const newlyVisible = studentVisibleFeed.filter((event) => !previousIds.has(event.id));
+    const newlyVisible = studentVisibleFeed.filter((event) => !previousIds.has(eventFeedKey(event)));
     studentVisibleFeedIdsRef.current = nextIds;
     if (newlyVisible.length > 0) {
       markFeedEventsRecent(newlyVisible);
@@ -4591,7 +4695,7 @@ export default function App() {
   const studentFeedValues = useMemo(() => {
     const values = new Map<string, string>();
     for (const event of studentVisibleFeed) {
-      values.set(event.id, eventValueSummary(event));
+      values.set(eventFeedKey(event), eventValueSummary(event));
     }
     return values;
   }, [studentVisibleFeed]);
@@ -4602,7 +4706,7 @@ export default function App() {
   const adminFeedValues = useMemo(() => {
     const values = new Map<string, string>();
     for (const event of adminVisibleFeed) {
-      values.set(event.id, eventValueSummary(event));
+      values.set(eventFeedKey(event), eventValueSummary(event));
     }
     return values;
   }, [adminVisibleFeed]);
@@ -4610,7 +4714,7 @@ export default function App() {
   const adminPipelineFeedValues = useMemo(() => {
     const values = new Map<string, string>();
     for (const event of adminPipelineVisibleFeed) {
-      values.set(event.id, eventValueSummary(event));
+      values.set(eventFeedKey(event), eventValueSummary(event));
     }
     return values;
   }, [adminPipelineVisibleFeed]);
@@ -4836,34 +4940,37 @@ export default function App() {
     if (studentVisibleFeed.length === 0) {
       return null;
     }
-    return studentVisibleFeed.map((eventItem) => (
-      <tr
-        key={eventItem.id}
-        className={`feed-row-clickable ${recentFeedEventIds[eventItem.id] ? 'feed-row-new' : ''}`}
-        role="button"
-        tabIndex={0}
-        onClick={() => {
-          setSelectedEvent(eventItem);
-          setEventDetailsViewMode('rendered');
-        }}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
+    return studentVisibleFeed.map((eventItem) => {
+      const key = eventFeedKey(eventItem);
+      return (
+        <tr
+          key={key}
+          className={`feed-row-clickable ${recentFeedEventIds[key] ? 'feed-row-new' : ''}`}
+          role="button"
+          tabIndex={0}
+          onClick={() => {
             setSelectedEvent(eventItem);
             setEventDetailsViewMode('rendered');
-          }
-        }}
-      >
-        <td>{formatTs(eventItem.ingestTs)}</td>
-        <td>{eventSourceLabel(eventItem)}</td>
-        <td className="mono">{eventItem.topic}</td>
-        <td className="mono raw-cell">
-          {studentFeedViewMode === 'rendered'
-            ? (studentFeedValues.get(eventItem.id) ?? '')
-            : eventItem.payloadJson}
-        </td>
-      </tr>
-    ));
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              setSelectedEvent(eventItem);
+              setEventDetailsViewMode('rendered');
+            }
+          }}
+        >
+          <td>{formatTs(eventItem.ingestTs)}</td>
+          <td>{eventSourceLabel(eventItem)}</td>
+          <td className="mono">{eventItem.topic}</td>
+          <td className="mono raw-cell">
+            {studentFeedViewMode === 'rendered'
+              ? (studentFeedValues.get(key) ?? '')
+              : eventItem.payloadJson}
+          </td>
+        </tr>
+      );
+    });
   }, [eventSourceLabel, formatTs, recentFeedEventIds, studentFeedValues, studentFeedViewMode, studentVisibleFeed]);
 
   const adminDeviceCards = useMemo(() => {
@@ -5200,68 +5307,74 @@ export default function App() {
     if (adminVisibleFeed.length === 0) {
       return null;
     }
-    return adminVisibleFeed.map((eventItem) => (
-      <tr
-        key={eventItem.id}
-        className={`feed-row-clickable ${recentFeedEventIds[eventItem.id] ? 'feed-row-new' : ''}`}
-        role="button"
-        tabIndex={0}
-        onClick={() => {
-          setSelectedEvent(eventItem);
-          setEventDetailsViewMode('rendered');
-        }}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
+    return adminVisibleFeed.map((eventItem) => {
+      const key = eventFeedKey(eventItem);
+      return (
+        <tr
+          key={key}
+          className={`feed-row-clickable ${recentFeedEventIds[key] ? 'feed-row-new' : ''}`}
+          role="button"
+          tabIndex={0}
+          onClick={() => {
             setSelectedEvent(eventItem);
             setEventDetailsViewMode('rendered');
-          }
-        }}
-      >
-        <td>{formatTs(eventItem.ingestTs)}</td>
-        <td>{eventSourceLabel(eventItem)}</td>
-        <td className="mono">{eventItem.topic}</td>
-        <td className="mono raw-cell">
-          {adminFeedViewMode === 'rendered'
-            ? (adminFeedValues.get(eventItem.id) ?? '')
-            : eventItem.payloadJson}
-        </td>
-      </tr>
-    ));
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              setSelectedEvent(eventItem);
+              setEventDetailsViewMode('rendered');
+            }
+          }}
+        >
+          <td>{formatTs(eventItem.ingestTs)}</td>
+          <td>{eventSourceLabel(eventItem)}</td>
+          <td className="mono">{eventItem.topic}</td>
+          <td className="mono raw-cell">
+            {adminFeedViewMode === 'rendered'
+              ? (adminFeedValues.get(key) ?? '')
+              : eventItem.payloadJson}
+          </td>
+        </tr>
+      );
+    });
   }, [adminFeedValues, adminFeedViewMode, adminVisibleFeed, eventSourceLabel, formatTs, recentFeedEventIds]);
 
   const adminPipelineFeedRows = useMemo(() => {
     if (adminPipelineVisibleFeed.length === 0) {
       return null;
     }
-    return adminPipelineVisibleFeed.map((eventItem) => (
-      <tr
-        key={eventItem.id}
-        className={`feed-row-clickable ${recentFeedEventIds[eventItem.id] ? 'feed-row-new' : ''}`}
-        role="button"
-        tabIndex={0}
-        onClick={() => {
-          setSelectedEvent(eventItem);
-          setEventDetailsViewMode('rendered');
-        }}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
+    return adminPipelineVisibleFeed.map((eventItem) => {
+      const key = eventFeedKey(eventItem);
+      return (
+        <tr
+          key={key}
+          className={`feed-row-clickable ${recentFeedEventIds[key] ? 'feed-row-new' : ''}`}
+          role="button"
+          tabIndex={0}
+          onClick={() => {
             setSelectedEvent(eventItem);
             setEventDetailsViewMode('rendered');
-          }
-        }}
-      >
-        <td>{formatTs(eventItem.ingestTs)}</td>
-        <td>{eventSourceLabel(eventItem)}</td>
-        <td className="mono">{eventItem.topic}</td>
-        <td className="mono raw-cell">
-          {adminFeedViewMode === 'rendered'
-            ? (adminPipelineFeedValues.get(eventItem.id) ?? '')
-            : eventItem.payloadJson}
-        </td>
-      </tr>
-    ));
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              setSelectedEvent(eventItem);
+              setEventDetailsViewMode('rendered');
+            }
+          }}
+        >
+          <td>{formatTs(eventItem.ingestTs)}</td>
+          <td>{eventSourceLabel(eventItem)}</td>
+          <td className="mono">{eventItem.topic}</td>
+          <td className="mono raw-cell">
+            {adminFeedViewMode === 'rendered'
+              ? (adminPipelineFeedValues.get(key) ?? '')
+              : eventItem.payloadJson}
+          </td>
+        </tr>
+      );
+    });
   }, [
     adminPipelineFeedValues,
     adminFeedViewMode,
