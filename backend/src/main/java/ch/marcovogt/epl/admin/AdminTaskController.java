@@ -67,6 +67,7 @@ public class AdminTaskController {
         TaskDefinition active = taskStateService.activateTask(body.taskId(), principal.username());
         FeedScenarioConfigDto scenarioConfig = feedScenarioService.applyPreset(
                 active.pipeline().scenarioOverlays(),
+                active.pipeline().studentDeviceViewDisturbed(),
                 principal.username()
         );
         realtimeSyncService.broadcastTaskAndCapabilities(active);
@@ -77,7 +78,8 @@ public class AdminTaskController {
                 principal.username(),
                 Map.of(
                         "taskId", active.id(),
-                        "scenarioOverlays", scenarioConfig.scenarioOverlays()
+                        "scenarioOverlays", scenarioConfig.scenarioOverlays(),
+                        "studentDeviceViewDisturbed", scenarioConfig.studentDeviceViewDisturbed()
                 )
         );
 
@@ -230,6 +232,7 @@ public class AdminTaskController {
         if (!Objects.equals(activeBefore, activeAfter.id())) {
             FeedScenarioConfigDto scenarioConfig = feedScenarioService.applyPreset(
                     activeAfter.pipeline().scenarioOverlays(),
+                    activeAfter.pipeline().studentDeviceViewDisturbed(),
                     principal.username()
             );
             realtimeSyncService.broadcastFeedScenarios(scenarioConfig);

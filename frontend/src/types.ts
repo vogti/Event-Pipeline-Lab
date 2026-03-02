@@ -71,7 +71,6 @@ export interface TaskCapabilities {
   canViewRoomEvents: boolean;
   canSendDeviceCommands: boolean;
   studentSendEventEnabled: boolean;
-  studentDeviceViewDisturbed: boolean;
   canFilterByTopic: boolean;
   showInternalEventsToggle: boolean;
   allowedConfigOptions: string[];
@@ -187,6 +186,7 @@ export interface ExternalStreamSource {
 
 export interface FeedScenarioConfig {
   scenarioOverlays: string[];
+  studentDeviceViewDisturbed: boolean;
   updatedAt: TimestampValue;
   updatedBy: string;
 }

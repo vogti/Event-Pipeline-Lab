@@ -31,18 +31,26 @@ public class FeedScenarioService {
     }
 
     @Transactional
-    public FeedScenarioConfigDto updateConfig(List<String> scenarioOverlays, String actor) {
+    public FeedScenarioConfigDto updateConfig(
+            List<String> scenarioOverlays,
+            boolean studentDeviceViewDisturbed,
+            String actor
+    ) {
         FeedScenarioState state = loadOrCreate();
         List<String> normalized = PipelineScenarioOverlayCodec.normalize(scenarioOverlays, true);
-        persist(state, normalized, actor);
+        persist(state, normalized, studentDeviceViewDisturbed, actor);
         return toDto(state);
     }
 
     @Transactional
-    public FeedScenarioConfigDto applyPreset(List<String> scenarioOverlays, String actor) {
+    public FeedScenarioConfigDto applyPreset(
+            List<String> scenarioOverlays,
+            boolean studentDeviceViewDisturbed,
+            String actor
+    ) {
         FeedScenarioState state = loadOrCreate();
         List<String> normalized = PipelineScenarioOverlayCodec.normalize(scenarioOverlays, false);
-        persist(state, normalized, actor);
+        persist(state, normalized, studentDeviceViewDisturbed, actor);
         return toDto(state);
     }
 
@@ -51,14 +59,21 @@ public class FeedScenarioService {
             FeedScenarioState created = new FeedScenarioState();
             created.setId(STATE_ID);
             created.setOverlaysJson("[]");
+            created.setStudentDeviceViewDisturbed(false);
             created.setUpdatedAt(Instant.now(clock));
             created.setUpdatedBy("system");
             return repository.save(created);
         });
     }
 
-    private void persist(FeedScenarioState state, List<String> scenarioOverlays, String actor) {
+    private void persist(
+            FeedScenarioState state,
+            List<String> scenarioOverlays,
+            boolean studentDeviceViewDisturbed,
+            String actor
+    ) {
         state.setOverlaysJson(serialize(scenarioOverlays));
+        state.setStudentDeviceViewDisturbed(studentDeviceViewDisturbed);
         state.setUpdatedAt(Instant.now(clock));
         state.setUpdatedBy(actor == null || actor.isBlank() ? "system" : actor);
         repository.save(state);
@@ -67,6 +82,7 @@ public class FeedScenarioService {
     private FeedScenarioConfigDto toDto(FeedScenarioState state) {
         return new FeedScenarioConfigDto(
                 deserialize(state.getOverlaysJson()),
+                state.isStudentDeviceViewDisturbed(),
                 state.getUpdatedAt(),
                 state.getUpdatedBy()
         );

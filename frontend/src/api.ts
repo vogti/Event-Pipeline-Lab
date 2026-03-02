@@ -512,12 +512,16 @@ export const api = {
     return request<FeedScenarioConfig>('/api/admin/scenarios', undefined, token);
   },
 
-  updateAdminScenarios(token: string, scenarioOverlays: string[]): Promise<FeedScenarioConfig> {
+  updateAdminScenarios(
+    token: string,
+    scenarioOverlays: string[],
+    studentDeviceViewDisturbed: boolean
+  ): Promise<FeedScenarioConfig> {
     return request<FeedScenarioConfig>(
       '/api/admin/scenarios',
       {
         method: 'POST',
-        body: JSON.stringify({ scenarioOverlays })
+        body: JSON.stringify({ scenarioOverlays, studentDeviceViewDisturbed })
       },
       token
     );

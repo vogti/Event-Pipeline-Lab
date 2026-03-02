@@ -58,7 +58,6 @@ public class TaskCatalog {
                                 false,
                                 false,
                                 false,
-                                false,
                                 List.of("displayMode", "sensorFocus"),
                                 List.of(),
                                 StudentDeviceScope.OWN_DEVICE,
@@ -93,7 +92,6 @@ public class TaskCatalog {
                         "All group events visible, analysis with filters.",
                         new TaskCapabilities(
                                 true,
-                                false,
                                 false,
                                 false,
                                 true,
@@ -134,7 +132,6 @@ public class TaskCatalog {
                                 false,
                                 true,
                                 false,
-                                false,
                                 true,
                                 false,
                                 List.of("displayMode", "sensorFocus", "commandPanel", "pipelineStateReset"),
@@ -172,7 +169,6 @@ public class TaskCatalog {
                         new TaskCapabilities(
                                 true,
                                 true,
-                                false,
                                 false,
                                 true,
                                 true,

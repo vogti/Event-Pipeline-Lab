@@ -659,6 +659,7 @@ export function useRealtimeSync({
             previous &&
             previous.updatedAt === config.updatedAt &&
             previous.updatedBy === config.updatedBy &&
+            previous.studentDeviceViewDisturbed === config.studentDeviceViewDisturbed &&
             previous.scenarioOverlays.length === config.scenarioOverlays.length &&
             previous.scenarioOverlays.every((value, index) => value === config.scenarioOverlays[index])
           ) {
@@ -763,6 +764,7 @@ export function useRealtimeSync({
             previous &&
             previous.updatedAt === config.updatedAt &&
             previous.updatedBy === config.updatedBy &&
+            previous.studentDeviceViewDisturbed === config.studentDeviceViewDisturbed &&
             previous.scenarioOverlays.length === config.scenarioOverlays.length &&
             previous.scenarioOverlays.every((value, index) => value === config.scenarioOverlays[index])
           ) {

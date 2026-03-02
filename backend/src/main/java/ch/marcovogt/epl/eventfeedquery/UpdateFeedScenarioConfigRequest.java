@@ -4,6 +4,7 @@ import jakarta.validation.constraints.NotNull;
 import java.util.List;
 
 public record UpdateFeedScenarioConfigRequest(
-        @NotNull List<String> scenarioOverlays
+        @NotNull List<String> scenarioOverlays,
+        boolean studentDeviceViewDisturbed
 ) {
 }

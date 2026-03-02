@@ -33,7 +33,6 @@ public class TaskStateService {
             true,
             true,
             true,
-            false,
             true,
             true,
             List.of("*"),
@@ -636,9 +635,6 @@ public class TaskStateService {
                 pipeline != null
                         ? pipeline.studentSendEventEnabled()
                         : base.studentSendEventEnabled(),
-                pipeline != null
-                        ? pipeline.studentDeviceViewDisturbed()
-                        : base.studentDeviceViewDisturbed(),
                 base.canFilterByTopic(),
                 base.showInternalEventsToggle(),
                 base.allowedConfigOptions(),

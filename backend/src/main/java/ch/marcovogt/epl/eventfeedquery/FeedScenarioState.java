@@ -16,6 +16,9 @@ public class FeedScenarioState {
     @Column(name = "overlays_json", nullable = false, columnDefinition = "text")
     private String overlaysJson;
 
+    @Column(name = "student_device_view_disturbed", nullable = false)
+    private boolean studentDeviceViewDisturbed;
+
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
@@ -36,6 +39,14 @@ public class FeedScenarioState {
 
     public void setOverlaysJson(String overlaysJson) {
         this.overlaysJson = overlaysJson;
+    }
+
+    public boolean isStudentDeviceViewDisturbed() {
+        return studentDeviceViewDisturbed;
+    }
+
+    public void setStudentDeviceViewDisturbed(boolean studentDeviceViewDisturbed) {
+        this.studentDeviceViewDisturbed = studentDeviceViewDisturbed;
     }
 
     public Instant getUpdatedAt() {

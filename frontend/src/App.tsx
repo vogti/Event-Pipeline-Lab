@@ -741,6 +741,8 @@ export default function App() {
   );
   const [feedScenarioConfig, setFeedScenarioConfig] = useState<FeedScenarioConfig | null>(null);
   const [feedScenarioDraft, setFeedScenarioDraft] = useState<string[]>([]);
+  const [feedScenarioStudentDeviceViewDisturbedDraft, setFeedScenarioStudentDeviceViewDisturbedDraft] =
+    useState<boolean>(false);
 
   const studentPauseRef = useRef(studentFeedPaused);
   const adminPauseRef = useRef(adminFeedPaused);
@@ -1092,6 +1094,7 @@ export default function App() {
     setSystemDataImportSelection(createSystemDataPartSelection(false));
     setFeedScenarioConfig(null);
     setFeedScenarioDraft([]);
+    setFeedScenarioStudentDeviceViewDisturbedDraft(false);
     setStudentSettingsOpen(false);
     setAboutModalOpen(false);
     setToasts([]);
@@ -1405,7 +1408,7 @@ export default function App() {
   const studentCommandTargetScope = normalizeStudentDeviceScope(
     studentData?.capabilities.studentCommandTargetScope
   );
-  const studentDeviceViewDisturbed = Boolean(studentData?.capabilities.studentDeviceViewDisturbed);
+  const studentDeviceViewDisturbed = Boolean(feedScenarioConfig?.studentDeviceViewDisturbed);
   const studentOwnDeviceId = (session?.groupKey ?? '').trim();
   const studentAdminDeviceId = (studentData?.settings.adminDeviceId ?? '').trim();
   const studentSendEventTargetTypeOptions = useMemo<MqttComposerTargetType[]>(
@@ -2036,9 +2039,11 @@ export default function App() {
   useEffect(() => {
     if (!feedScenarioConfig) {
       setFeedScenarioDraft([]);
+      setFeedScenarioStudentDeviceViewDisturbedDraft(false);
       return;
     }
     setFeedScenarioDraft(feedScenarioConfig.scenarioOverlays);
+    setFeedScenarioStudentDeviceViewDisturbedDraft(Boolean(feedScenarioConfig.studentDeviceViewDisturbed));
   }, [feedScenarioConfig]);
 
   const adminPhysicalDeviceIds = useMemo(() => {
@@ -2810,6 +2815,10 @@ export default function App() {
     setFeedScenarioDraft(scenarioOverlays);
   }, []);
 
+  const changeFeedScenarioStudentDeviceViewDisturbed = useCallback((disturbed: boolean) => {
+    setFeedScenarioStudentDeviceViewDisturbedDraft(disturbed);
+  }, []);
+
   const saveAdminFeedScenarios = async () => {
     if (!token || !session || session.role !== 'ADMIN') {
       return;
@@ -2817,9 +2826,14 @@ export default function App() {
     setBusyKey('admin-scenarios');
     setErrorMessage(null);
     try {
-      const updated = await api.updateAdminScenarios(token, feedScenarioDraft);
+      const updated = await api.updateAdminScenarios(
+        token,
+        feedScenarioDraft,
+        feedScenarioStudentDeviceViewDisturbedDraft
+      );
       setFeedScenarioConfig(updated);
       setFeedScenarioDraft(updated.scenarioOverlays);
+      setFeedScenarioStudentDeviceViewDisturbedDraft(Boolean(updated.studentDeviceViewDisturbed));
       pushToast(t('settingsUpdated'));
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
@@ -5532,8 +5546,10 @@ export default function App() {
                 <PipelineScenariosSection
                   t={t}
                   overlays={feedScenarioDraft}
+                  studentDeviceViewDisturbed={feedScenarioStudentDeviceViewDisturbedDraft}
                   busy={busyKey === 'admin-scenarios'}
                   onOverlaysChange={changeFeedScenarioOverlays}
+                  onStudentDeviceViewDisturbedChange={changeFeedScenarioStudentDeviceViewDisturbed}
                   onSave={saveAdminFeedScenarios}
                 />
               ) : null}

@@ -55,13 +55,17 @@ public class FeedScenarioController {
         SessionPrincipal principal = requestAuth.requireRole(request, AppRole.ADMIN);
         FeedScenarioConfigDto updated = feedScenarioService.updateConfig(
                 body.scenarioOverlays(),
+                body.studentDeviceViewDisturbed(),
                 principal.username()
         );
         realtimeSyncService.broadcastFeedScenarios(updated);
         adminAuditLogger.logAction(
                 "admin.feed-scenarios.update",
                 principal.username(),
-                Map.of("scenarioOverlays", updated.scenarioOverlays())
+                Map.of(
+                        "scenarioOverlays", updated.scenarioOverlays(),
+                        "studentDeviceViewDisturbed", updated.studentDeviceViewDisturbed()
+                )
         );
         return updated;
     }

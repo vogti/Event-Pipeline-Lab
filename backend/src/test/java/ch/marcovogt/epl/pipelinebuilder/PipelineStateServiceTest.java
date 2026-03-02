@@ -94,7 +94,7 @@ class PipelineStateServiceTest {
         lenient().when(taskStateService.currentStudentCapabilities()).thenReturn(activeTask().studentCapabilities());
         lenient().when(authService.listStudentGroupKeys()).thenReturn(List.of("epld01"));
         lenient().when(appSettingsService.getAdminDeviceId()).thenReturn(null);
-        lenient().when(feedScenarioService.getConfig()).thenReturn(new FeedScenarioConfigDto(List.of(), Instant.now(), "test"));
+        lenient().when(feedScenarioService.getConfig()).thenReturn(new FeedScenarioConfigDto(List.of(), false, Instant.now(), "test"));
         lenient().when(pipelineObservabilityService.snapshot(anyString(), anyString(), any(PipelineProcessingSection.class)))
                 .thenReturn(new PipelineObservabilityDto(
                         1,
@@ -359,7 +359,6 @@ class PipelineStateServiceTest {
                 new TaskCapabilities(
                         false,
                         true,
-                        false,
                         false,
                         true,
                         false,

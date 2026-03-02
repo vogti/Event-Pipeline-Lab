@@ -206,7 +206,6 @@ class TaskPipelineConfigServiceTest {
                         false,
                         false,
                         false,
-                        false,
                         List.of(),
                         List.of(),
                         StudentDeviceScope.OWN_DEVICE,
@@ -241,7 +240,6 @@ class TaskPipelineConfigServiceTest {
                 "Description",
                 "Description",
                 new TaskCapabilities(
-                        false,
                         false,
                         false,
                         false,

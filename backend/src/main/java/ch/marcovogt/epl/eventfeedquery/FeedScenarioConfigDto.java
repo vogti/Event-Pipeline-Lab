@@ -5,6 +5,7 @@ import java.util.List;
 
 public record FeedScenarioConfigDto(
         List<String> scenarioOverlays,
+        boolean studentDeviceViewDisturbed,
         Instant updatedAt,
         String updatedBy
 ) {

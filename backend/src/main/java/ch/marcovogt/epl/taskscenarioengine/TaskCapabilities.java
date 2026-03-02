@@ -6,7 +6,6 @@ public record TaskCapabilities(
         boolean canViewRoomEvents,
         boolean canSendDeviceCommands,
         boolean studentSendEventEnabled,
-        boolean studentDeviceViewDisturbed,
         boolean canFilterByTopic,
         boolean showInternalEventsToggle,
         List<String> allowedConfigOptions,
