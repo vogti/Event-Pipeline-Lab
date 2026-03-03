@@ -268,6 +268,84 @@ class PipelineObservabilityServiceTest {
     }
 
     @Test
+    void filterPayloadNumericShouldParseMeasurementUnitsInPayload() {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(
+                        0,
+                        "FILTER_PAYLOAD",
+                        java.util.Map.of(
+                                "payloadFilterMode", "NUMERIC",
+                                "payloadFilterOperator", "GT",
+                                "payloadFilterValue", "2.3"
+                        )
+                ))
+        );
+        CanonicalEventDto matching = event(
+                "payload-unit-pass",
+                "epld01/event/sensor/ldr",
+                "sensor.ldr.voltage",
+                EventCategory.SENSOR,
+                "\"2.37 V\""
+        );
+        CanonicalEventDto nonMatching = event(
+                "payload-unit-drop",
+                "epld01/event/sensor/ldr",
+                "sensor.ldr.voltage",
+                EventCategory.SENSOR,
+                "\"2.25 V\""
+        );
+
+        CanonicalEventDto kept = service.recordEvent("task_intro", "epld01", processing, matching);
+        CanonicalEventDto dropped = service.recordEvent("task_intro", "epld01", processing, nonMatching);
+        PipelineBlockObservabilityDto block = service.snapshot("task_intro", "epld01", processing).blocks().get(0);
+
+        assertThat(kept).isNotNull();
+        assertThat(dropped).isNull();
+        assertThat(block.dropReasons()).containsEntry("payload_filtered", 1L);
+    }
+
+    @Test
+    void filterPayloadNumericShouldAcceptCommaDecimalsAndUnitInConfiguredValue() {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(
+                        0,
+                        "FILTER_PAYLOAD",
+                        java.util.Map.of(
+                                "payloadFilterMode", "NUMERIC",
+                                "payloadFilterOperator", "GTE",
+                                "payloadFilterValue", "25.3 \u00b0C"
+                        )
+                ))
+        );
+        CanonicalEventDto matching = event(
+                "payload-comma-pass",
+                "epld01/event/sensor/temperature",
+                "sensor.temperature.changed",
+                EventCategory.SENSOR,
+                "\"25,3 \u00b0C\""
+        );
+        CanonicalEventDto nonMatching = event(
+                "payload-comma-drop",
+                "epld01/event/sensor/temperature",
+                "sensor.temperature.changed",
+                EventCategory.SENSOR,
+                "\"24,9 \u00b0C\""
+        );
+
+        CanonicalEventDto kept = service.recordEvent("task_intro", "epld01", processing, matching);
+        CanonicalEventDto dropped = service.recordEvent("task_intro", "epld01", processing, nonMatching);
+        PipelineBlockObservabilityDto block = service.snapshot("task_intro", "epld01", processing).blocks().get(0);
+
+        assertThat(kept).isNotNull();
+        assertThat(dropped).isNull();
+        assertThat(block.dropReasons()).containsEntry("payload_filtered", 1L);
+    }
+
+    @Test
     void filterPayloadStringShouldSupportCaseInsensitiveContains() {
         PipelineProcessingSection processing = new PipelineProcessingSection(
                 "CONSTRAINED",

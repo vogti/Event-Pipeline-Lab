@@ -23,6 +23,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.LongSupplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -45,6 +47,9 @@ public class PipelineObservabilityService {
     private static final int MAX_DEDUP_STORE_SIZE = 5_000;
     private static final String MODE_EPHEMERAL = "EPHEMERAL";
     private static final String MODE_PERSISTED = "PERSISTED";
+    private static final Pattern LEADING_NUMERIC_PATTERN = Pattern.compile(
+            "^\\s*([+-]?(?:\\d+(?:[\\.,]\\d+)?|[\\.,]\\d+)(?:[eE][+-]?\\d+)?)"
+    );
 
     private final ObjectMapper objectMapper;
     private final Clock clock;
@@ -828,10 +833,23 @@ public class PipelineObservabilityService {
         if (value == null || value.isBlank()) {
             return null;
         }
+        String trimmed = value.trim();
         try {
-            return Double.parseDouble(value.trim());
+            return Double.parseDouble(trimmed);
         } catch (NumberFormatException ex) {
-            return null;
+            Matcher matcher = LEADING_NUMERIC_PATTERN.matcher(trimmed);
+            if (!matcher.find()) {
+                return null;
+            }
+            String numericPart = matcher.group(1);
+            if (numericPart == null || numericPart.isBlank()) {
+                return null;
+            }
+            try {
+                return Double.parseDouble(numericPart.replace(',', '.'));
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
         }
     }
 
