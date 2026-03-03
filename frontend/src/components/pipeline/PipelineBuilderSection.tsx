@@ -388,6 +388,8 @@ function processingBlockDocBodyKey(blockType: string): I18nKey {
     case 'FILTER_PAYLOAD':
     case 'FILTER_VALUE':
       return 'pipelineDocBlockFilterPayloadBody';
+    case 'CONDITIONAL_PAYLOAD':
+      return 'pipelineDocBlockConditionalPayloadBody';
     case 'EXTRACT_VALUE':
       return 'pipelineDocBlockExtractValueBody';
     case 'TRANSFORM_PAYLOAD':
@@ -615,6 +617,11 @@ type PayloadFilterConfigDraft = {
   caseSensitive: boolean;
 };
 
+type ConditionalPayloadConfigDraft = PayloadFilterConfigDraft & {
+  onMatchValue: string;
+  onNoMatchValue: string;
+};
+
 const PAYLOAD_FILTER_NUMERIC_OPERATORS: Array<{ id: PayloadFilterNumericOperator; labelKey: I18nKey }> = [
   { id: 'EQ', labelKey: 'pipelineFilterPayloadOperatorEq' },
   { id: 'NEQ', labelKey: 'pipelineFilterPayloadOperatorNeq' },
@@ -672,6 +679,17 @@ function parsePayloadFilterConfig(config: Record<string, unknown>): PayloadFilte
     operator,
     value: typeof valueRaw === 'string' ? valueRaw : String(valueRaw),
     caseSensitive
+  };
+}
+
+function parseConditionalPayloadConfig(config: Record<string, unknown>): ConditionalPayloadConfigDraft {
+  const base = parsePayloadFilterConfig(config);
+  const onMatchRaw = config.payloadOnMatch ?? config.payloadIfMatched ?? config.onMatchValue ?? config.trueValue ?? '';
+  const onNoMatchRaw = config.payloadOnNoMatch ?? config.payloadIfNotMatched ?? config.onNoMatchValue ?? config.falseValue ?? '';
+  return {
+    ...base,
+    onMatchValue: typeof onMatchRaw === 'string' ? onMatchRaw : String(onMatchRaw),
+    onNoMatchValue: typeof onNoMatchRaw === 'string' ? onNoMatchRaw : String(onNoMatchRaw)
   };
 }
 
@@ -930,6 +948,15 @@ export function PipelineBuilderSection({
     operator: 'EQ',
     value: '',
     caseSensitive: false
+  });
+  const [conditionalPayloadModalSlotIndex, setConditionalPayloadModalSlotIndex] = useState<number | null>(null);
+  const [conditionalPayloadDraft, setConditionalPayloadDraft] = useState<ConditionalPayloadConfigDraft>({
+    mode: 'STRING',
+    operator: 'EQ',
+    value: '',
+    caseSensitive: false,
+    onMatchValue: '',
+    onNoMatchValue: ''
   });
   const [rateLimitModalSlotIndex, setRateLimitModalSlotIndex] = useState<number | null>(null);
   const [rateLimitDraft, setRateLimitDraft] = useState<RateLimitConfigDraft>({ maxEvents: 20, windowMs: 1000 });
@@ -1542,6 +1569,34 @@ export function PipelineBuilderSection({
     closePayloadFilterModal();
   };
 
+  const openConditionalPayloadModal = (slotIndex: number, slotConfig: Record<string, unknown>) => {
+    setConditionalPayloadDraft(parseConditionalPayloadConfig(slotConfig));
+    setConditionalPayloadModalSlotIndex(slotIndex);
+  };
+
+  const closeConditionalPayloadModal = () => {
+    setConditionalPayloadModalSlotIndex(null);
+  };
+
+  const saveConditionalPayloadModal = () => {
+    if (conditionalPayloadModalSlotIndex === null || !onChangeSlotConfig) {
+      closeConditionalPayloadModal();
+      return;
+    }
+    const normalizedOperator = normalizePayloadFilterOperator(conditionalPayloadDraft.mode, conditionalPayloadDraft.operator);
+    onChangeSlotConfig(conditionalPayloadModalSlotIndex, 'payloadFilterMode', conditionalPayloadDraft.mode);
+    onChangeSlotConfig(conditionalPayloadModalSlotIndex, 'payloadFilterOperator', normalizedOperator);
+    onChangeSlotConfig(conditionalPayloadModalSlotIndex, 'payloadFilterValue', conditionalPayloadDraft.value.trim());
+    onChangeSlotConfig(
+      conditionalPayloadModalSlotIndex,
+      'payloadFilterCaseSensitive',
+      conditionalPayloadDraft.caseSensitive
+    );
+    onChangeSlotConfig(conditionalPayloadModalSlotIndex, 'payloadOnMatch', conditionalPayloadDraft.onMatchValue);
+    onChangeSlotConfig(conditionalPayloadModalSlotIndex, 'payloadOnNoMatch', conditionalPayloadDraft.onNoMatchValue);
+    closeConditionalPayloadModal();
+  };
+
   const openRateLimitModal = (slotIndex: number, slotConfig: Record<string, unknown>) => {
     setRateLimitDraft(parseRateLimitConfig(slotConfig));
     setRateLimitModalSlotIndex(slotIndex);
@@ -1945,6 +2000,7 @@ export function PipelineBuilderSection({
                 const isFilterTopic = !isEmpty && slot.blockType.trim().toUpperCase() === 'FILTER_TOPIC';
                 const isFilterPayload = !isEmpty
                   && ['FILTER_PAYLOAD', 'FILTER_VALUE'].includes(slot.blockType.trim().toUpperCase());
+                const isConditionalPayload = !isEmpty && slot.blockType.trim().toUpperCase() === 'CONDITIONAL_PAYLOAD';
                 const isFilterRateLimit = !isEmpty && slot.blockType.trim().toUpperCase() === 'FILTER_RATE_LIMIT';
                 const isDedup = !isEmpty && slot.blockType.trim().toUpperCase() === 'DEDUP';
                 const isWindowAggregate = !isEmpty && slot.blockType.trim().toUpperCase() === 'WINDOW_AGGREGATE';
@@ -1955,6 +2011,9 @@ export function PipelineBuilderSection({
                   : '';
                 const configuredPayloadFilter = isFilterPayload
                   ? parsePayloadFilterConfig(slot.config ?? {})
+                  : null;
+                const configuredConditionalPayload = isConditionalPayload
+                  ? parseConditionalPayloadConfig(slot.config ?? {})
                   : null;
                 const configuredRateLimit = isFilterRateLimit ? parseRateLimitConfig(slot.config ?? {}) : null;
                 const configuredDedup = isDedup ? parseDedupConfig(slot.config ?? {}) : null;
@@ -2138,6 +2197,39 @@ export function PipelineBuilderSection({
                             disabled={!slotEditable || !onChangeSlotConfig}
                           >
                             {t('pipelineFilterPayloadConfigure')}
+                          </button>
+                        </div>
+                      ) : null}
+                      {isConditionalPayload && configuredConditionalPayload ? (
+                        <div className="pipeline-slot-config">
+                          <span>{t('pipelineConditionalPayloadLabel')}</span>
+                          <p className="muted mono">
+                            {configuredConditionalPayload.value.trim().length > 0
+                              ? `${t(
+                                configuredConditionalPayload.mode === 'NUMERIC'
+                                  ? 'pipelineFilterPayloadModeNumeric'
+                                  : 'pipelineFilterPayloadModeString'
+                              )} | ${t(payloadFilterOperatorLabelKey(configuredConditionalPayload.operator))} | ${
+                                configuredConditionalPayload.value.trim()
+                              }${
+                                configuredConditionalPayload.mode === 'STRING'
+                                && configuredConditionalPayload.caseSensitive
+                                  ? ` | ${t('pipelineFilterPayloadCaseSensitive')}`
+                                  : ''
+                              } | ${t('pipelineConditionalPayloadWhenTrue')}: ${
+                                configuredConditionalPayload.onMatchValue || '""'
+                              } | ${t('pipelineConditionalPayloadWhenFalse')}: ${
+                                configuredConditionalPayload.onNoMatchValue || '""'
+                              }`
+                              : t('pipelineFilterPayloadNotConfigured')}
+                          </p>
+                          <button
+                            type="button"
+                            className="button tiny secondary"
+                            onClick={() => openConditionalPayloadModal(slot.index, slot.config ?? {})}
+                            disabled={!slotEditable || !onChangeSlotConfig}
+                          >
+                            {t('pipelineConditionalPayloadConfigure')}
                           </button>
                         </div>
                       ) : null}
@@ -2807,6 +2899,127 @@ export function PipelineBuilderSection({
               ) : null}
               <div className="event-modal-actions">
                 <button className="button" type="button" onClick={savePayloadFilterModal}>
+                  {t('save')}
+                </button>
+              </div>
+            </div>
+          </div>
+        </ModalPortal>
+      ) : null}
+
+      {conditionalPayloadModalSlotIndex !== null ? (
+        <ModalPortal>
+          <div className="event-modal-backdrop" onClick={closeConditionalPayloadModal}>
+            <div className="event-modal mqtt-compose-modal" onClick={(event) => event.stopPropagation()}>
+              <div className="panel-header">
+                <h2>{t('pipelineConditionalPayloadModalTitle')}</h2>
+                <button
+                  className="modal-close-button"
+                  type="button"
+                  onClick={closeConditionalPayloadModal}
+                  aria-label={t('close')}
+                  title={t('close')}
+                >
+                  <CloseIcon />
+                </button>
+              </div>
+              <label className="stack pipeline-field">
+                <span>{t('pipelineFilterPayloadMode')}</span>
+                <select
+                  className="input"
+                  value={conditionalPayloadDraft.mode}
+                  onChange={(event) => {
+                    const nextMode = event.target.value === 'NUMERIC' ? 'NUMERIC' : 'STRING';
+                    setConditionalPayloadDraft((previous) => ({
+                      ...previous,
+                      mode: nextMode,
+                      operator: normalizePayloadFilterOperator(nextMode, previous.operator)
+                    }));
+                  }}
+                >
+                  <option value="NUMERIC">{t('pipelineFilterPayloadModeNumeric')}</option>
+                  <option value="STRING">{t('pipelineFilterPayloadModeString')}</option>
+                </select>
+              </label>
+              <label className="stack pipeline-field">
+                <span>{t('pipelineFilterPayloadOperator')}</span>
+                <select
+                  className="input"
+                  value={conditionalPayloadDraft.operator}
+                  onChange={(event) =>
+                    setConditionalPayloadDraft((previous) => ({
+                      ...previous,
+                      operator: normalizePayloadFilterOperator(previous.mode, event.target.value)
+                    }))
+                  }
+                >
+                  {(conditionalPayloadDraft.mode === 'NUMERIC'
+                    ? PAYLOAD_FILTER_NUMERIC_OPERATORS
+                    : PAYLOAD_FILTER_STRING_OPERATORS
+                  ).map((operator) => (
+                    <option key={operator.id} value={operator.id}>
+                      {t(operator.labelKey)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="stack pipeline-field">
+                <span>{t('pipelineFilterPayloadValue')}</span>
+                <input
+                  className="input mono"
+                  type="text"
+                  value={conditionalPayloadDraft.value}
+                  onChange={(event) =>
+                    setConditionalPayloadDraft((previous) => ({
+                      ...previous,
+                      value: event.target.value
+                    }))
+                  }
+                />
+              </label>
+              {conditionalPayloadDraft.mode === 'STRING' ? (
+                <label className="checkbox-inline pipeline-field">
+                  <input
+                    type="checkbox"
+                    checked={conditionalPayloadDraft.caseSensitive}
+                    onChange={(event) =>
+                      setConditionalPayloadDraft((previous) => ({
+                        ...previous,
+                        caseSensitive: event.target.checked
+                      }))
+                    }
+                  />
+                  <span>{t('pipelineFilterPayloadCaseSensitive')}</span>
+                </label>
+              ) : null}
+              <label className="stack pipeline-field">
+                <span>{t('pipelineConditionalPayloadWhenTrue')}</span>
+                <input
+                  className="input mono"
+                  value={conditionalPayloadDraft.onMatchValue}
+                  onChange={(event) =>
+                    setConditionalPayloadDraft((previous) => ({
+                      ...previous,
+                      onMatchValue: event.target.value
+                    }))
+                  }
+                />
+              </label>
+              <label className="stack pipeline-field">
+                <span>{t('pipelineConditionalPayloadWhenFalse')}</span>
+                <input
+                  className="input mono"
+                  value={conditionalPayloadDraft.onNoMatchValue}
+                  onChange={(event) =>
+                    setConditionalPayloadDraft((previous) => ({
+                      ...previous,
+                      onNoMatchValue: event.target.value
+                    }))
+                  }
+                />
+              </label>
+              <div className="event-modal-actions">
+                <button className="button" type="button" onClick={saveConditionalPayloadModal}>
                   {t('save')}
                 </button>
               </div>

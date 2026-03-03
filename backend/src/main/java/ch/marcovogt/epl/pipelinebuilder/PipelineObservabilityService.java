@@ -442,76 +442,34 @@ public class PipelineObservabilityService {
                 yield BlockResult.drop("topic_filtered", state.backlogDepth);
             }
             case "FILTER_VALUE", "FILTER_PAYLOAD" -> {
-                String configuredValue = firstNonBlank(
-                        configString(blockConfig, "payloadFilterValue"),
-                        configString(blockConfig, "value"),
-                        configString(blockConfig, "matchValue"),
-                        configString(blockConfig, "expectedValue")
-                );
-                if (configuredValue.isBlank()) {
+                PayloadFilterEvaluation evaluation = evaluatePayloadFilter(event, blockConfig);
+                if (!evaluation.configured()) {
                     yield BlockResult.pass(next, state.backlogDepth);
                 }
-                String mode = configEnum(
-                        blockConfig,
-                        List.of("payloadFilterMode", "mode"),
-                        Set.of("NUMERIC", "STRING"),
-                        "STRING"
-                );
-                String operator = configString(
-                        blockConfig,
-                        List.of("payloadFilterOperator", "operator", "comparison")
-                ).toUpperCase(Locale.ROOT);
-
-                if ("NUMERIC".equals(mode)) {
-                    String normalizedOperator = switch (operator) {
-                        case "GT", "GTE", "LT", "LTE", "NEQ", "EQ" -> operator;
-                        default -> "EQ";
-                    };
-                    Double actualNumeric = parseDoubleOrNull(payloadAsString(event.payload));
-                    Double expectedNumeric = parseDoubleOrNull(configuredValue);
-                    if (actualNumeric == null || expectedNumeric == null) {
-                        yield BlockResult.drop("payload_non_numeric", state.backlogDepth);
-                    }
-                    boolean matched = switch (normalizedOperator) {
-                        case "GT" -> actualNumeric > expectedNumeric;
-                        case "GTE" -> actualNumeric >= expectedNumeric;
-                        case "LT" -> actualNumeric < expectedNumeric;
-                        case "LTE" -> actualNumeric <= expectedNumeric;
-                        case "NEQ" -> Double.compare(actualNumeric, expectedNumeric) != 0;
-                        default -> Double.compare(actualNumeric, expectedNumeric) == 0;
-                    };
-                    if (matched) {
-                        yield BlockResult.pass(next, state.backlogDepth);
-                    }
-                    yield BlockResult.drop("payload_filtered", state.backlogDepth);
+                if (!evaluation.numericComparable()) {
+                    yield BlockResult.drop("payload_non_numeric", state.backlogDepth);
                 }
-
-                String normalizedOperator = switch (operator) {
-                    case "CONTAINS", "STARTS_WITH", "ENDS_WITH", "NEQ", "EQ" -> operator;
-                    default -> "EQ";
-                };
-                boolean caseSensitive = configBoolean(
-                        blockConfig,
-                        List.of("payloadFilterCaseSensitive", "caseSensitive"),
-                        false
-                );
-                String actualString = payloadAsString(event.payload);
-                String expectedString = configuredValue;
-                if (!caseSensitive) {
-                    actualString = actualString.toLowerCase(Locale.ROOT);
-                    expectedString = expectedString.toLowerCase(Locale.ROOT);
-                }
-                boolean matched = switch (normalizedOperator) {
-                    case "NEQ" -> !actualString.equals(expectedString);
-                    case "CONTAINS" -> actualString.contains(expectedString);
-                    case "STARTS_WITH" -> actualString.startsWith(expectedString);
-                    case "ENDS_WITH" -> actualString.endsWith(expectedString);
-                    default -> actualString.equals(expectedString);
-                };
-                if (matched) {
+                if (evaluation.matched()) {
                     yield BlockResult.pass(next, state.backlogDepth);
                 }
                 yield BlockResult.drop("payload_filtered", state.backlogDepth);
+            }
+            case "CONDITIONAL_PAYLOAD" -> {
+                PayloadFilterEvaluation evaluation = evaluatePayloadFilter(event, blockConfig);
+                if (!evaluation.configured()) {
+                    yield BlockResult.pass(next, state.backlogDepth);
+                }
+                String payloadOnMatch = configString(
+                        blockConfig,
+                        List.of("payloadOnMatch", "payloadIfMatched", "onMatchValue", "trueValue")
+                );
+                String payloadOnNoMatch = configString(
+                        blockConfig,
+                        List.of("payloadOnNoMatch", "payloadIfNotMatched", "onNoMatchValue", "falseValue")
+                );
+                boolean matched = evaluation.numericComparable() && evaluation.matched();
+                next.payload = objectMapper.getNodeFactory().textNode(matched ? payloadOnMatch : payloadOnNoMatch);
+                yield BlockResult.pass(next, state.backlogDepth);
             }
             case "EXTRACT_VALUE" -> {
                 String extractedValue = EventValueExtractor.extractValue(
@@ -539,6 +497,7 @@ public class PipelineObservabilityService {
                 next.payload = objectMapper.getNodeFactory().textNode(mapped);
                 yield BlockResult.pass(next, state.backlogDepth);
             }
+
             case "FILTER_RATE_LIMIT" -> {
                 int maxEvents = configInt(
                         blockConfig,
@@ -851,6 +810,73 @@ public class PipelineObservabilityService {
                 return null;
             }
         }
+    }
+
+    private PayloadFilterEvaluation evaluatePayloadFilter(RuntimeEvent event, Map<String, Object> blockConfig) {
+        String configuredValue = firstNonBlank(
+                configString(blockConfig, "payloadFilterValue"),
+                configString(blockConfig, "value"),
+                configString(blockConfig, "matchValue"),
+                configString(blockConfig, "expectedValue")
+        );
+        if (configuredValue.isBlank()) {
+            return PayloadFilterEvaluation.notConfigured();
+        }
+        String mode = configEnum(
+                blockConfig,
+                List.of("payloadFilterMode", "mode"),
+                Set.of("NUMERIC", "STRING"),
+                "STRING"
+        );
+        String operator = configString(
+                blockConfig,
+                List.of("payloadFilterOperator", "operator", "comparison")
+        ).toUpperCase(Locale.ROOT);
+
+        if ("NUMERIC".equals(mode)) {
+            String normalizedOperator = switch (operator) {
+                case "GT", "GTE", "LT", "LTE", "NEQ", "EQ" -> operator;
+                default -> "EQ";
+            };
+            Double actualNumeric = parseDoubleOrNull(payloadAsString(event.payload));
+            Double expectedNumeric = parseDoubleOrNull(configuredValue);
+            if (actualNumeric == null || expectedNumeric == null) {
+                return PayloadFilterEvaluation.nonNumeric();
+            }
+            boolean matched = switch (normalizedOperator) {
+                case "GT" -> actualNumeric > expectedNumeric;
+                case "GTE" -> actualNumeric >= expectedNumeric;
+                case "LT" -> actualNumeric < expectedNumeric;
+                case "LTE" -> actualNumeric <= expectedNumeric;
+                case "NEQ" -> Double.compare(actualNumeric, expectedNumeric) != 0;
+                default -> Double.compare(actualNumeric, expectedNumeric) == 0;
+            };
+            return PayloadFilterEvaluation.configured(matched);
+        }
+
+        String normalizedOperator = switch (operator) {
+            case "CONTAINS", "STARTS_WITH", "ENDS_WITH", "NEQ", "EQ" -> operator;
+            default -> "EQ";
+        };
+        boolean caseSensitive = configBoolean(
+                blockConfig,
+                List.of("payloadFilterCaseSensitive", "caseSensitive"),
+                false
+        );
+        String actualString = payloadAsString(event.payload);
+        String expectedString = configuredValue;
+        if (!caseSensitive) {
+            actualString = actualString.toLowerCase(Locale.ROOT);
+            expectedString = expectedString.toLowerCase(Locale.ROOT);
+        }
+        boolean matched = switch (normalizedOperator) {
+            case "NEQ" -> !actualString.equals(expectedString);
+            case "CONTAINS" -> actualString.contains(expectedString);
+            case "STARTS_WITH" -> actualString.startsWith(expectedString);
+            case "ENDS_WITH" -> actualString.endsWith(expectedString);
+            default -> actualString.equals(expectedString);
+        };
+        return PayloadFilterEvaluation.configured(matched);
     }
 
     private void resetWindowAggregateState(BlockState state, long windowStartMs) {
@@ -1308,6 +1334,20 @@ public class PipelineObservabilityService {
 
     private String stateKey(String taskId, String groupKey) {
         return taskId + "|" + groupKey;
+    }
+
+    private record PayloadFilterEvaluation(boolean configured, boolean numericComparable, boolean matched) {
+        private static PayloadFilterEvaluation notConfigured() {
+            return new PayloadFilterEvaluation(false, true, false);
+        }
+
+        private static PayloadFilterEvaluation nonNumeric() {
+            return new PayloadFilterEvaluation(true, false, false);
+        }
+
+        private static PayloadFilterEvaluation configured(boolean matched) {
+            return new PayloadFilterEvaluation(true, true, matched);
+        }
     }
 
     private static final class GroupState {

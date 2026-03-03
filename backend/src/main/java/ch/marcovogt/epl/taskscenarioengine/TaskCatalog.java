@@ -13,6 +13,7 @@ public class TaskCatalog {
             "FILTER_DEVICE",
             "FILTER_TOPIC",
             "FILTER_PAYLOAD",
+            "CONDITIONAL_PAYLOAD",
             "EXTRACT_VALUE",
             "TRANSFORM_PAYLOAD"
     );
@@ -21,6 +22,7 @@ public class TaskCatalog {
             "FILTER_DEVICE",
             "FILTER_TOPIC",
             "FILTER_PAYLOAD",
+            "CONDITIONAL_PAYLOAD",
             "EXTRACT_VALUE",
             "TRANSFORM_PAYLOAD",
             "FILTER_RATE_LIMIT",
@@ -32,6 +34,7 @@ public class TaskCatalog {
             "FILTER_DEVICE",
             "FILTER_TOPIC",
             "FILTER_PAYLOAD",
+            "CONDITIONAL_PAYLOAD",
             "EXTRACT_VALUE",
             "TRANSFORM_PAYLOAD",
             "FILTER_RATE_LIMIT",

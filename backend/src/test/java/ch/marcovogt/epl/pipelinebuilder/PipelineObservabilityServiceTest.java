@@ -447,6 +447,85 @@ class PipelineObservabilityServiceTest {
     }
 
     @Test
+    void conditionalPayloadShouldSetConfiguredPayloadForMatchAndMiss() {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(
+                        0,
+                        "CONDITIONAL_PAYLOAD",
+                        java.util.Map.of(
+                                "payloadFilterMode", "NUMERIC",
+                                "payloadFilterOperator", "GTE",
+                                "payloadFilterValue", "20",
+                                "payloadOnMatch", "high",
+                                "payloadOnNoMatch", "low"
+                        )
+                ))
+        );
+        CanonicalEventDto matching = event(
+                "conditional-payload-pass",
+                "epld01/event/sensor/temperature",
+                "sensor.temperature.changed",
+                EventCategory.SENSOR,
+                "\"25.3 °C\""
+        );
+        CanonicalEventDto nonMatching = event(
+                "conditional-payload-miss",
+                "epld01/event/sensor/temperature",
+                "sensor.temperature.changed",
+                EventCategory.SENSOR,
+                "\"18.9 °C\""
+        );
+
+        CanonicalEventDto passOutput = service.recordEvent("task_intro", "epld01", processing, matching);
+        CanonicalEventDto missOutput = service.recordEvent("task_intro", "epld01", processing, nonMatching);
+        PipelineBlockObservabilityDto block = service.snapshot("task_intro", "epld01", processing).blocks().get(0);
+
+        assertThat(passOutput).isNotNull();
+        assertThat(missOutput).isNotNull();
+        assertThat(passOutput.payloadJson()).isEqualTo("\"high\"");
+        assertThat(missOutput.payloadJson()).isEqualTo("\"low\"");
+        assertThat(block.outCount()).isEqualTo(2);
+        assertThat(block.dropCount()).isEqualTo(0);
+    }
+
+    @Test
+    void conditionalPayloadShouldUseNoMatchValueForNonNumericInput() {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(
+                        0,
+                        "CONDITIONAL_PAYLOAD",
+                        java.util.Map.of(
+                                "payloadFilterMode", "NUMERIC",
+                                "payloadFilterOperator", "EQ",
+                                "payloadFilterValue", "1",
+                                "payloadOnMatch", "yes",
+                                "payloadOnNoMatch", "no"
+                        )
+                ))
+        );
+        CanonicalEventDto nonNumeric = event(
+                "conditional-payload-non-numeric",
+                "epld01/event/button/black",
+                "button.black.press",
+                EventCategory.BUTTON,
+                "\"pressed\""
+        );
+
+        CanonicalEventDto output = service.recordEvent("task_intro", "epld01", processing, nonNumeric);
+        PipelineBlockObservabilityDto block = service.snapshot("task_intro", "epld01", processing).blocks().get(0);
+
+        assertThat(output).isNotNull();
+        assertThat(output.payloadJson()).isEqualTo("\"no\"");
+        assertThat(block.outCount()).isEqualTo(1);
+        assertThat(block.dropCount()).isEqualTo(0);
+        assertThat(block.dropReasons()).isEmpty();
+    }
+
+    @Test
     void transformPayloadBlockShouldMapExtractedValues() {
         PipelineProcessingSection processing = new PipelineProcessingSection(
                 "CONSTRAINED",
