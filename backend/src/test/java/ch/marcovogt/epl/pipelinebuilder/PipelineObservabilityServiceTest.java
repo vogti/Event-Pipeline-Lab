@@ -229,6 +229,146 @@ class PipelineObservabilityServiceTest {
     }
 
     @Test
+    void filterPayloadNumericShouldApplyGreaterThanComparison() {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(
+                        0,
+                        "FILTER_PAYLOAD",
+                        java.util.Map.of(
+                                "payloadFilterMode", "NUMERIC",
+                                "payloadFilterOperator", "GT",
+                                "payloadFilterValue", "10"
+                        )
+                ))
+        );
+        CanonicalEventDto matching = event(
+                "payload-num-pass",
+                "epld01/event/counter",
+                "counter.blue.changed",
+                EventCategory.COUNTER,
+                "12"
+        );
+        CanonicalEventDto nonMatching = event(
+                "payload-num-drop",
+                "epld01/event/counter",
+                "counter.blue.changed",
+                EventCategory.COUNTER,
+                "9"
+        );
+
+        CanonicalEventDto kept = service.recordEvent("task_intro", "epld01", processing, matching);
+        CanonicalEventDto dropped = service.recordEvent("task_intro", "epld01", processing, nonMatching);
+        PipelineBlockObservabilityDto block = service.snapshot("task_intro", "epld01", processing).blocks().get(0);
+
+        assertThat(kept).isNotNull();
+        assertThat(dropped).isNull();
+        assertThat(block.dropReasons()).containsEntry("payload_filtered", 1L);
+    }
+
+    @Test
+    void filterPayloadStringShouldSupportCaseInsensitiveContains() {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(
+                        0,
+                        "FILTER_PAYLOAD",
+                        java.util.Map.of(
+                                "payloadFilterMode", "STRING",
+                                "payloadFilterOperator", "CONTAINS",
+                                "payloadFilterValue", "on",
+                                "payloadFilterCaseSensitive", false
+                        )
+                ))
+        );
+        CanonicalEventDto matching = event(
+                "payload-str-pass",
+                "epld01/event/button/black",
+                "button.black.press",
+                EventCategory.BUTTON,
+                "\"Pressed_ON_State\""
+        );
+        CanonicalEventDto nonMatching = event(
+                "payload-str-drop",
+                "epld01/event/button/black",
+                "button.black.press",
+                EventCategory.BUTTON,
+                "\"released\""
+        );
+
+        CanonicalEventDto kept = service.recordEvent("task_intro", "epld01", processing, matching);
+        CanonicalEventDto dropped = service.recordEvent("task_intro", "epld01", processing, nonMatching);
+        PipelineBlockObservabilityDto block = service.snapshot("task_intro", "epld01", processing).blocks().get(0);
+
+        assertThat(kept).isNotNull();
+        assertThat(dropped).isNull();
+        assertThat(block.dropReasons()).containsEntry("payload_filtered", 1L);
+    }
+
+    @Test
+    void filterPayloadStringShouldRespectCaseSensitivityWhenEnabled() {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(
+                        0,
+                        "FILTER_PAYLOAD",
+                        java.util.Map.of(
+                                "payloadFilterMode", "STRING",
+                                "payloadFilterOperator", "EQ",
+                                "payloadFilterValue", "Pressed",
+                                "payloadFilterCaseSensitive", true
+                        )
+                ))
+        );
+        CanonicalEventDto mismatchingCase = event(
+                "payload-case-drop",
+                "epld01/event/button/black",
+                "button.black.press",
+                EventCategory.BUTTON,
+                "\"pressed\""
+        );
+
+        CanonicalEventDto dropped = service.recordEvent("task_intro", "epld01", processing, mismatchingCase);
+        PipelineBlockObservabilityDto block = service.snapshot("task_intro", "epld01", processing).blocks().get(0);
+
+        assertThat(dropped).isNull();
+        assertThat(block.dropReasons()).containsEntry("payload_filtered", 1L);
+    }
+
+    @Test
+    void filterPayloadNumericShouldDropNonNumericPayloadsWithSpecificReason() {
+        PipelineProcessingSection processing = new PipelineProcessingSection(
+                "CONSTRAINED",
+                1,
+                List.of(new PipelineSlot(
+                        0,
+                        "FILTER_VALUE",
+                        java.util.Map.of(
+                                "payloadFilterMode", "NUMERIC",
+                                "payloadFilterOperator", "LTE",
+                                "payloadFilterValue", "5"
+                        )
+                ))
+        );
+        CanonicalEventDto nonNumeric = event(
+                "payload-non-numeric",
+                "epld01/event/button/black",
+                "button.black.press",
+                EventCategory.BUTTON,
+                "\"pressed\""
+        );
+
+        CanonicalEventDto dropped = service.recordEvent("task_intro", "epld01", processing, nonNumeric);
+        PipelineBlockObservabilityDto block = service.snapshot("task_intro", "epld01", processing).blocks().get(0);
+
+        assertThat(dropped).isNull();
+        assertThat(block.dropReasons()).containsEntry("payload_non_numeric", 1L);
+    }
+
+    @Test
     void transformPayloadBlockShouldMapExtractedValues() {
         PipelineProcessingSection processing = new PipelineProcessingSection(
                 "CONSTRAINED",

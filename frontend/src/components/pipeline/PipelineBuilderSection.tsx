@@ -385,6 +385,9 @@ function processingBlockDocBodyKey(blockType: string): I18nKey {
       return 'pipelineDocBlockFilterDeviceBody';
     case 'FILTER_TOPIC':
       return 'pipelineDocBlockFilterTopicBody';
+    case 'FILTER_PAYLOAD':
+    case 'FILTER_VALUE':
+      return 'pipelineDocBlockFilterPayloadBody';
     case 'EXTRACT_VALUE':
       return 'pipelineDocBlockExtractValueBody';
     case 'TRANSFORM_PAYLOAD':
@@ -598,6 +601,101 @@ function templateFromTopicFilter(filter: string): FilterTopicTemplate | null {
   }
   const matched = Object.entries(FILTER_TOPIC_TEMPLATE_TO_FILTER).find(([, value]) => value === normalized);
   return (matched?.[0] as FilterTopicTemplate | undefined) ?? null;
+}
+
+type PayloadFilterMode = 'NUMERIC' | 'STRING';
+type PayloadFilterNumericOperator = 'EQ' | 'NEQ' | 'GT' | 'GTE' | 'LT' | 'LTE';
+type PayloadFilterStringOperator = 'EQ' | 'NEQ' | 'CONTAINS' | 'STARTS_WITH' | 'ENDS_WITH';
+type PayloadFilterOperator = PayloadFilterNumericOperator | PayloadFilterStringOperator;
+
+type PayloadFilterConfigDraft = {
+  mode: PayloadFilterMode;
+  operator: PayloadFilterOperator;
+  value: string;
+  caseSensitive: boolean;
+};
+
+const PAYLOAD_FILTER_NUMERIC_OPERATORS: Array<{ id: PayloadFilterNumericOperator; labelKey: I18nKey }> = [
+  { id: 'EQ', labelKey: 'pipelineFilterPayloadOperatorEq' },
+  { id: 'NEQ', labelKey: 'pipelineFilterPayloadOperatorNeq' },
+  { id: 'GT', labelKey: 'pipelineFilterPayloadOperatorGt' },
+  { id: 'GTE', labelKey: 'pipelineFilterPayloadOperatorGte' },
+  { id: 'LT', labelKey: 'pipelineFilterPayloadOperatorLt' },
+  { id: 'LTE', labelKey: 'pipelineFilterPayloadOperatorLte' }
+];
+
+const PAYLOAD_FILTER_STRING_OPERATORS: Array<{ id: PayloadFilterStringOperator; labelKey: I18nKey }> = [
+  { id: 'EQ', labelKey: 'pipelineFilterPayloadOperatorEq' },
+  { id: 'NEQ', labelKey: 'pipelineFilterPayloadOperatorNeq' },
+  { id: 'CONTAINS', labelKey: 'pipelineFilterPayloadOperatorContains' },
+  { id: 'STARTS_WITH', labelKey: 'pipelineFilterPayloadOperatorStartsWith' },
+  { id: 'ENDS_WITH', labelKey: 'pipelineFilterPayloadOperatorEndsWith' }
+];
+
+function isPayloadFilterNumericOperator(value: string): value is PayloadFilterNumericOperator {
+  return value === 'EQ' || value === 'NEQ' || value === 'GT' || value === 'GTE' || value === 'LT' || value === 'LTE';
+}
+
+function isPayloadFilterStringOperator(value: string): value is PayloadFilterStringOperator {
+  return value === 'EQ'
+    || value === 'NEQ'
+    || value === 'CONTAINS'
+    || value === 'STARTS_WITH'
+    || value === 'ENDS_WITH';
+}
+
+function normalizePayloadFilterOperator(
+  mode: PayloadFilterMode,
+  rawOperator: unknown
+): PayloadFilterOperator {
+  const normalized = String(rawOperator ?? '').trim().toUpperCase();
+  if (mode === 'NUMERIC') {
+    return isPayloadFilterNumericOperator(normalized) ? normalized : 'EQ';
+  }
+  return isPayloadFilterStringOperator(normalized) ? normalized : 'EQ';
+}
+
+function parsePayloadFilterConfig(config: Record<string, unknown>): PayloadFilterConfigDraft {
+  const modeRaw = String(config.payloadFilterMode ?? config.mode ?? 'STRING').trim().toUpperCase();
+  const mode: PayloadFilterMode = modeRaw === 'NUMERIC' ? 'NUMERIC' : 'STRING';
+  const operator = normalizePayloadFilterOperator(
+    mode,
+    config.payloadFilterOperator ?? config.operator ?? config.comparison
+  );
+  const valueRaw = config.payloadFilterValue ?? config.value ?? config.matchValue ?? config.expectedValue ?? '';
+  const caseSensitiveRaw = config.payloadFilterCaseSensitive ?? config.caseSensitive ?? false;
+  const caseSensitive = typeof caseSensitiveRaw === 'boolean'
+    ? caseSensitiveRaw
+    : String(caseSensitiveRaw).trim().toLowerCase() === 'true';
+  return {
+    mode,
+    operator,
+    value: typeof valueRaw === 'string' ? valueRaw : String(valueRaw),
+    caseSensitive
+  };
+}
+
+function payloadFilterOperatorLabelKey(operator: PayloadFilterOperator): I18nKey {
+  switch (operator) {
+    case 'NEQ':
+      return 'pipelineFilterPayloadOperatorNeq';
+    case 'GT':
+      return 'pipelineFilterPayloadOperatorGt';
+    case 'GTE':
+      return 'pipelineFilterPayloadOperatorGte';
+    case 'LT':
+      return 'pipelineFilterPayloadOperatorLt';
+    case 'LTE':
+      return 'pipelineFilterPayloadOperatorLte';
+    case 'CONTAINS':
+      return 'pipelineFilterPayloadOperatorContains';
+    case 'STARTS_WITH':
+      return 'pipelineFilterPayloadOperatorStartsWith';
+    case 'ENDS_WITH':
+      return 'pipelineFilterPayloadOperatorEndsWith';
+    default:
+      return 'pipelineFilterPayloadOperatorEq';
+  }
 }
 
 type TransformPayloadMapping = {
@@ -826,6 +924,13 @@ export function PipelineBuilderSection({
   const [topicFilterModalMode, setTopicFilterModalMode] = useState<FilterTopicWizardMode>('guided');
   const [topicFilterModalTemplate, setTopicFilterModalTemplate] = useState<FilterTopicTemplate>('EVENT_ALL');
   const [topicFilterModalRawValue, setTopicFilterModalRawValue] = useState('');
+  const [payloadFilterModalSlotIndex, setPayloadFilterModalSlotIndex] = useState<number | null>(null);
+  const [payloadFilterDraft, setPayloadFilterDraft] = useState<PayloadFilterConfigDraft>({
+    mode: 'STRING',
+    operator: 'EQ',
+    value: '',
+    caseSensitive: false
+  });
   const [rateLimitModalSlotIndex, setRateLimitModalSlotIndex] = useState<number | null>(null);
   const [rateLimitDraft, setRateLimitDraft] = useState<RateLimitConfigDraft>({ maxEvents: 20, windowMs: 1000 });
   const [dedupModalSlotIndex, setDedupModalSlotIndex] = useState<number | null>(null);
@@ -1415,6 +1520,28 @@ export function PipelineBuilderSection({
     ? FILTER_TOPIC_TEMPLATE_TO_FILTER[topicFilterModalTemplate]
     : topicFilterModalRawValue.trim();
 
+  const openPayloadFilterModal = (slotIndex: number, slotConfig: Record<string, unknown>) => {
+    setPayloadFilterDraft(parsePayloadFilterConfig(slotConfig));
+    setPayloadFilterModalSlotIndex(slotIndex);
+  };
+
+  const closePayloadFilterModal = () => {
+    setPayloadFilterModalSlotIndex(null);
+  };
+
+  const savePayloadFilterModal = () => {
+    if (payloadFilterModalSlotIndex === null || !onChangeSlotConfig) {
+      closePayloadFilterModal();
+      return;
+    }
+    const normalizedOperator = normalizePayloadFilterOperator(payloadFilterDraft.mode, payloadFilterDraft.operator);
+    onChangeSlotConfig(payloadFilterModalSlotIndex, 'payloadFilterMode', payloadFilterDraft.mode);
+    onChangeSlotConfig(payloadFilterModalSlotIndex, 'payloadFilterOperator', normalizedOperator);
+    onChangeSlotConfig(payloadFilterModalSlotIndex, 'payloadFilterValue', payloadFilterDraft.value.trim());
+    onChangeSlotConfig(payloadFilterModalSlotIndex, 'payloadFilterCaseSensitive', payloadFilterDraft.caseSensitive);
+    closePayloadFilterModal();
+  };
+
   const openRateLimitModal = (slotIndex: number, slotConfig: Record<string, unknown>) => {
     setRateLimitDraft(parseRateLimitConfig(slotConfig));
     setRateLimitModalSlotIndex(slotIndex);
@@ -1816,6 +1943,8 @@ export function PipelineBuilderSection({
                 const slotEditable = view.permissions.processingEditable && !isTaskScopeLocked;
                 const showSlotDeviceScope = !isEmpty && blockSupportsDeviceScope(slot.blockType);
                 const isFilterTopic = !isEmpty && slot.blockType.trim().toUpperCase() === 'FILTER_TOPIC';
+                const isFilterPayload = !isEmpty
+                  && ['FILTER_PAYLOAD', 'FILTER_VALUE'].includes(slot.blockType.trim().toUpperCase());
                 const isFilterRateLimit = !isEmpty && slot.blockType.trim().toUpperCase() === 'FILTER_RATE_LIMIT';
                 const isDedup = !isEmpty && slot.blockType.trim().toUpperCase() === 'DEDUP';
                 const isWindowAggregate = !isEmpty && slot.blockType.trim().toUpperCase() === 'WINDOW_AGGREGATE';
@@ -1824,6 +1953,9 @@ export function PipelineBuilderSection({
                 const configuredTopicFilter = isFilterTopic
                   ? extractTopicFilterFromSlotConfig(slot.config ?? {})
                   : '';
+                const configuredPayloadFilter = isFilterPayload
+                  ? parsePayloadFilterConfig(slot.config ?? {})
+                  : null;
                 const configuredRateLimit = isFilterRateLimit ? parseRateLimitConfig(slot.config ?? {}) : null;
                 const configuredDedup = isDedup ? parseDedupConfig(slot.config ?? {}) : null;
                 const configuredWindowAggregate = isWindowAggregate
@@ -1978,6 +2110,34 @@ export function PipelineBuilderSection({
                             disabled={!slotEditable || !onChangeSlotConfig}
                           >
                             {t('pipelineFilterTopicConfigure')}
+                          </button>
+                        </div>
+                      ) : null}
+                      {isFilterPayload && configuredPayloadFilter ? (
+                        <div className="pipeline-slot-config">
+                          <span>{t('pipelineFilterPayloadLabel')}</span>
+                          <p className="muted mono">
+                            {configuredPayloadFilter.value.trim().length > 0
+                              ? `${t(
+                                configuredPayloadFilter.mode === 'NUMERIC'
+                                  ? 'pipelineFilterPayloadModeNumeric'
+                                  : 'pipelineFilterPayloadModeString'
+                              )} | ${t(payloadFilterOperatorLabelKey(configuredPayloadFilter.operator))} | ${
+                                configuredPayloadFilter.value.trim()
+                              }${
+                                configuredPayloadFilter.mode === 'STRING' && configuredPayloadFilter.caseSensitive
+                                  ? ` | ${t('pipelineFilterPayloadCaseSensitive')}`
+                                  : ''
+                              }`
+                              : t('pipelineFilterPayloadNotConfigured')}
+                          </p>
+                          <button
+                            type="button"
+                            className="button tiny secondary"
+                            onClick={() => openPayloadFilterModal(slot.index, slot.config ?? {})}
+                            disabled={!slotEditable || !onChangeSlotConfig}
+                          >
+                            {t('pipelineFilterPayloadConfigure')}
                           </button>
                         </div>
                       ) : null}
@@ -2555,6 +2715,101 @@ export function PipelineBuilderSection({
                 {t('save')}
               </button>
             </div>
+            </div>
+          </div>
+        </ModalPortal>
+      ) : null}
+
+      {payloadFilterModalSlotIndex !== null ? (
+        <ModalPortal>
+          <div className="event-modal-backdrop" onClick={closePayloadFilterModal}>
+            <div className="event-modal mqtt-compose-modal" onClick={(event) => event.stopPropagation()}>
+              <div className="panel-header">
+                <h2>{t('pipelineFilterPayloadModalTitle')}</h2>
+                <button
+                  className="modal-close-button"
+                  type="button"
+                  onClick={closePayloadFilterModal}
+                  aria-label={t('close')}
+                  title={t('close')}
+                >
+                  <CloseIcon />
+                </button>
+              </div>
+              <label className="stack pipeline-field">
+                <span>{t('pipelineFilterPayloadMode')}</span>
+                <select
+                  className="input"
+                  value={payloadFilterDraft.mode}
+                  onChange={(event) => {
+                    const nextMode = event.target.value === 'NUMERIC' ? 'NUMERIC' : 'STRING';
+                    setPayloadFilterDraft((previous) => ({
+                      ...previous,
+                      mode: nextMode,
+                      operator: normalizePayloadFilterOperator(nextMode, previous.operator)
+                    }));
+                  }}
+                >
+                  <option value="NUMERIC">{t('pipelineFilterPayloadModeNumeric')}</option>
+                  <option value="STRING">{t('pipelineFilterPayloadModeString')}</option>
+                </select>
+              </label>
+              <label className="stack pipeline-field">
+                <span>{t('pipelineFilterPayloadOperator')}</span>
+                <select
+                  className="input"
+                  value={payloadFilterDraft.operator}
+                  onChange={(event) =>
+                    setPayloadFilterDraft((previous) => ({
+                      ...previous,
+                      operator: normalizePayloadFilterOperator(previous.mode, event.target.value)
+                    }))
+                  }
+                >
+                  {(payloadFilterDraft.mode === 'NUMERIC'
+                    ? PAYLOAD_FILTER_NUMERIC_OPERATORS
+                    : PAYLOAD_FILTER_STRING_OPERATORS
+                  ).map((operator) => (
+                    <option key={operator.id} value={operator.id}>
+                      {t(operator.labelKey)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="stack pipeline-field">
+                <span>{t('pipelineFilterPayloadValue')}</span>
+                <input
+                  className="input mono"
+                  type={payloadFilterDraft.mode === 'NUMERIC' ? 'number' : 'text'}
+                  value={payloadFilterDraft.value}
+                  onChange={(event) =>
+                    setPayloadFilterDraft((previous) => ({
+                      ...previous,
+                      value: event.target.value
+                    }))
+                  }
+                />
+              </label>
+              {payloadFilterDraft.mode === 'STRING' ? (
+                <label className="checkbox-inline pipeline-field">
+                  <input
+                    type="checkbox"
+                    checked={payloadFilterDraft.caseSensitive}
+                    onChange={(event) =>
+                      setPayloadFilterDraft((previous) => ({
+                        ...previous,
+                        caseSensitive: event.target.checked
+                      }))
+                    }
+                  />
+                  <span>{t('pipelineFilterPayloadCaseSensitive')}</span>
+                </label>
+              ) : null}
+              <div className="event-modal-actions">
+                <button className="button" type="button" onClick={savePayloadFilterModal}>
+                  {t('save')}
+                </button>
+              </div>
             </div>
           </div>
         </ModalPortal>

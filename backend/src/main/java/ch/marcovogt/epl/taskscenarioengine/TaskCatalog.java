@@ -12,6 +12,7 @@ public class TaskCatalog {
     private static final List<String> PBV_BLOCKS_BASIC = List.of(
             "FILTER_DEVICE",
             "FILTER_TOPIC",
+            "FILTER_PAYLOAD",
             "EXTRACT_VALUE",
             "TRANSFORM_PAYLOAD"
     );
@@ -19,6 +20,7 @@ public class TaskCatalog {
     private static final List<String> PBV_BLOCKS_INTERMEDIATE = List.of(
             "FILTER_DEVICE",
             "FILTER_TOPIC",
+            "FILTER_PAYLOAD",
             "EXTRACT_VALUE",
             "TRANSFORM_PAYLOAD",
             "FILTER_RATE_LIMIT",
@@ -29,6 +31,7 @@ public class TaskCatalog {
     private static final List<String> PBV_BLOCKS_ADVANCED = List.of(
             "FILTER_DEVICE",
             "FILTER_TOPIC",
+            "FILTER_PAYLOAD",
             "EXTRACT_VALUE",
             "TRANSFORM_PAYLOAD",
             "FILTER_RATE_LIMIT",

@@ -295,6 +295,9 @@ public class TaskPipelineConfigService {
         if ("FILTER_DEVICE_TOPIC".equals(normalized)) {
             return "FILTER_DEVICE";
         }
+        if ("FILTER_VALUE".equals(normalized)) {
+            return "FILTER_PAYLOAD";
+        }
         return normalized;
     }
 }

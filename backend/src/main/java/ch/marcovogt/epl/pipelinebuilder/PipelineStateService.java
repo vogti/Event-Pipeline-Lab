@@ -1209,6 +1209,9 @@ public class PipelineStateService {
         if ("FILTER_DEVICE_TOPIC".equals(normalized)) {
             return "FILTER_DEVICE";
         }
+        if ("FILTER_VALUE".equals(normalized)) {
+            return "FILTER_PAYLOAD";
+        }
         if ("PARSE_VALIDATE".equals(normalized)
                 || "ROUTE".equals(normalized)
                 || "RETRY_DLQ".equals(normalized)

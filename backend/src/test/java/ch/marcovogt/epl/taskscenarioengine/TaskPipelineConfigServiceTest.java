@@ -148,6 +148,33 @@ class TaskPipelineConfigServiceTest {
     }
 
     @Test
+    void updateShouldNormalizeLegacyFilterValueAlias() {
+        AtomicReference<TaskPipelineConfigState> stored = new AtomicReference<>();
+        when(repository.findById("task_test")).thenAnswer(invocation -> Optional.ofNullable(stored.get()));
+        when(repository.save(any(TaskPipelineConfigState.class))).thenAnswer(invocation -> {
+            TaskPipelineConfigState state = invocation.getArgument(0);
+            stored.set(state);
+            return state;
+        });
+
+        TaskPipelineConfigDto updated = service.update(
+                baselineTaskDefinition(),
+                true,
+                5,
+                List.of("FILTER_VALUE", "FILTER_TOPIC"),
+                List.of(),
+                StudentDeviceScope.OWN_DEVICE,
+                StudentDeviceScope.OWN_DEVICE,
+                false,
+                false,
+                "admin"
+        );
+
+        assertThat(updated.allowedProcessingBlocks())
+                .containsExactly("FILTER_PAYLOAD", "FILTER_TOPIC");
+    }
+
+    @Test
     void updateShouldRejectUnknownBlockTypes() {
         assertThatThrownBy(() -> service.update(
                 baselineTaskDefinition(),
