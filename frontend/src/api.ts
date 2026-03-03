@@ -239,6 +239,17 @@ export const api = {
     );
   },
 
+  updateAdminPassword(token: string, currentPassword: string, newPassword: string): Promise<void> {
+    return request<void>(
+      '/api/auth/admin-password',
+      {
+        method: 'POST',
+        body: JSON.stringify({ currentPassword, newPassword })
+      },
+      token
+    );
+  },
+
   studentBootstrap(token: string): Promise<StudentBootstrap> {
     return request<StudentBootstrap>('/api/student/bootstrap', undefined, token);
   },

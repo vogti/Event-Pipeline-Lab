@@ -688,6 +688,11 @@ export default function App() {
   const [eventDetailsViewMode, setEventDetailsViewMode] = useState<EventDetailsViewMode>('rendered');
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [studentSettingsOpen, setStudentSettingsOpen] = useState(false);
+  const [adminPasswordModalOpen, setAdminPasswordModalOpen] = useState(false);
+  const [adminPasswordCurrent, setAdminPasswordCurrent] = useState('');
+  const [adminPasswordNext, setAdminPasswordNext] = useState('');
+  const [adminPasswordConfirm, setAdminPasswordConfirm] = useState('');
+  const [adminPasswordError, setAdminPasswordError] = useState<string | null>(null);
   const [aboutModalOpen, setAboutModalOpen] = useState(false);
   const [studentPipelineSimplifiedView, setStudentPipelineSimplifiedView] = useState<boolean>(() => {
     if (typeof window === 'undefined') {
@@ -1106,6 +1111,11 @@ export default function App() {
     setFeedScenarioDraft([]);
     setFeedScenarioStudentDeviceViewDisturbedDraft(false);
     setStudentSettingsOpen(false);
+    setAdminPasswordModalOpen(false);
+    setAdminPasswordCurrent('');
+    setAdminPasswordNext('');
+    setAdminPasswordConfirm('');
+    setAdminPasswordError(null);
     setAboutModalOpen(false);
     setToasts([]);
     adminDataRef.current = null;
@@ -4864,6 +4874,74 @@ export default function App() {
     setUserMenuOpen(false);
   }, [session]);
 
+  const closeAdminPasswordModal = useCallback(() => {
+    setAdminPasswordModalOpen(false);
+    setAdminPasswordCurrent('');
+    setAdminPasswordNext('');
+    setAdminPasswordConfirm('');
+    setAdminPasswordError(null);
+  }, []);
+
+  const openAdminPasswordModal = useCallback(() => {
+    if (session?.role !== 'ADMIN') {
+      return;
+    }
+    setAdminPasswordModalOpen(true);
+    setAdminPasswordCurrent('');
+    setAdminPasswordNext('');
+    setAdminPasswordConfirm('');
+    setAdminPasswordError(null);
+    setUserMenuOpen(false);
+  }, [session?.role]);
+
+  const saveAdminPassword = useCallback(async () => {
+    if (!token || session?.role !== 'ADMIN') {
+      return;
+    }
+
+    const currentPassword = adminPasswordCurrent.trim();
+    const newPassword = adminPasswordNext.trim();
+    const confirmPassword = adminPasswordConfirm.trim();
+
+    if (!currentPassword) {
+      setAdminPasswordError(t('adminPasswordCurrentRequired'));
+      return;
+    }
+    if (!newPassword) {
+      setAdminPasswordError(t('adminPasswordNewRequired'));
+      return;
+    }
+    if (newPassword === currentPassword) {
+      setAdminPasswordError(t('adminPasswordDifferentRequired'));
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setAdminPasswordError(t('adminPasswordConfirmMismatch'));
+      return;
+    }
+
+    setBusyKey('admin-password-change');
+    setAdminPasswordError(null);
+    try {
+      await api.updateAdminPassword(token, currentPassword, newPassword);
+      pushToast(t('adminPasswordChanged'));
+      closeAdminPasswordModal();
+    } catch (error) {
+      setAdminPasswordError(toErrorMessage(error));
+    } finally {
+      setBusyKey(null);
+    }
+  }, [
+    adminPasswordConfirm,
+    adminPasswordCurrent,
+    adminPasswordNext,
+    closeAdminPasswordModal,
+    pushToast,
+    session?.role,
+    t,
+    token
+  ]);
+
   const openAboutModal = useCallback(() => {
     setAboutModalOpen(true);
     setUserMenuOpen(false);
@@ -5402,6 +5480,8 @@ export default function App() {
         onToggleUserMenu={() => setUserMenuOpen((open) => !open)}
         onSetLanguage={setManualLanguage}
         onPipelineSimplifiedViewChange={setAdminPipelineSimplifiedView}
+        showAdminPasswordAction={session?.role === 'ADMIN'}
+        onOpenAdminPassword={openAdminPasswordModal}
         onOpenSettings={openSettingsSection}
         onOpenAbout={openAboutModal}
         onLogout={handleLogout}
@@ -5948,6 +6028,19 @@ export default function App() {
         pinEditorSaveBusy={pinEditorDeviceId ? busyKey === `pin-save-${pinEditorDeviceId}` : false}
         onSavePinEditor={savePinEditor}
         onClosePinEditor={closePinEditor}
+        adminPasswordModalOpen={adminPasswordModalOpen}
+        adminPasswordCurrent={adminPasswordCurrent}
+        adminPasswordNext={adminPasswordNext}
+        adminPasswordConfirm={adminPasswordConfirm}
+        adminPasswordError={adminPasswordError}
+        adminPasswordSaveBusy={busyKey === 'admin-password-change'}
+        onAdminPasswordCurrentChange={setAdminPasswordCurrent}
+        onAdminPasswordNextChange={setAdminPasswordNext}
+        onAdminPasswordConfirmChange={setAdminPasswordConfirm}
+        onSaveAdminPassword={() => {
+          void saveAdminPassword();
+        }}
+        onCloseAdminPasswordModal={closeAdminPasswordModal}
       />
     </div>
   );

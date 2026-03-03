@@ -76,6 +76,15 @@ public class AuthController {
         return AuthMeResponse.from(updated, deploymentInfoService.info());
     }
 
+    @PostMapping("/admin-password")
+    public void updateAdminPassword(
+            HttpServletRequest request,
+            @Valid @RequestBody AdminPasswordChangeRequest body
+    ) {
+        SessionPrincipal principal = requestAuth.requireRole(request, AppRole.ADMIN);
+        authService.updateAdminPassword(principal.username(), body.currentPassword(), body.newPassword());
+    }
+
     private void setSessionCookie(HttpServletResponse response, String token, Duration maxAge) {
         ResponseCookie cookie = ResponseCookie.from(SESSION_COOKIE, token)
                 .path("/")

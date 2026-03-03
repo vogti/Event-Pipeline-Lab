@@ -177,18 +177,31 @@ public class AuthService {
 
     @Transactional
     public String updateStudentGroupPin(String deviceId, String pin) {
-        String normalizedPin = pin == null ? "" : pin.trim();
-        if (normalizedPin.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "PIN must not be blank");
-        }
-        if (normalizedPin.length() > 64) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "PIN too long");
-        }
+        String normalizedPin = normalizePinOrThrow(pin);
 
         AuthAccount account = findStudentGroupAccount(deviceId);
         account.setPinCode(normalizedPin);
         authAccountRepository.save(account);
         return normalizedPin;
+    }
+
+    @Transactional
+    public void updateAdminPassword(String username, String currentPassword, String newPassword) {
+        AuthAccount account = authAccountRepository.findByUsernameAndRoleAndEnabledTrue(username, AppRole.ADMIN)
+                .orElseThrow(AuthExceptions::invalidSession);
+
+        String normalizedCurrent = currentPassword == null ? "" : currentPassword.trim();
+        if (!account.getPinCode().equals(normalizedCurrent)) {
+            throw AuthExceptions.invalidCredentials();
+        }
+
+        String normalizedNew = normalizePinOrThrow(newPassword);
+        if (normalizedNew.equals(normalizedCurrent)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "New password must be different");
+        }
+
+        account.setPinCode(normalizedNew);
+        authAccountRepository.save(account);
     }
 
     @Scheduled(fixedDelayString = "${epl.auth.cleanup-delay-ms:60000}")
@@ -224,6 +237,17 @@ public class AuthService {
                         HttpStatus.NOT_FOUND,
                         "Unknown student group account: " + deviceId
                 ));
+    }
+
+    private String normalizePinOrThrow(String pin) {
+        String normalizedPin = pin == null ? "" : pin.trim();
+        if (normalizedPin.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "PIN must not be blank");
+        }
+        if (normalizedPin.length() > 64) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "PIN too long");
+        }
+        return normalizedPin;
     }
 
     private SessionPrincipal toPrincipal(AuthSession session) {

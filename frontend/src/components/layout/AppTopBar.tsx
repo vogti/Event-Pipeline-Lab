@@ -18,6 +18,8 @@ interface AppTopBarProps {
   onToggleUserMenu: () => void;
   onSetLanguage: (language: Language) => void;
   onPipelineSimplifiedViewChange?: (next: boolean) => void;
+  showAdminPasswordAction?: boolean;
+  onOpenAdminPassword?: () => void;
   onOpenSettings: () => void;
   onOpenAbout: () => void;
   onLogout: () => void;
@@ -39,6 +41,8 @@ export function AppTopBar({
   onToggleUserMenu,
   onSetLanguage,
   onPipelineSimplifiedViewChange,
+  showAdminPasswordAction = false,
+  onOpenAdminPassword,
   onOpenSettings,
   onOpenAbout,
   onLogout
@@ -111,6 +115,12 @@ export function AppTopBar({
                       </button>
                     </div>
                   </div>
+                ) : null}
+
+                {showAdminPasswordAction && onOpenAdminPassword ? (
+                  <button className="button secondary user-menu-link" type="button" onClick={onOpenAdminPassword}>
+                    {t('changeAdminPassword')}
+                  </button>
                 ) : null}
 
                 <button className="button secondary user-menu-link" type="button" onClick={onOpenSettings}>

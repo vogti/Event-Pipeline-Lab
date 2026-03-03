@@ -94,3 +94,28 @@ describe('events feed limit clamping', () => {
     expect(parsed.searchParams.get('limit')).toBe('500');
   });
 });
+
+describe('admin password update api', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('sends current and new password to auth endpoint', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ status: 200, body: null }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await api.updateAdminPassword('token-admin', 'old-pass', 'new-pass');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [path, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(path).toBe('/api/auth/admin-password');
+    expect(requestInit.method).toBe('POST');
+
+    const body = JSON.parse(String(requestInit.body)) as Record<string, string>;
+    expect(body.currentPassword).toBe('old-pass');
+    expect(body.newPassword).toBe('new-pass');
+  });
+});

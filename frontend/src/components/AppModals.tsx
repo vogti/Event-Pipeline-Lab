@@ -35,6 +35,17 @@ interface AppModalsProps {
   pinEditorSaveBusy: boolean;
   onSavePinEditor: () => void;
   onClosePinEditor: () => void;
+  adminPasswordModalOpen: boolean;
+  adminPasswordCurrent: string;
+  adminPasswordNext: string;
+  adminPasswordConfirm: string;
+  adminPasswordError: string | null;
+  adminPasswordSaveBusy: boolean;
+  onAdminPasswordCurrentChange: (value: string) => void;
+  onAdminPasswordNextChange: (value: string) => void;
+  onAdminPasswordConfirmChange: (value: string) => void;
+  onSaveAdminPassword: () => void;
+  onCloseAdminPasswordModal: () => void;
 }
 
 export function AppModals({
@@ -67,7 +78,18 @@ export function AppModals({
   pinEditorLoading,
   pinEditorSaveBusy,
   onSavePinEditor,
-  onClosePinEditor
+  onClosePinEditor,
+  adminPasswordModalOpen,
+  adminPasswordCurrent,
+  adminPasswordNext,
+  adminPasswordConfirm,
+  adminPasswordError,
+  adminPasswordSaveBusy,
+  onAdminPasswordCurrentChange,
+  onAdminPasswordNextChange,
+  onAdminPasswordConfirmChange,
+  onSaveAdminPassword,
+  onCloseAdminPasswordModal
 }: AppModalsProps) {
   const virtualTemperature = Number.isFinite(virtualControlPatch?.temperatureC)
     ? virtualControlPatch?.temperatureC ?? 0
@@ -397,6 +419,72 @@ export function AppModals({
                 {t('savePin')}
               </button>
               <button className="button secondary" type="button" onClick={onClosePinEditor}>
+                {t('close')}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {adminPasswordModalOpen ? (
+        <div className="event-modal-backdrop" onClick={onCloseAdminPasswordModal}>
+          <div className="event-modal admin-password-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="panel-header">
+              <h2>{t('changeAdminPassword')}</h2>
+              <button
+                className="modal-close-button"
+                type="button"
+                onClick={onCloseAdminPasswordModal}
+                aria-label={t('close')}
+                title={t('close')}
+              >
+                <CloseIcon />
+              </button>
+            </div>
+
+            {adminPasswordError ? <div className="alert error">{adminPasswordError}</div> : null}
+
+            <div className="form-grid">
+              <label>
+                <span>{t('currentPassword')}</span>
+                <input
+                  className="input"
+                  type="password"
+                  autoComplete="current-password"
+                  value={adminPasswordCurrent}
+                  onChange={(event) => onAdminPasswordCurrentChange(event.target.value)}
+                  disabled={adminPasswordSaveBusy}
+                />
+              </label>
+              <label>
+                <span>{t('newPassword')}</span>
+                <input
+                  className="input"
+                  type="password"
+                  autoComplete="new-password"
+                  value={adminPasswordNext}
+                  onChange={(event) => onAdminPasswordNextChange(event.target.value)}
+                  disabled={adminPasswordSaveBusy}
+                />
+              </label>
+              <label>
+                <span>{t('confirmPassword')}</span>
+                <input
+                  className="input"
+                  type="password"
+                  autoComplete="new-password"
+                  value={adminPasswordConfirm}
+                  onChange={(event) => onAdminPasswordConfirmChange(event.target.value)}
+                  disabled={adminPasswordSaveBusy}
+                />
+              </label>
+            </div>
+
+            <div className="event-modal-actions">
+              <button className="button" type="button" onClick={onSaveAdminPassword} disabled={adminPasswordSaveBusy}>
+                {t('changeAdminPassword')}
+              </button>
+              <button className="button secondary" type="button" onClick={onCloseAdminPasswordModal}>
                 {t('close')}
               </button>
             </div>

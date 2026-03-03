@@ -11,6 +11,10 @@ const messages = {
     pin: 'PIN',
     login: 'Einloggen',
     logout: 'Abmelden',
+    changeAdminPassword: 'Admin-Passwort ändern',
+    currentPassword: 'Aktuelles Passwort',
+    newPassword: 'Neues Passwort',
+    confirmPassword: 'Passwort bestätigen',
     aboutEpl: 'Über EPL',
     aboutEplPurpose: 'Event Pipeline Lab (EPL) ist eine interaktive Lern- und Demo-Plattform für Event-Driven Data Pipelines.',
     aboutEplProbelektion: 'Entwickelt für eine Probelektion an der FHNW.',
@@ -546,7 +550,12 @@ const messages = {
     pinBlankError: 'PIN darf nicht leer sein',
     pinSaved: 'PIN gespeichert',
     configSaved: 'Gruppenkonfiguration gespeichert',
-    displayNameSaved: 'Anzeigename aktualisiert'
+    displayNameSaved: 'Anzeigename aktualisiert',
+    adminPasswordChanged: 'Admin-Passwort geändert',
+    adminPasswordCurrentRequired: 'Bitte aktuelles Passwort eingeben',
+    adminPasswordNewRequired: 'Bitte neues Passwort eingeben',
+    adminPasswordConfirmMismatch: 'Passwort-Bestätigung stimmt nicht überein',
+    adminPasswordDifferentRequired: 'Neues Passwort muss sich unterscheiden'
   },
   en: {
     appTitle: 'Event Pipeline Lab',
@@ -556,6 +565,10 @@ const messages = {
     pin: 'PIN',
     login: 'Sign in',
     logout: 'Sign out',
+    changeAdminPassword: 'Change admin password',
+    currentPassword: 'Current password',
+    newPassword: 'New password',
+    confirmPassword: 'Confirm password',
     aboutEpl: 'About EPL',
     aboutEplPurpose: 'Event Pipeline Lab (EPL) is an interactive teaching and demo platform for event-driven data pipelines.',
     aboutEplProbelektion: 'Developed for a trial lecture (Probelektion) at FHNW.',
@@ -1091,7 +1104,12 @@ const messages = {
     pinBlankError: 'PIN must not be blank',
     pinSaved: 'PIN saved',
     configSaved: 'Group configuration saved',
-    displayNameSaved: 'Display name updated'
+    displayNameSaved: 'Display name updated',
+    adminPasswordChanged: 'Admin password updated',
+    adminPasswordCurrentRequired: 'Please enter the current password',
+    adminPasswordNewRequired: 'Please enter a new password',
+    adminPasswordConfirmMismatch: 'Password confirmation does not match',
+    adminPasswordDifferentRequired: 'New password must be different'
   }
 } as const;
 
