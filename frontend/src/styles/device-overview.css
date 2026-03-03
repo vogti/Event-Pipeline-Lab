@@ -41,7 +41,6 @@
 }
 
 .groups-list {
-  max-height: 300px;
   overflow: auto;
   padding-right: 0.15rem;
 }
