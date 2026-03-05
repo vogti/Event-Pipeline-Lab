@@ -42,8 +42,13 @@ interface AdminMqttEventModalProps {
   topicPrefixLock?: string | null;
   enableLedBlinkControls?: boolean;
   showSinkPayloadControls?: boolean;
+  allowBroadcastDeviceOption?: boolean;
+  hideRawTab?: boolean;
+  guidedTabLabelKey?: I18nKey;
   initialTab?: 'guided' | 'raw' | 'led';
 }
+
+const BROADCAST_DEVICE_ID = 'BROADCAST';
 
 function templateLabelKey(template: MqttComposerTemplate): I18nKey {
   switch (template) {
@@ -98,10 +103,20 @@ export function AdminMqttEventModal({
   topicPrefixLock = null,
   enableLedBlinkControls = false,
   showSinkPayloadControls = false,
+  allowBroadcastDeviceOption = false,
+  hideRawTab = false,
+  guidedTabLabelKey = 'mqttModeGuided',
   initialTab
 }: AdminMqttEventModalProps) {
+  const resolveInitialTab = (): 'guided' | 'raw' | 'led' => {
+    const fallback = initialTab ?? (mode === 'raw' ? 'raw' : 'guided');
+    if (hideRawTab && fallback === 'raw') {
+      return 'guided';
+    }
+    return fallback;
+  };
   const [activeTab, setActiveTab] = useState<'guided' | 'raw' | 'led'>(
-    initialTab ?? (mode === 'raw' ? 'raw' : 'guided')
+    resolveInitialTab()
   );
   const wasOpenRef = useRef(open);
 
@@ -111,14 +126,30 @@ export function AdminMqttEventModal({
     if (!open || wasOpen) {
       return;
     }
-    setActiveTab(initialTab ?? (mode === 'raw' ? 'raw' : 'guided'));
-  }, [initialTab, mode, open]);
+    setActiveTab(resolveInitialTab());
+  }, [initialTab, mode, open, hideRawTab]);
+
+  useEffect(() => {
+    if (!hideRawTab) {
+      return;
+    }
+    if (activeTab === 'raw') {
+      setActiveTab('guided');
+      onModeChange('guided');
+    }
+  }, [activeTab, hideRawTab, onModeChange]);
 
   useEffect(() => {
     if (activeTab !== 'led') {
       return;
     }
-    const topic = draft.deviceId ? `${draft.deviceId}/command/led/${draft.ledColor}` : '';
+    const normalizedDeviceId = draft.deviceId.trim();
+    const isBroadcastDevice = normalizedDeviceId.toUpperCase() === BROADCAST_DEVICE_ID;
+    const topic = normalizedDeviceId
+      ? isBroadcastDevice
+        ? `command/led/${draft.ledColor}`
+        : `${normalizedDeviceId}/command/led/${draft.ledColor}`
+      : '';
     onDraftChange('rawTopic', topic);
     if (!hidePayloadFields) {
       const payload = draft.ledOn ? 'on' : 'off';
@@ -176,7 +207,13 @@ export function AdminMqttEventModal({
         : prefixLockActive
           ? physicalDeviceIds
           : [];
-  const ledAvailableDeviceIds = physicalDeviceIds;
+  const includeBroadcastOption = allowBroadcastDeviceOption && normalizedTargetType === 'physical';
+  const withBroadcastOption = (ids: string[]) =>
+    includeBroadcastOption
+      ? [BROADCAST_DEVICE_ID, ...ids.filter((id) => id.toLowerCase() !== BROADCAST_DEVICE_ID.toLowerCase())]
+      : ids;
+  const guidedAvailableDeviceIds = withBroadcastOption(availableDeviceIds);
+  const ledAvailableDeviceIds = withBroadcastOption(physicalDeviceIds);
   const showDeviceSelect = normalizedTargetType !== 'custom' || prefixLockActive;
   const customTopicSuffix = prefixLockActive
     ? topicSuffixForLockedPrefix(normalizedPrefixLock, draft.customTopic)
@@ -184,6 +221,15 @@ export function AdminMqttEventModal({
   const rawTopicSuffix = prefixLockActive
     ? topicSuffixForLockedPrefix(normalizedPrefixLock, draft.rawTopic)
     : draft.rawTopic;
+  const hideSinkPayloadSource =
+    showSinkPayloadControls
+    && activeTab === 'led'
+    && enableLedBlinkControls
+    && draft.ledBlinkEnabled;
+  const customTabLockedByLedBlink =
+    showSinkPayloadControls
+    && enableLedBlinkControls
+    && draft.ledBlinkEnabled;
 
   const handleCustomTopicChange = (value: string) => {
     if (prefixLockActive) {
@@ -226,19 +272,22 @@ export function AdminMqttEventModal({
               setActiveTab('guided');
               onModeChange('guided');
             }}
+            disabled={customTabLockedByLedBlink}
           >
-            {t('mqttModeGuided')}
+            {t(guidedTabLabelKey)}
           </button>
-          <button
-            className={`button tiny ${activeTab === 'raw' ? 'active' : 'secondary'}`}
-            type="button"
-            onClick={() => {
-              setActiveTab('raw');
-              onModeChange('raw');
-            }}
-          >
-            {t('mqttModeRaw')}
-          </button>
+          {!hideRawTab ? (
+            <button
+              className={`button tiny ${activeTab === 'raw' ? 'active' : 'secondary'}`}
+              type="button"
+              onClick={() => {
+                setActiveTab('raw');
+                onModeChange('raw');
+              }}
+            >
+              {t('mqttModeRaw')}
+            </button>
+          ) : null}
           {enableLedTab && allowedTargetTypes.includes('physical') ? (
             <button
               className={`button tiny ${activeTab === 'led' ? 'active' : 'secondary'}`}
@@ -256,9 +305,10 @@ export function AdminMqttEventModal({
         </div>
 
         {activeTab === 'led' ? (
-          <div className="mqtt-compose-grid">
-            <label>
-              <span>{t('mqttDevice')}</span>
+          <>
+            <div className="mqtt-compose-grid">
+              <label>
+                <span>{t('mqttDevice')}</span>
               <select
                 className="input"
                 value={draft.deviceId}
@@ -268,61 +318,94 @@ export function AdminMqttEventModal({
                 {ledAvailableDeviceIds.length === 0 ? <option value="">{t('stateUnknown')}</option> : null}
                 {ledAvailableDeviceIds.map((deviceId) => (
                   <option key={deviceId} value={deviceId}>
-                    {deviceId}
+                    {deviceId === BROADCAST_DEVICE_ID ? t('mqttDeviceBroadcast') : deviceId}
                   </option>
                 ))}
               </select>
-            </label>
-            <label>
-              <span>{t('mqttLed')}</span>
-              <select
-                className="input"
-                value={draft.ledColor}
-                onChange={(event) => onDraftChange('ledColor', event.target.value as 'green' | 'orange')}
-                disabled={busy}
-              >
-                <option value="green">{t('commandGreenLed')}</option>
-                <option value="orange">{t('commandOrangeLed')}</option>
-              </select>
-            </label>
-            {!hidePayloadFields ? (
+              </label>
               <label>
-                <span>{t('mqttLedState')}</span>
+                <span>{t('mqttLed')}</span>
                 <select
                   className="input"
-                  value={draft.ledOn ? 'on' : 'off'}
-                  onChange={(event) => onDraftChange('ledOn', event.target.value === 'on')}
+                  value={draft.ledColor}
+                  onChange={(event) => onDraftChange('ledColor', event.target.value as 'green' | 'orange')}
                   disabled={busy}
                 >
-                  <option value="on">{t('stateOn')}</option>
-                  <option value="off">{t('stateOff')}</option>
+                  <option value="green">{t('commandGreenLed')}</option>
+                  <option value="orange">{t('commandOrangeLed')}</option>
                 </select>
               </label>
-            ) : null}
-            <label>
-              <span>{t('mqttQos')}</span>
-              <select
-                className="input"
-                value={draft.qos}
-                onChange={(event) => onDraftChange('qos', Number(event.target.value) as 0 | 1 | 2)}
-                disabled={busy}
-              >
-                <option value={0}>{t('mqttQos0')}</option>
-                <option value={1}>{t('mqttQos1')}</option>
-                <option value={2}>{t('mqttQos2')}</option>
-              </select>
-            </label>
-            <label>
-              <span>{t('mqttTopicPreview')}</span>
-              <input className="input mono mqtt-preview-input" value={draft.rawTopic} readOnly />
-            </label>
-            {!hidePayloadFields ? (
+              {!hidePayloadFields ? (
+                <label>
+                  <span>{t('mqttLedState')}</span>
+                  <select
+                    className="input"
+                    value={draft.ledOn ? 'on' : 'off'}
+                    onChange={(event) => onDraftChange('ledOn', event.target.value === 'on')}
+                    disabled={busy}
+                  >
+                    <option value="on">{t('stateOn')}</option>
+                    <option value="off">{t('stateOff')}</option>
+                  </select>
+                </label>
+              ) : null}
               <label>
-                <span>{t('mqttPayloadPreview')}</span>
-                <textarea className="input mqtt-compose-textarea mono mqtt-preview-input" value={draft.rawPayload} readOnly />
+                <span>{t('mqttQos')}</span>
+                <select
+                  className="input"
+                  value={draft.qos}
+                  onChange={(event) => onDraftChange('qos', Number(event.target.value) as 0 | 1 | 2)}
+                  disabled={busy}
+                >
+                  <option value={0}>{t('mqttQos0')}</option>
+                  <option value={1}>{t('mqttQos1')}</option>
+                  <option value={2}>{t('mqttQos2')}</option>
+                </select>
               </label>
+              <label>
+                <span>{t('mqttTopicPreview')}</span>
+                <input className="input mono mqtt-preview-input" value={draft.rawTopic} readOnly />
+              </label>
+              {!hidePayloadFields ? (
+                <label>
+                  <span>{t('mqttPayloadPreview')}</span>
+                  <textarea className="input mqtt-compose-textarea mono mqtt-preview-input" value={draft.rawPayload} readOnly />
+                </label>
+              ) : null}
+            </div>
+            {enableLedBlinkControls ? (
+              <div className="mqtt-compose-section">
+                <h3>{t('mqttLedBlinkSectionTitle')}</h3>
+                <label className="checkbox-inline">
+                  <input
+                    type="checkbox"
+                    checked={draft.ledBlinkEnabled}
+                    onChange={(event) => onDraftChange('ledBlinkEnabled', event.target.checked)}
+                    disabled={busy}
+                  />
+                  <span>{t('mqttLedBlink')}</span>
+                </label>
+                <p className="muted">{t('mqttLedBlinkHelp')}</p>
+                <label className="mqtt-led-blink-duration">
+                  <span>{t('mqttLedBlinkMs')}</span>
+                  <input
+                    className="input"
+                    type="number"
+                    min={50}
+                    max={10000}
+                    step={10}
+                    value={draft.ledBlinkMs}
+                    onChange={(event) => {
+                      const parsed = Number.parseInt(event.target.value, 10);
+                      const next = Number.isFinite(parsed) ? parsed : draft.ledBlinkMs;
+                      onDraftChange('ledBlinkMs', Math.max(50, Math.min(10000, next)));
+                    }}
+                    disabled={busy || !draft.ledBlinkEnabled}
+                  />
+                </label>
+              </div>
             ) : null}
-          </div>
+          </>
         ) : (
           <div className="mqtt-compose-grid">
           <label>
@@ -354,10 +437,10 @@ export function AdminMqttEventModal({
                 onChange={(event) => onDeviceIdChange(event.target.value)}
                 disabled={busy}
               >
-                {availableDeviceIds.length === 0 ? <option value="">{t('stateUnknown')}</option> : null}
-                {availableDeviceIds.map((deviceId) => (
+                {guidedAvailableDeviceIds.length === 0 ? <option value="">{t('stateUnknown')}</option> : null}
+                {guidedAvailableDeviceIds.map((deviceId) => (
                   <option key={deviceId} value={deviceId}>
-                    {deviceId}
+                    {deviceId === BROADCAST_DEVICE_ID ? t('mqttDeviceBroadcast') : deviceId}
                   </option>
                 ))}
               </select>
@@ -667,7 +750,7 @@ export function AdminMqttEventModal({
           </>
         ) : null}
 
-        {showSinkPayloadControls ? (
+        {showSinkPayloadControls && !hideSinkPayloadSource ? (
           <div className="mqtt-compose-section">
             <h3>{t('mqttSinkPayloadSourceTitle')}</h3>
             <div className="mqtt-radio-list">
@@ -715,38 +798,6 @@ export function AdminMqttEventModal({
             ) : (
               <p className="mqtt-preview-help muted">{t('pipelineSinkPayloadFromInput')}</p>
             )}
-          </div>
-        ) : null}
-
-        {enableLedBlinkControls ? (
-          <div className="mqtt-compose-section">
-            <h3>{t('mqttLedBlinkSectionTitle')}</h3>
-            <label className="checkbox-inline">
-              <input
-                type="checkbox"
-                checked={draft.ledBlinkEnabled}
-                onChange={(event) => onDraftChange('ledBlinkEnabled', event.target.checked)}
-                disabled={busy}
-              />
-              <span>{t('mqttLedBlink')}</span>
-            </label>
-            <label className="mqtt-led-blink-duration">
-              <span>{t('mqttLedBlinkMs')}</span>
-              <input
-                className="input"
-                type="number"
-                min={50}
-                max={10000}
-                step={10}
-                value={draft.ledBlinkMs}
-                onChange={(event) => {
-                  const parsed = Number.parseInt(event.target.value, 10);
-                  const next = Number.isFinite(parsed) ? parsed : draft.ledBlinkMs;
-                  onDraftChange('ledBlinkMs', Math.max(50, Math.min(10000, next)));
-                }}
-                disabled={busy || !draft.ledBlinkEnabled}
-              />
-            </label>
           </div>
         ) : null}
 

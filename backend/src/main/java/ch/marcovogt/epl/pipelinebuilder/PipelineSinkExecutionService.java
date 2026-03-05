@@ -332,6 +332,9 @@ public class PipelineSinkExecutionService implements DisposableBean {
         } else if ("INCOMING".equals(payloadSource)) {
             useIncomingPayload = true;
         }
+        if (ledBlinkEnabled && !isLedCommandTopic(topic)) {
+            ledBlinkEnabled = false;
+        }
 
         return new SendEventConfig(topic, payload, qos, retained, ledBlinkEnabled, ledBlinkMs, useIncomingPayload);
     }
@@ -395,6 +398,26 @@ public class PipelineSinkExecutionService implements DisposableBean {
             }
         }
         return Math.max(min, Math.min(max, value));
+    }
+
+    private boolean isLedCommandTopic(String rawTopic) {
+        if (rawTopic == null || rawTopic.isBlank()) {
+            return false;
+        }
+        String topic = rawTopic.trim().toLowerCase(Locale.ROOT);
+        while (topic.startsWith("/")) {
+            topic = topic.substring(1);
+        }
+        if (topic.startsWith("epld/")) {
+            topic = topic.substring("epld/".length());
+        }
+        if (topic.startsWith("device/")) {
+            topic = topic.substring("device/".length());
+        } else if (topic.startsWith("own_device/")) {
+            topic = topic.substring("own_device/".length());
+        }
+        return topic.matches("(^|.*/)command/led/(green|orange)$")
+                || topic.matches("(^|.*/)command/switch:(0|1)$");
     }
 
     private PipelineSinkRuntimeSection snapshotForNodes(String taskId, String groupKey, List<PipelineSinkNode> sinks) {

@@ -38,6 +38,7 @@ import type {
 
 const DND_BLOCK_TYPE = 'application/x-epl-pipeline-block';
 const DND_SOURCE_SLOT = 'application/x-epl-source-slot';
+const BROADCAST_DEVICE_ID = 'BROADCAST';
 
 interface PipelineBuilderSectionProps {
   t: (key: I18nKey) => string;
@@ -55,6 +56,7 @@ interface PipelineBuilderSectionProps {
   onRemoveSink?: (sinkId: string) => void;
   onConfigureSendEventSink?: (sinkId: string, config: Record<string, unknown>) => void;
   sendEventTargetTypeOptions?: MqttComposerTargetType[];
+  allowBroadcastSinkDeviceOption?: boolean;
   onResetSinkCounter?: (sinkId: string) => void;
   sinkRuntimeBusy?: boolean;
   physicalDeviceIds?: string[];
@@ -377,17 +379,39 @@ function parseLedSinkTopic(topic: string): { deviceId: string; ledColor: 'green'
 
   const explicit = normalized.match(/^([^/]+)\/command\/led\/(green|orange)$/i);
   if (explicit) {
+    const rawDeviceId = explicit[1].trim();
+    const normalizedDeviceId = rawDeviceId.toUpperCase() === 'DEVICE' || rawDeviceId.toUpperCase() === BROADCAST_DEVICE_ID
+      ? BROADCAST_DEVICE_ID
+      : rawDeviceId.toLowerCase();
     return {
-      deviceId: explicit[1].trim().toLowerCase(),
+      deviceId: normalizedDeviceId,
       ledColor: explicit[2].trim().toLowerCase() === 'orange' ? 'orange' : 'green'
+    };
+  }
+  const broadcastExplicit = normalized.match(/^command\/led\/(green|orange)$/i);
+  if (broadcastExplicit) {
+    return {
+      deviceId: BROADCAST_DEVICE_ID,
+      ledColor: broadcastExplicit[1].trim().toLowerCase() === 'orange' ? 'orange' : 'green'
     };
   }
 
   const shelly = normalized.match(/^([^/]+)\/command\/switch:(0|1)$/i);
   if (shelly) {
+    const rawDeviceId = shelly[1].trim();
+    const normalizedDeviceId = rawDeviceId.toUpperCase() === 'DEVICE' || rawDeviceId.toUpperCase() === BROADCAST_DEVICE_ID
+      ? BROADCAST_DEVICE_ID
+      : rawDeviceId.toLowerCase();
     return {
-      deviceId: shelly[1].trim().toLowerCase(),
+      deviceId: normalizedDeviceId,
       ledColor: shelly[2] === '1' ? 'orange' : 'green'
+    };
+  }
+  const broadcastShelly = normalized.match(/^command\/switch:(0|1)$/i);
+  if (broadcastShelly) {
+    return {
+      deviceId: BROADCAST_DEVICE_ID,
+      ledColor: broadcastShelly[1] === '1' ? 'orange' : 'green'
     };
   }
 
@@ -938,6 +962,7 @@ export function PipelineBuilderSection({
   onRemoveSink,
   onConfigureSendEventSink,
   sendEventTargetTypeOptions,
+  allowBroadcastSinkDeviceOption = false,
   onResetSinkCounter,
   sinkRuntimeBusy,
   physicalDeviceIds = [],
@@ -1025,7 +1050,20 @@ export function PipelineBuilderSection({
   const suppressTouchClickUntilRef = useRef<number>(0);
   const activePointerIdRef = useRef<number | null>(null);
 
-  const guidedSinkMqttMessage = useMemo(() => buildGuidedMqttMessage(sinkDraft), [sinkDraft]);
+  const guidedSinkMqttMessage = useMemo(() => {
+    const guided = buildGuidedMqttMessage(sinkDraft);
+    const isBroadcastDevice =
+      allowBroadcastSinkDeviceOption
+      && sinkDraft.targetType === 'physical'
+      && sinkDraft.deviceId.trim().toUpperCase() === BROADCAST_DEVICE_ID;
+    if (!isBroadcastDevice) {
+      return guided;
+    }
+    return {
+      ...guided,
+      topic: guided.topic.replace(/^(BROADCAST|DEVICE)\//i, '')
+    };
+  }, [allowBroadcastSinkDeviceOption, sinkDraft]);
 
   if (!view) {
     return (
@@ -1776,12 +1814,21 @@ export function PipelineBuilderSection({
   const setSinkTargetType = (targetType: MqttComposerTargetType) => {
     setSinkDraft((previous) => {
       const normalizedTemplate = normalizeMqttTemplateForTarget(targetType, previous.template);
-      const resolvedDeviceId = resolveMqttDeviceId(
-        targetType,
-        previous.deviceId,
-        physicalDeviceIds,
-        virtualDeviceIds
-      );
+      const keepBroadcastDevice =
+        allowBroadcastSinkDeviceOption
+        && targetType === 'physical'
+        && (
+          previous.deviceId.trim().toUpperCase() === BROADCAST_DEVICE_ID
+          || previous.deviceId.trim().toUpperCase() === 'DEVICE'
+        );
+      const resolvedDeviceId = keepBroadcastDevice
+        ? BROADCAST_DEVICE_ID
+        : resolveMqttDeviceId(
+            targetType,
+            previous.deviceId,
+            physicalDeviceIds,
+            virtualDeviceIds
+          );
       return {
         ...previous,
         targetType,
@@ -1816,14 +1863,20 @@ export function PipelineBuilderSection({
     const ledBlinkMs = readSinkLedBlinkMs(config);
     const ledTopicConfig = parseLedSinkTopic(topic);
     const base = createMqttEventDraft();
-    const initialDeviceId = ledTopicConfig?.deviceId ?? resolveMqttDeviceId(
+    const initialDeviceIdRaw = ledTopicConfig?.deviceId ?? resolveMqttDeviceId(
       'physical',
       base.deviceId,
       physicalDeviceIds,
       virtualDeviceIds
     );
+    const initialDeviceId = allowBroadcastSinkDeviceOption && (
+      initialDeviceIdRaw.trim().toUpperCase() === BROADCAST_DEVICE_ID
+      || initialDeviceIdRaw.trim().toUpperCase() === 'DEVICE'
+    )
+      ? BROADCAST_DEVICE_ID
+      : initialDeviceIdRaw;
     const shouldOpenLedTab = ledTopicConfig !== null;
-    setSinkComposerMode('raw');
+    setSinkComposerMode('guided');
     setSinkDraft({
       ...base,
       targetType: shouldOpenLedTab ? 'physical' : 'custom',
@@ -1840,7 +1893,7 @@ export function PipelineBuilderSection({
       ledBlinkEnabled,
       ledBlinkMs
     });
-    setSinkEditorInitialTab(shouldOpenLedTab ? 'led' : 'raw');
+    setSinkEditorInitialTab(shouldOpenLedTab ? 'led' : 'guided');
     setSinkEditorSinkId(node.id);
   };
 
@@ -1848,14 +1901,23 @@ export function PipelineBuilderSection({
     if (!sinkEditorSinkId || !onConfigureSendEventSink) {
       return;
     }
-    const topic = (sinkComposerMode === 'raw' ? sinkDraft.rawTopic : guidedSinkMqttMessage.topic).trim();
+    const isBroadcastDevice =
+      allowBroadcastSinkDeviceOption
+      && sinkDraft.targetType === 'physical'
+      && sinkDraft.deviceId.trim().toUpperCase() === BROADCAST_DEVICE_ID;
+    let topic = (sinkComposerMode === 'raw' ? sinkDraft.rawTopic : guidedSinkMqttMessage.topic).trim();
+    if (isBroadcastDevice) {
+      const broadcastPrefixPattern = /^(BROADCAST|DEVICE)\//i;
+      topic = topic.replace(broadcastPrefixPattern, '');
+    }
+    const blinkAllowed = parseLedSinkTopic(topic) !== null;
     onConfigureSendEventSink(sinkEditorSinkId, {
       topic,
       payload: sinkDraft.rawPayload,
       useIncomingPayload: sinkDraft.useIncomingPayload,
       qos: sinkDraft.qos,
       retained: sinkDraft.retained,
-      ledBlinkEnabled: sinkDraft.ledBlinkEnabled,
+      ledBlinkEnabled: blinkAllowed ? sinkDraft.ledBlinkEnabled : false,
       ledBlinkMs: sinkDraft.ledBlinkMs
     });
     setSinkEditorSinkId(null);
@@ -3491,11 +3553,14 @@ export function PipelineBuilderSection({
           onDeviceIdChange={setSinkDeviceId}
           onDraftChange={setSinkDraftField}
           targetTypeOptions={sendEventTargetTypeOptions}
+          allowBroadcastDeviceOption={allowBroadcastSinkDeviceOption}
           titleKey="pipelineSinkSendEventConfigTitle"
           submitLabelKey="save"
           hidePayloadFields
           enableLedBlinkControls
           showSinkPayloadControls
+          hideRawTab
+          guidedTabLabelKey="mqttModeCustom"
           initialTab={sinkEditorInitialTab}
           simpleMode={simplifiedView}
         />

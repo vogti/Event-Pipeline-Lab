@@ -349,6 +349,50 @@ class PipelineStateServiceTest {
     }
 
     @Test
+    void sendEventSinkConfigShouldDisableBlinkWhenTopicIsNotLedTopic() {
+        SessionPrincipal admin = new SessionPrincipal(
+                "token-admin",
+                "admin",
+                AppRole.ADMIN,
+                null,
+                "admin",
+                Instant.now().plusSeconds(3600)
+        );
+        PipelineViewDto initial = service.getAdminView("epld01");
+        PipelineSinkSection updatedSink = new PipelineSinkSection(
+                List.of(
+                        new PipelineSinkNode("event-feed", "EVENT_FEED", Map.of()),
+                        new PipelineSinkNode(
+                                "send-event",
+                                "SEND_EVENT",
+                                Map.of(
+                                        "topic", "epld01/event/custom",
+                                        "payload", "{\"value\":1}",
+                                        "ledBlinkEnabled", true,
+                                        "ledBlinkMs", 120
+                                )
+                        ),
+                        new PipelineSinkNode("virtual-signal", "VIRTUAL_SIGNAL", Map.of())
+                ),
+                List.of("DEVICE_CONTROL", "VIRTUAL_SIGNAL"),
+                "Goal"
+        );
+        AdminPipelineUpdateRequest request = new AdminPipelineUpdateRequest(
+                "epld01",
+                initial.input(),
+                initial.processing(),
+                updatedSink
+        );
+
+        PipelineViewDto updated = service.updateAdminState(admin, request);
+        PipelineSinkNode updatedSend = updated.sink().nodes().stream()
+                .filter(node -> "SEND_EVENT".equals(node.type()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(updatedSend.config()).containsEntry("ledBlinkEnabled", false);
+    }
+
+    @Test
     void taskScopeFilterShouldUseStudentEventVisibilityScopeInsteadOfLegacyDeviceScope() {
         when(taskStateService.getActiveTask()).thenReturn(taskWithEventScope(
                 StudentDeviceScope.OWN_DEVICE,

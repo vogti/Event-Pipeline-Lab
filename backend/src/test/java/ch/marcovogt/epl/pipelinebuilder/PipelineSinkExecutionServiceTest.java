@@ -522,6 +522,41 @@ class PipelineSinkExecutionServiceTest {
     }
 
     @Test
+    void sendEventSinkShouldIgnoreBlinkForNonLedTopic() {
+        when(mqttCommandPublisherProvider.getIfAvailable()).thenReturn(mqttCommandPublisher);
+
+        PipelineSinkSection sinkSection = new PipelineSinkSection(
+                List.of(new PipelineSinkNode(
+                        "send-event",
+                        "SEND_EVENT",
+                        Map.of(
+                                "topic", "epld02/event/custom",
+                                "payload", "{\"forced\":true}",
+                                "useIncomingPayload", false,
+                                "qos", 1,
+                                "retained", false,
+                                "ledBlinkEnabled", true,
+                                "ledBlinkMs", 60
+                        )
+                )),
+                List.of(),
+                "goal"
+        );
+
+        CanonicalEventDto inputEvent = event(
+                "event-blink-non-led-topic",
+                "epld01/event/button/black",
+                "\"pressed\""
+        );
+
+        service.processProjectedEvent("task_intro", "epld01", sinkSection, inputEvent);
+
+        verify(mqttCommandPublisher).publishCustom("epld02/event/custom", "{\"forced\":true}", 1, false);
+        verify(mqttCommandPublisher, never()).publishCustom("epld02/event/custom", "on", 1, false);
+        verify(mqttCommandPublisher, never()).publishCustom("epld02/event/custom", "off", 1, false);
+    }
+
+    @Test
     void resetSinkCounterShouldResetOnlyTargetSink() {
         PipelineSinkSection sinkSection = new PipelineSinkSection(
                 List.of(

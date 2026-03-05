@@ -5787,6 +5787,7 @@ export default function App() {
                   onAddSink={addAdminPipelineSink}
                   onRemoveSink={removeAdminPipelineSink}
                   onConfigureSendEventSink={configureAdminPipelineSendSink}
+                  allowBroadcastSinkDeviceOption
                   onResetSinkCounter={resetAdminPipelineSinkCounter}
                   sinkRuntimeBusy={busyKey === 'admin-pipeline-sink'}
                   physicalDeviceIds={adminPhysicalDeviceIds}

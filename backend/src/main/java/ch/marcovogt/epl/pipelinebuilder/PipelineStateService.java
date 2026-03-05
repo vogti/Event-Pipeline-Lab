@@ -959,6 +959,9 @@ public class PipelineStateService {
             String normalized = String.valueOf(ledBlinkEnabledRaw).trim().toLowerCase(Locale.ROOT);
             ledBlinkEnabled = "true".equals(normalized) || "1".equals(normalized) || "yes".equals(normalized);
         }
+        if (ledBlinkEnabled && !isLedCommandTopic(topic)) {
+            ledBlinkEnabled = false;
+        }
 
         Object ledBlinkMsRaw = rawConfig.get("ledBlinkMs");
         int ledBlinkMs = 200;
@@ -984,6 +987,26 @@ public class PipelineStateService {
                 "ledBlinkEnabled", ledBlinkEnabled,
                 "ledBlinkMs", ledBlinkMs
         );
+    }
+
+    private boolean isLedCommandTopic(String rawTopic) {
+        if (rawTopic == null || rawTopic.isBlank()) {
+            return false;
+        }
+        String topic = rawTopic.trim().toLowerCase(Locale.ROOT);
+        while (topic.startsWith("/")) {
+            topic = topic.substring(1);
+        }
+        if (topic.startsWith("epld/")) {
+            topic = topic.substring("epld/".length());
+        }
+        if (topic.startsWith("device/")) {
+            topic = topic.substring("device/".length());
+        } else if (topic.startsWith("own_device/")) {
+            topic = topic.substring("own_device/".length());
+        }
+        return topic.matches("(^|.*/)command/led/(green|orange)$")
+                || topic.matches("(^|.*/)command/switch:(0|1)$");
     }
 
     private List<String> legacyTargetsFromNodes(List<PipelineSinkNode> nodes) {
