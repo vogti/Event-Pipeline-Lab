@@ -167,7 +167,12 @@ public class PipelineSinkExecutionService implements DisposableBean {
             );
             return;
         }
-        String outgoingPayload = inputEvent != null ? inputEvent.payloadJson() : config.payload();
+        String outgoingPayload;
+        if (config.useIncomingPayload()) {
+            outgoingPayload = inputEvent != null ? inputEvent.payloadJson() : "";
+        } else {
+            outgoingPayload = config.payload();
+        }
         if (outgoingPayload == null || outgoingPayload.isBlank()) {
             return;
         }
@@ -305,7 +310,7 @@ public class PipelineSinkExecutionService implements DisposableBean {
 
     private SendEventConfig parseSendEventConfig(Map<String, Object> config) {
         if (config == null || config.isEmpty()) {
-            return new SendEventConfig("", "", 1, false, false, 200);
+            return new SendEventConfig("", "", 1, false, false, 200, true);
         }
 
         String topic = readString(config, "topic");
@@ -320,8 +325,15 @@ public class PipelineSinkExecutionService implements DisposableBean {
         boolean retained = readBoolean(config, "retained", false);
         boolean ledBlinkEnabled = readBoolean(config, "ledBlinkEnabled", false);
         int ledBlinkMs = readInt(config, "ledBlinkMs", 200, 50, 10_000);
+        boolean useIncomingPayload = readBoolean(config, "useIncomingPayload", true);
+        String payloadSource = readString(config, "payloadSource").trim().toUpperCase(Locale.ROOT);
+        if ("CUSTOM".equals(payloadSource)) {
+            useIncomingPayload = false;
+        } else if ("INCOMING".equals(payloadSource)) {
+            useIncomingPayload = true;
+        }
 
-        return new SendEventConfig(topic, payload, qos, retained, ledBlinkEnabled, ledBlinkMs);
+        return new SendEventConfig(topic, payload, qos, retained, ledBlinkEnabled, ledBlinkMs, useIncomingPayload);
     }
 
     private String readString(Map<String, Object> source, String key) {
@@ -476,7 +488,8 @@ public class PipelineSinkExecutionService implements DisposableBean {
             int qos,
             boolean retained,
             boolean ledBlinkEnabled,
-            int ledBlinkMs
+            int ledBlinkMs,
+            boolean useIncomingPayload
     ) {
     }
 

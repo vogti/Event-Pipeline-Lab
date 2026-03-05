@@ -263,7 +263,7 @@ function addPipelineSinkNode(
   const nextNode: PipelineSinkNode = {
     id: nextId,
     type: 'SEND_EVENT',
-    config: { topic: '', payload: '', qos: 1, retained: false }
+    config: { topic: '', payload: '', useIncomingPayload: true, qos: 1, retained: false }
   };
   return withNormalizedPipelineSinkSection({
     ...sink,
@@ -297,6 +297,10 @@ function updatePipelineSendEventSinkConfig(
       config: {
         topic: typeof config.topic === 'string' ? config.topic : '',
         payload: typeof config.payload === 'string' ? config.payload : '',
+        useIncomingPayload:
+          typeof config.useIncomingPayload === 'boolean'
+            ? config.useIncomingPayload
+            : String(config.useIncomingPayload ?? 'true').trim().toLowerCase() !== 'false',
         qos:
           typeof config.qos === 'number'
             ? Math.max(0, Math.min(2, Math.round(config.qos)))

@@ -77,6 +77,42 @@ class PipelineSinkExecutionServiceTest {
     }
 
     @Test
+    void sendEventSinkShouldPublishConfiguredPayloadWhenIncomingPayloadDisabled() {
+        when(mqttCommandPublisherProvider.getIfAvailable()).thenReturn(mqttCommandPublisher);
+
+        PipelineSinkSection sinkSection = new PipelineSinkSection(
+                List.of(new PipelineSinkNode(
+                        "send-event",
+                        "SEND_EVENT",
+                        Map.of(
+                                "topic", "epld02/command/led/green",
+                                "payload", "{\"command\":\"on\"}",
+                                "useIncomingPayload", false,
+                                "qos", 1,
+                                "retained", false
+                        )
+                )),
+                List.of(),
+                "goal"
+        );
+
+        CanonicalEventDto inputEvent = event(
+                "event-custom-payload-disabled-incoming",
+                "epld01/event/button",
+                "{\"state\":\"pressed\"}"
+        );
+
+        service.processProjectedEvent("task_intro", "epld01", sinkSection, inputEvent);
+
+        verify(mqttCommandPublisher).publishCustom(
+                "epld02/command/led/green",
+                "{\"command\":\"on\"}",
+                1,
+                false
+        );
+    }
+
+    @Test
     void sendEventSinkShouldSkipPublishWhenTargetTopicEqualsInputTopic() {
         PipelineSinkSection sinkSection = new PipelineSinkSection(
                 List.of(new PipelineSinkNode(

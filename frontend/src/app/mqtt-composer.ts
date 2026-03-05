@@ -382,6 +382,7 @@ export function createMqttEventDraft(): MqttEventDraft {
     targetType: 'physical',
     template: 'button',
     deviceId: '',
+    useIncomingPayload: true,
     buttonColor: 'red',
     buttonPressed: true,
     ledColor: 'green',

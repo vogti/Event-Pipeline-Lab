@@ -92,6 +92,7 @@ export interface MqttEventDraft {
   targetType: MqttComposerTargetType;
   template: MqttComposerTemplate;
   deviceId: string;
+  useIncomingPayload: boolean;
   buttonColor: 'red' | 'black';
   buttonPressed: boolean;
   ledColor: 'green' | 'orange';

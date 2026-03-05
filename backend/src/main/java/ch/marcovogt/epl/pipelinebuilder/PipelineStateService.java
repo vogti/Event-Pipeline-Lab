@@ -885,6 +885,7 @@ public class PipelineStateService {
             return Map.of(
                     "topic", "",
                     "payload", "",
+                    "useIncomingPayload", true,
                     "qos", 1,
                     "retained", false,
                     "ledBlinkEnabled", false,
@@ -895,6 +896,33 @@ public class PipelineStateService {
         String topic = topicRaw == null ? "" : String.valueOf(topicRaw).trim();
         Object payloadRaw = rawConfig.get("payload");
         String payload = payloadRaw == null ? "" : String.valueOf(payloadRaw);
+        Object useIncomingPayloadRaw = rawConfig.get("useIncomingPayload");
+        boolean useIncomingPayload;
+        if (useIncomingPayloadRaw == null) {
+            useIncomingPayload = true;
+        } else if (useIncomingPayloadRaw instanceof Boolean value) {
+            useIncomingPayload = value;
+        } else if (useIncomingPayloadRaw instanceof Number number) {
+            useIncomingPayload = number.intValue() != 0;
+        } else {
+            String normalized = String.valueOf(useIncomingPayloadRaw).trim().toLowerCase(Locale.ROOT);
+            useIncomingPayload = normalized.isBlank()
+                    || "true".equals(normalized)
+                    || "1".equals(normalized)
+                    || "yes".equals(normalized)
+                    || "incoming".equals(normalized);
+            if ("custom".equals(normalized)) {
+                useIncomingPayload = false;
+            }
+        }
+        String payloadSource = String.valueOf(rawConfig.get("payloadSource"))
+                .trim()
+                .toUpperCase(Locale.ROOT);
+        if ("CUSTOM".equals(payloadSource)) {
+            useIncomingPayload = false;
+        } else if ("INCOMING".equals(payloadSource)) {
+            useIncomingPayload = true;
+        }
 
         Object qosRaw = rawConfig.get("qos");
         int qos = 1;
@@ -950,6 +978,7 @@ public class PipelineStateService {
         return Map.of(
                 "topic", topic,
                 "payload", payload,
+                "useIncomingPayload", useIncomingPayload,
                 "qos", qos,
                 "retained", retained,
                 "ledBlinkEnabled", ledBlinkEnabled,

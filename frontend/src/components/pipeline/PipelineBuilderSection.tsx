@@ -305,6 +305,35 @@ function readSinkRetained(config: Record<string, unknown>): boolean {
   return false;
 }
 
+function readSinkUseIncomingPayload(config: Record<string, unknown>): boolean {
+  const directValue = config.useIncomingPayload;
+  if (typeof directValue === 'boolean') {
+    return directValue;
+  }
+  if (typeof directValue === 'number') {
+    return directValue !== 0;
+  }
+  if (typeof directValue === 'string') {
+    const normalized = directValue.trim().toLowerCase();
+    if (normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'incoming') {
+      return true;
+    }
+    if (normalized === 'false' || normalized === '0' || normalized === 'no' || normalized === 'custom') {
+      return false;
+    }
+  }
+  const payloadSource = String(config.payloadSource ?? '')
+    .trim()
+    .toUpperCase();
+  if (payloadSource === 'CUSTOM') {
+    return false;
+  }
+  if (payloadSource === 'INCOMING') {
+    return true;
+  }
+  return true;
+}
+
 function readSinkLedBlinkEnabled(config: Record<string, unknown>): boolean {
   const value = config.ledBlinkEnabled;
   if (typeof value === 'boolean') {
@@ -1779,8 +1808,10 @@ export function PipelineBuilderSection({
   const openSendEventSinkEditor = (node: PipelineSinkNode) => {
     const config = node.config ?? {};
     const topic = readSinkString(config, 'topic');
+    const payload = readSinkString(config, 'payload');
     const qos = readSinkQos(config);
     const retained = readSinkRetained(config);
+    const useIncomingPayload = readSinkUseIncomingPayload(config);
     const ledBlinkEnabled = readSinkLedBlinkEnabled(config);
     const ledBlinkMs = readSinkLedBlinkMs(config);
     const ledTopicConfig = parseLedSinkTopic(topic);
@@ -1800,11 +1831,12 @@ export function PipelineBuilderSection({
       deviceId: initialDeviceId,
       ledColor: ledTopicConfig?.ledColor ?? base.ledColor,
       customTopic: topic,
-      customPayload: '',
+      customPayload: payload,
       rawTopic: topic,
-      rawPayload: '',
+      rawPayload: payload,
       qos,
       retained,
+      useIncomingPayload,
       ledBlinkEnabled,
       ledBlinkMs
     });
@@ -1819,7 +1851,8 @@ export function PipelineBuilderSection({
     const topic = (sinkComposerMode === 'raw' ? sinkDraft.rawTopic : guidedSinkMqttMessage.topic).trim();
     onConfigureSendEventSink(sinkEditorSinkId, {
       topic,
-      payload: '',
+      payload: sinkDraft.rawPayload,
+      useIncomingPayload: sinkDraft.useIncomingPayload,
       qos: sinkDraft.qos,
       retained: sinkDraft.retained,
       ledBlinkEnabled: sinkDraft.ledBlinkEnabled,
@@ -1832,8 +1865,7 @@ export function PipelineBuilderSection({
     setSinkComposerMode(mode);
     setSinkDraft((previous) => ({
       ...previous,
-      rawTopic: guidedSinkMqttMessage.topic,
-      rawPayload: guidedSinkMqttMessage.payload
+      rawTopic: guidedSinkMqttMessage.topic
     }));
   };
 
@@ -2501,7 +2533,10 @@ export function PipelineBuilderSection({
             const receivedCount = runtimeNode?.receivedCount ?? 0;
             const lastReceivedAt = runtimeNode?.lastReceivedAt ?? null;
             const lastPayloadPreview = (runtimeNode?.lastPayloadPreview ?? '').trim();
-            const sendTopic = readSinkString(sinkNode.config ?? {}, 'topic');
+            const sendConfig = sinkNode.config ?? {};
+            const sendTopic = readSinkString(sendConfig, 'topic');
+            const sendPayload = readSinkString(sendConfig, 'payload');
+            const sendUsesIncomingPayload = readSinkUseIncomingPayload(sendConfig);
             const sinkLabel = t(sinkDisplayNameKey(sinkType));
             return (
               <article className="pipeline-sink-node" key={sinkNode.id}>
@@ -2542,6 +2577,14 @@ export function PipelineBuilderSection({
                     <p className="muted mono">
                       {sendTopic.length > 0 ? sendTopic : t('pipelineSinkNoTopic')}
                     </p>
+                    <p className="muted">
+                      {sendUsesIncomingPayload ? t('pipelineSinkPayloadModeIncoming') : t('pipelineSinkPayloadModeCustom')}
+                    </p>
+                    {!sendUsesIncomingPayload ? (
+                      <p className="muted mono">
+                        {sendPayload.trim().length > 0 ? sendPayload.trim() : t('pipelineSinkNoPayload')}
+                      </p>
+                    ) : null}
                     {readSinkLedBlinkEnabled(sinkNode.config ?? {}) ? (
                       <p className="muted">
                         {t('mqttLedBlink')}: {readSinkLedBlinkMs(sinkNode.config ?? {})} ms
@@ -3452,6 +3495,7 @@ export function PipelineBuilderSection({
           submitLabelKey="save"
           hidePayloadFields
           enableLedBlinkControls
+          showSinkPayloadControls
           initialTab={sinkEditorInitialTab}
           simpleMode={simplifiedView}
         />

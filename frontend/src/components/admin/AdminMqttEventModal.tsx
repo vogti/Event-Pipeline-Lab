@@ -41,6 +41,7 @@ interface AdminMqttEventModalProps {
   simpleMode?: boolean;
   topicPrefixLock?: string | null;
   enableLedBlinkControls?: boolean;
+  showSinkPayloadControls?: boolean;
   initialTab?: 'guided' | 'raw' | 'led';
 }
 
@@ -96,6 +97,7 @@ export function AdminMqttEventModal({
   simpleMode = false,
   topicPrefixLock = null,
   enableLedBlinkControls = false,
+  showSinkPayloadControls = false,
   initialTab
 }: AdminMqttEventModalProps) {
   const [activeTab, setActiveTab] = useState<'guided' | 'raw' | 'led'>(
@@ -296,36 +298,6 @@ export function AdminMqttEventModal({
                   <option value="off">{t('stateOff')}</option>
                 </select>
               </label>
-            ) : null}
-            {enableLedBlinkControls ? (
-              <>
-                <label className="mqtt-led-blink-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={draft.ledBlinkEnabled}
-                    onChange={(event) => onDraftChange('ledBlinkEnabled', event.target.checked)}
-                    disabled={busy}
-                  />
-                  <span>{t('mqttLedBlink')}</span>
-                </label>
-                <label className="mqtt-led-blink-duration">
-                  <span>{t('mqttLedBlinkMs')}</span>
-                  <input
-                    className="input"
-                    type="number"
-                    min={50}
-                    max={10000}
-                    step={10}
-                    value={draft.ledBlinkMs}
-                    onChange={(event) => {
-                      const parsed = Number.parseInt(event.target.value, 10);
-                      const next = Number.isFinite(parsed) ? parsed : draft.ledBlinkMs;
-                      onDraftChange('ledBlinkMs', Math.max(50, Math.min(10000, next)));
-                    }}
-                    disabled={busy || !draft.ledBlinkEnabled}
-                  />
-                </label>
-              </>
             ) : null}
             <label>
               <span>{t('mqttQos')}</span>
@@ -693,6 +665,89 @@ export function AdminMqttEventModal({
               <p className="mqtt-preview-help muted">{t('pipelineSinkPayloadFromInput')}</p>
             )}
           </>
+        ) : null}
+
+        {showSinkPayloadControls ? (
+          <div className="mqtt-compose-section">
+            <h3>{t('mqttSinkPayloadSourceTitle')}</h3>
+            <div className="mqtt-radio-list">
+              <label className="mqtt-radio-option">
+                <input
+                  type="radio"
+                  name="sink-payload-source"
+                  checked={draft.useIncomingPayload}
+                  onChange={() => onDraftChange('useIncomingPayload', true)}
+                  disabled={busy}
+                />
+                <div>
+                  <strong>{t('mqttSinkPayloadIncomingLabel')}</strong>
+                  <p className="muted">{t('mqttSinkPayloadIncomingHelp')}</p>
+                </div>
+              </label>
+              <label className="mqtt-radio-option">
+                <input
+                  type="radio"
+                  name="sink-payload-source"
+                  checked={!draft.useIncomingPayload}
+                  onChange={() => onDraftChange('useIncomingPayload', false)}
+                  disabled={busy}
+                />
+                <div>
+                  <strong>{t('mqttSinkPayloadCustomLabel')}</strong>
+                  <p className="muted">{t('mqttSinkPayloadCustomHelp')}</p>
+                </div>
+              </label>
+            </div>
+            {!draft.useIncomingPayload ? (
+              <label className="mqtt-sink-custom-payload-field">
+                <span>{t('mqttPayload')}</span>
+                <textarea
+                  className="input mqtt-compose-textarea mono"
+                  value={draft.rawPayload}
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    onDraftChange('rawPayload', next);
+                    onDraftChange('customPayload', next);
+                  }}
+                  disabled={busy}
+                />
+              </label>
+            ) : (
+              <p className="mqtt-preview-help muted">{t('pipelineSinkPayloadFromInput')}</p>
+            )}
+          </div>
+        ) : null}
+
+        {enableLedBlinkControls ? (
+          <div className="mqtt-compose-section">
+            <h3>{t('mqttLedBlinkSectionTitle')}</h3>
+            <label className="checkbox-inline">
+              <input
+                type="checkbox"
+                checked={draft.ledBlinkEnabled}
+                onChange={(event) => onDraftChange('ledBlinkEnabled', event.target.checked)}
+                disabled={busy}
+              />
+              <span>{t('mqttLedBlink')}</span>
+            </label>
+            <label className="mqtt-led-blink-duration">
+              <span>{t('mqttLedBlinkMs')}</span>
+              <input
+                className="input"
+                type="number"
+                min={50}
+                max={10000}
+                step={10}
+                value={draft.ledBlinkMs}
+                onChange={(event) => {
+                  const parsed = Number.parseInt(event.target.value, 10);
+                  const next = Number.isFinite(parsed) ? parsed : draft.ledBlinkMs;
+                  onDraftChange('ledBlinkMs', Math.max(50, Math.min(10000, next)));
+                }}
+                disabled={busy || !draft.ledBlinkEnabled}
+              />
+            </label>
+          </div>
         ) : null}
 
         {!simpleMode ? (
