@@ -43,6 +43,7 @@ interface AdminMqttEventModalProps {
   enableLedBlinkControls?: boolean;
   showSinkPayloadControls?: boolean;
   allowBroadcastDeviceOption?: boolean;
+  hideModeTabs?: boolean;
   hideRawTab?: boolean;
   guidedTabLabelKey?: I18nKey;
   initialTab?: 'guided' | 'raw' | 'led';
@@ -104,11 +105,15 @@ export function AdminMqttEventModal({
   enableLedBlinkControls = false,
   showSinkPayloadControls = false,
   allowBroadcastDeviceOption = false,
+  hideModeTabs = false,
   hideRawTab = false,
   guidedTabLabelKey = 'mqttModeGuided',
   initialTab
 }: AdminMqttEventModalProps) {
   const resolveInitialTab = (): 'guided' | 'raw' | 'led' => {
+    if (hideModeTabs) {
+      return 'guided';
+    }
     const fallback = initialTab ?? (mode === 'raw' ? 'raw' : 'guided');
     if (hideRawTab && fallback === 'raw') {
       return 'guided';
@@ -127,7 +132,18 @@ export function AdminMqttEventModal({
       return;
     }
     setActiveTab(resolveInitialTab());
-  }, [initialTab, mode, open, hideRawTab]);
+  }, [initialTab, mode, open, hideRawTab, hideModeTabs]);
+
+  useEffect(() => {
+    if (!hideModeTabs) {
+      return;
+    }
+    if (activeTab === 'guided') {
+      return;
+    }
+    setActiveTab('guided');
+    onModeChange('guided');
+  }, [activeTab, hideModeTabs, onModeChange]);
 
   useEffect(() => {
     if (!hideRawTab) {
@@ -170,6 +186,20 @@ export function AdminMqttEventModal({
 
   const normalizedPrefixLock = (topicPrefixLock ?? '').trim().toLowerCase();
   const prefixLockActive = normalizedPrefixLock.length > 0;
+
+  useEffect(() => {
+    if (!prefixLockActive) {
+      return;
+    }
+    const lockedCustomTopic = lockTopicToDevicePrefix(normalizedPrefixLock, draft.customTopic);
+    if (lockedCustomTopic !== draft.customTopic) {
+      onDraftChange('customTopic', lockedCustomTopic);
+    }
+    const lockedRawTopic = lockTopicToDevicePrefix(normalizedPrefixLock, draft.rawTopic);
+    if (lockedRawTopic !== draft.rawTopic) {
+      onDraftChange('rawTopic', lockedRawTopic);
+    }
+  }, [prefixLockActive, normalizedPrefixLock, draft.customTopic, draft.rawTopic, onDraftChange]);
 
   useEffect(() => {
     if (activeTab !== 'guided') {
@@ -264,45 +294,47 @@ export function AdminMqttEventModal({
           </button>
         </div>
 
-        <div className="mqtt-compose-mode-row">
-          <button
-            className={`button tiny ${activeTab === 'guided' ? 'active' : 'secondary'}`}
-            type="button"
-            onClick={() => {
-              setActiveTab('guided');
-              onModeChange('guided');
-            }}
-            disabled={customTabLockedByLedBlink}
-          >
-            {t(guidedTabLabelKey)}
-          </button>
-          {!hideRawTab ? (
+        {!hideModeTabs ? (
+          <div className="mqtt-compose-mode-row">
             <button
-              className={`button tiny ${activeTab === 'raw' ? 'active' : 'secondary'}`}
+              className={`button tiny ${activeTab === 'guided' ? 'active' : 'secondary'}`}
               type="button"
               onClick={() => {
-                setActiveTab('raw');
-                onModeChange('raw');
+                setActiveTab('guided');
+                onModeChange('guided');
               }}
+              disabled={customTabLockedByLedBlink}
             >
-              {t('mqttModeRaw')}
+              {t(guidedTabLabelKey)}
             </button>
-          ) : null}
-          {enableLedTab && allowedTargetTypes.includes('physical') ? (
-            <button
-              className={`button tiny ${activeTab === 'led' ? 'active' : 'secondary'}`}
-              type="button"
-              onClick={() => {
-                setActiveTab('led');
-                onModeChange('raw');
-                onTargetTypeChange('physical');
-                onTemplateChange('led');
-              }}
-            >
-              {t('mqttModeLed')}
-            </button>
-          ) : null}
-        </div>
+            {!hideRawTab ? (
+              <button
+                className={`button tiny ${activeTab === 'raw' ? 'active' : 'secondary'}`}
+                type="button"
+                onClick={() => {
+                  setActiveTab('raw');
+                  onModeChange('raw');
+                }}
+              >
+                {t('mqttModeRaw')}
+              </button>
+            ) : null}
+            {enableLedTab && allowedTargetTypes.includes('physical') ? (
+              <button
+                className={`button tiny ${activeTab === 'led' ? 'active' : 'secondary'}`}
+                type="button"
+                onClick={() => {
+                  setActiveTab('led');
+                  onModeChange('raw');
+                  onTargetTypeChange('physical');
+                  onTemplateChange('led');
+                }}
+              >
+                {t('mqttModeLed')}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
 
         {activeTab === 'led' ? (
           <>

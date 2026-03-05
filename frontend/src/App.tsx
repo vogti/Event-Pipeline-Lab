@@ -5963,6 +5963,10 @@ export default function App() {
           virtualDeviceIds={adminVirtualDeviceIds}
           guidedTopic={guidedMqttMessage.topic}
           guidedPayload={guidedMqttMessage.payload}
+          titleKey="publishEvent"
+          enableLedTab={false}
+          hideRawTab
+          hideModeTabs
           onClose={closeMqttEventModal}
           onSubmit={sendAdminMqttEvent}
           onModeChange={setMqttComposerModeWithSync}
@@ -5987,6 +5991,9 @@ export default function App() {
           guidedPayload={guidedStudentMqttMessage.payload}
           titleKey="publishEvent"
           submitLabelKey="publishEvent"
+          enableLedTab={false}
+          hideRawTab
+          hideModeTabs
           onClose={closeStudentMqttEventModal}
           onSubmit={sendStudentMqttEvent}
           onModeChange={setStudentMqttComposerModeWithSync}

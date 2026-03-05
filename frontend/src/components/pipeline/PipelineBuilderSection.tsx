@@ -418,6 +418,32 @@ function parseLedSinkTopic(topic: string): { deviceId: string; ledColor: 'green'
   return null;
 }
 
+function parseTopicDeviceId(topic: string): string | null {
+  if (!topic.trim()) {
+    return null;
+  }
+  let normalized = topic.trim().replace(/^\/+/, '');
+  if (normalized.toLowerCase().startsWith('epld/')) {
+    const remainder = normalized.substring('epld/'.length);
+    if (remainder.toLowerCase().startsWith('epld') || remainder.toLowerCase().startsWith('eplvd')) {
+      normalized = remainder;
+    }
+  }
+  if (normalized.toLowerCase().startsWith('command/')) {
+    return BROADCAST_DEVICE_ID;
+  }
+  const slashIndex = normalized.indexOf('/');
+  const firstSegment = (slashIndex < 0 ? normalized : normalized.slice(0, slashIndex)).trim();
+  if (!firstSegment) {
+    return null;
+  }
+  const upper = firstSegment.toUpperCase();
+  if (upper === 'DEVICE' || upper === BROADCAST_DEVICE_ID) {
+    return BROADCAST_DEVICE_ID;
+  }
+  return firstSegment.toLowerCase();
+}
+
 function sinkDisplayNameKey(type: PipelineSinkType): I18nKey {
   if (type === 'SEND_EVENT') {
     return 'pipelineSinkSendEvent';
@@ -1803,6 +1829,10 @@ export function PipelineBuilderSection({
   const availableSinkTypes: Array<'SEND_EVENT' | 'SHOW_PAYLOAD'> = hasShowPayloadSink
     ? ['SEND_EVENT']
     : ['SEND_EVENT', 'SHOW_PAYLOAD'];
+  const defaultSinkTargetTypes: MqttComposerTargetType[] = ['physical', 'virtual', 'custom'];
+  const sinkAllowedTargetTypes: MqttComposerTargetType[] = (
+    sendEventTargetTypeOptions?.length ? sendEventTargetTypeOptions : defaultSinkTargetTypes
+  ).filter((entry, index, values) => values.indexOf(entry) === index);
 
   const setSinkDraftField = <K extends keyof MqttEventDraft>(key: K, value: MqttEventDraft[K]) => {
     setSinkDraft((previous) => ({
@@ -1841,7 +1871,12 @@ export function PipelineBuilderSection({
   const setSinkTemplate = (template: MqttComposerTemplate) => {
     setSinkDraft((previous) => ({
       ...previous,
-      template: normalizeMqttTemplateForTarget(previous.targetType, template)
+      template: normalizeMqttTemplateForTarget(
+        sinkAllowedTargetTypes.includes(previous.targetType)
+          ? previous.targetType
+          : (sinkAllowedTargetTypes[0] ?? 'physical'),
+        template
+      )
     }));
   };
 
@@ -1862,25 +1897,42 @@ export function PipelineBuilderSection({
     const ledBlinkEnabled = readSinkLedBlinkEnabled(config);
     const ledBlinkMs = readSinkLedBlinkMs(config);
     const ledTopicConfig = parseLedSinkTopic(topic);
+    const configuredDeviceId = parseTopicDeviceId(topic);
+    const inferredTargetType: MqttComposerTargetType = (() => {
+      if (ledTopicConfig !== null) {
+        return 'physical';
+      }
+      const normalizedDevice = (configuredDeviceId ?? '').trim().toLowerCase();
+      if (normalizedDevice === 'broadcast' || normalizedDevice === 'device') {
+        return 'physical';
+      }
+      if (normalizedDevice.startsWith('eplvd')) {
+        return 'virtual';
+      }
+      if (normalizedDevice.startsWith('epld')) {
+        return 'physical';
+      }
+      return 'custom';
+    })();
+    const targetType = sinkAllowedTargetTypes.includes(inferredTargetType)
+      ? inferredTargetType
+      : (sinkAllowedTargetTypes[0] ?? 'physical');
     const base = createMqttEventDraft();
-    const initialDeviceIdRaw = ledTopicConfig?.deviceId ?? resolveMqttDeviceId(
-      'physical',
-      base.deviceId,
-      physicalDeviceIds,
-      virtualDeviceIds
-    );
-    const initialDeviceId = allowBroadcastSinkDeviceOption && (
-      initialDeviceIdRaw.trim().toUpperCase() === BROADCAST_DEVICE_ID
-      || initialDeviceIdRaw.trim().toUpperCase() === 'DEVICE'
-    )
+    const initialDeviceIdSource = ledTopicConfig?.deviceId
+      ?? configuredDeviceId
+      ?? resolveMqttDeviceId(targetType, base.deviceId, physicalDeviceIds, virtualDeviceIds);
+    const initialDeviceIdUpper = initialDeviceIdSource.trim().toUpperCase();
+    const initialDeviceId = allowBroadcastSinkDeviceOption
+      && targetType === 'physical'
+      && (initialDeviceIdUpper === BROADCAST_DEVICE_ID || initialDeviceIdUpper === 'DEVICE')
       ? BROADCAST_DEVICE_ID
-      : initialDeviceIdRaw;
-    const shouldOpenLedTab = ledTopicConfig !== null;
+      : resolveMqttDeviceId(targetType, initialDeviceIdSource, physicalDeviceIds, virtualDeviceIds);
+    const shouldOpenLedTab = ledTopicConfig !== null && targetType === 'physical';
     setSinkComposerMode('guided');
     setSinkDraft({
       ...base,
-      targetType: shouldOpenLedTab ? 'physical' : 'custom',
-      template: shouldOpenLedTab ? 'led' : 'custom',
+      targetType,
+      template: shouldOpenLedTab ? 'led' : normalizeMqttTemplateForTarget(targetType, 'custom'),
       deviceId: initialDeviceId,
       ledColor: ledTopicConfig?.ledColor ?? base.ledColor,
       customTopic: topic,
@@ -1930,6 +1982,14 @@ export function PipelineBuilderSection({
       rawTopic: guidedSinkMqttMessage.topic
     }));
   };
+
+  const sinkTopicPrefixLock = !allowBroadcastSinkDeviceOption
+    && (sinkDraft.targetType === 'physical' || sinkDraft.targetType === 'custom')
+    && sinkDraft.deviceId.trim().length > 0
+    && sinkDraft.deviceId.trim().toUpperCase() !== BROADCAST_DEVICE_ID
+    && sinkDraft.deviceId.trim().toUpperCase() !== 'DEVICE'
+    ? sinkDraft.deviceId.trim().toLowerCase()
+    : null;
 
   const openProcessingBlockInfo = (blockType: string) => {
     setBlockInfoModal({
@@ -3561,6 +3621,7 @@ export function PipelineBuilderSection({
           showSinkPayloadControls
           hideRawTab
           guidedTabLabelKey="mqttModeCustom"
+          topicPrefixLock={sinkTopicPrefixLock}
           initialTab={sinkEditorInitialTab}
           simpleMode={simplifiedView}
         />
