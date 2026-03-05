@@ -153,7 +153,12 @@ public class PipelineSinkExecutionService implements DisposableBean {
             return;
         }
         StudentDeviceScope resolvedScope = targetScope == null ? StudentDeviceScope.ALL_DEVICES : targetScope;
-        if (!isTopicAllowedForScope(resolvedScope, targetTopic, ownerGroupKey, adminDeviceId)) {
+        boolean adminPipelineOwner = ownerGroupKey != null
+                && !ownerGroupKey.isBlank()
+                && adminDeviceId != null
+                && !adminDeviceId.isBlank()
+                && ownerGroupKey.trim().equalsIgnoreCase(adminDeviceId.trim());
+        if (!adminPipelineOwner && !isTopicAllowedForScope(resolvedScope, targetTopic, ownerGroupKey, adminDeviceId)) {
             log.debug(
                     "Skipped SEND_EVENT sink publish due target scope restriction sinkId={} topic={} scope={}",
                     normalizeSinkId(sink),

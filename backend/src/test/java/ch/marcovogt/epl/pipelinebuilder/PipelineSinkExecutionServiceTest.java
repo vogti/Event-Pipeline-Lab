@@ -377,6 +377,83 @@ class PipelineSinkExecutionServiceTest {
     }
 
     @Test
+    void sendEventSinkShouldAllowBroadcastTopicWhenOwnedByAdminPipeline() {
+        when(mqttCommandPublisherProvider.getIfAvailable()).thenReturn(mqttCommandPublisher);
+
+        PipelineSinkSection sinkSection = new PipelineSinkSection(
+                List.of(new PipelineSinkNode(
+                        "send-event",
+                        "SEND_EVENT",
+                        Map.of(
+                                "topic", "command/led/green",
+                                "qos", 1,
+                                "retained", false
+                        )
+                )),
+                List.of(),
+                "goal"
+        );
+
+        CanonicalEventDto inputEvent = event(
+                "event-admin-broadcast",
+                "epld99/event/button/black",
+                "\"on\""
+        );
+
+        service.processProjectedEvent(
+                "task_intro",
+                "epld99",
+                sinkSection,
+                inputEvent,
+                StudentDeviceScope.OWN_DEVICE,
+                "epld99",
+                "epld99"
+        );
+
+        verify(mqttCommandPublisher).publishCustom(
+                "command/led/green",
+                "\"on\"",
+                1,
+                false
+        );
+    }
+
+    @Test
+    void sendEventSinkShouldStillBlockBroadcastTopicForStudentScope() {
+        PipelineSinkSection sinkSection = new PipelineSinkSection(
+                List.of(new PipelineSinkNode(
+                        "send-event",
+                        "SEND_EVENT",
+                        Map.of(
+                                "topic", "command/led/green",
+                                "qos", 1,
+                                "retained", false
+                        )
+                )),
+                List.of(),
+                "goal"
+        );
+
+        CanonicalEventDto inputEvent = event(
+                "event-student-broadcast",
+                "epld01/event/button/black",
+                "\"on\""
+        );
+
+        service.processProjectedEvent(
+                "task_intro",
+                "epld01",
+                sinkSection,
+                inputEvent,
+                StudentDeviceScope.OWN_DEVICE,
+                "epld01",
+                "epld99"
+        );
+
+        verify(mqttCommandPublisher, never()).publishCustom(anyString(), anyString(), anyInt(), anyBoolean());
+    }
+
+    @Test
     void sendEventSinkShouldBlinkLedWhenEnabled() {
         when(mqttCommandPublisherProvider.getIfAvailable()).thenReturn(mqttCommandPublisher);
 
