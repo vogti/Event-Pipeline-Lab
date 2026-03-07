@@ -575,7 +575,7 @@ const messages = {
     eventFieldEventType: 'EVENT-TYP',
     eventFieldCategory: 'KATEGORIE',
     eventFieldIngestTs: 'EINGANGSZEIT',
-    eventFieldDeviceTs: 'EVENT TS',
+    eventFieldDeviceTs: 'EVENTZEIT',
     eventFieldValue: 'WERT',
     eventFieldValid: 'GÜLTIG',
     eventFieldValidationErrors: 'VALIDIERUNGSFEHLER',
