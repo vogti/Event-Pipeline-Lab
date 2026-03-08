@@ -5,12 +5,15 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import ch.marcovogt.epl.admin.AppSettingsService;
 import ch.marcovogt.epl.authsession.AuthService;
+import ch.marcovogt.epl.deviceregistryhealth.DeviceStatus;
+import ch.marcovogt.epl.deviceregistryhealth.DeviceStatusRepository;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,6 +34,9 @@ class MqttCommandPublisherTest {
     private AppSettingsService appSettingsService;
 
     @Mock
+    private DeviceStatusRepository deviceStatusRepository;
+
+    @Mock
     private PublishSourceContext publishSourceContext;
 
     private MqttCommandPublisher publisher;
@@ -41,8 +47,10 @@ class MqttCommandPublisherTest {
                 mqttGatewayClient,
                 authService,
                 appSettingsService,
+                deviceStatusRepository,
                 publishSourceContext
         );
+        lenient().when(deviceStatusRepository.findAllByOrderByDeviceIdAsc()).thenReturn(List.of());
     }
 
     @Test
@@ -147,6 +155,29 @@ class MqttCommandPublisherTest {
         verify(mqttGatewayClient).publish("epld01/command/counter/reset", "{}", 1, false);
         verify(mqttGatewayClient).publish("epld/epld09/cmd/counter/reset", "{}", 1, false);
         verify(mqttGatewayClient).publish("epld09/command/counter/reset", "{}", 1, false);
+    }
+
+    @Test
+    void publishCustomShouldFanOutBroadcastUsingDiscoveredPhysicalDevices() {
+        mockFanOutContext();
+        when(deviceStatusRepository.findAllByOrderByDeviceIdAsc()).thenReturn(List.of(
+                new DeviceStatus("epld01"),
+                new DeviceStatus("epld02"),
+                new DeviceStatus("eplvd02")
+        ));
+        when(authService.listStudentGroupKeys()).thenReturn(List.of());
+        when(appSettingsService.getAdminDeviceId()).thenReturn(null);
+
+        publisher.publishCustom("command/led/green", "on", 1, false);
+
+        verify(mqttGatewayClient).publish("epld/epld01/cmd/led/green", "on", 1, false);
+        verify(mqttGatewayClient).publish("epld01/command/led/green", "on", 1, false);
+        verify(mqttGatewayClient).publish("epld/epld02/cmd/led/green", "on", 1, false);
+        verify(mqttGatewayClient).publish("epld02/command/led/green", "on", 1, false);
+        verify(mqttGatewayClient, times(1))
+                .publish(eq("epld01/rpc"), argThat(payload -> payload.contains("\"method\":\"Switch.Set\"")), eq(1), eq(false));
+        verify(mqttGatewayClient, times(1))
+                .publish(eq("epld02/rpc"), argThat(payload -> payload.contains("\"method\":\"Switch.Set\"")), eq(1), eq(false));
     }
 
     private void mockFanOutContext() {

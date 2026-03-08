@@ -3,6 +3,8 @@ package ch.marcovogt.epl.mqttgateway;
 import ch.marcovogt.epl.admin.AppSettingsService;
 import ch.marcovogt.epl.authsession.AuthService;
 import ch.marcovogt.epl.common.DeviceIdMapping;
+import ch.marcovogt.epl.deviceregistryhealth.DeviceStatus;
+import ch.marcovogt.epl.deviceregistryhealth.DeviceStatusRepository;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -15,6 +17,7 @@ public class MqttCommandPublisher {
     private final MqttGatewayClient mqttGatewayClient;
     private final AuthService authService;
     private final AppSettingsService appSettingsService;
+    private final DeviceStatusRepository deviceStatusRepository;
     private final PublishSourceContext publishSourceContext;
     private final AtomicLong rpcRequestId = new AtomicLong(1000);
 
@@ -22,11 +25,13 @@ public class MqttCommandPublisher {
             MqttGatewayClient mqttGatewayClient,
             AuthService authService,
             AppSettingsService appSettingsService,
+            DeviceStatusRepository deviceStatusRepository,
             PublishSourceContext publishSourceContext
     ) {
         this.mqttGatewayClient = mqttGatewayClient;
         this.authService = authService;
         this.appSettingsService = appSettingsService;
+        this.deviceStatusRepository = deviceStatusRepository;
         this.publishSourceContext = publishSourceContext;
     }
 
@@ -145,6 +150,18 @@ public class MqttCommandPublisher {
 
     private List<String> resolveFanOutDeviceIds() {
         LinkedHashSet<String> deviceIds = new LinkedHashSet<>();
+        List<DeviceStatus> discoveredStatuses = deviceStatusRepository.findAllByOrderByDeviceIdAsc();
+        if (discoveredStatuses != null) {
+            for (DeviceStatus status : discoveredStatuses) {
+                if (status == null || status.getDeviceId() == null || status.getDeviceId().isBlank()) {
+                    continue;
+                }
+                String normalized = status.getDeviceId().trim().toLowerCase(Locale.ROOT);
+                if (DeviceIdMapping.isPhysicalDeviceId(normalized)) {
+                    deviceIds.add(normalized);
+                }
+            }
+        }
         for (String groupKey : authService.listStudentGroupKeys()) {
             if (groupKey == null || groupKey.isBlank()) {
                 continue;
