@@ -603,9 +603,7 @@ export const api = {
   ): Promise<SystemDataImportApplyResponse> {
     const formData = new FormData();
     formData.append('file', file, file.name);
-    for (const part of selectedParts) {
-      formData.append('selectedParts', part);
-    }
+    formData.append('selectedParts', selectedParts.join(','));
     return request<SystemDataImportApplyResponse>(
       '/api/admin/system-status/import/apply',
       {

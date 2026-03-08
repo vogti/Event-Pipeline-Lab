@@ -119,3 +119,34 @@ describe('admin password update api', () => {
     expect(body.newPassword).toBe('new-pass');
   });
 });
+
+describe('system data import apply api', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('sends selected parts as a single multipart field', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ status: 200, body: { importedAt: '2026-03-08T21:00:00Z', importedParts: [] } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const file = new File([new Blob(['{}'], { type: 'application/json' })], 'export.zip', {
+      type: 'application/zip'
+    });
+    await api.adminApplySystemDataImport('token-admin', file, [
+      'APP_SETTINGS',
+      'TASK_STATE',
+      'TASK_DEFINITION_STATE'
+    ]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(requestInit.method).toBe('POST');
+    expect(requestInit.body).toBeInstanceOf(FormData);
+
+    const body = requestInit.body as FormData;
+    expect(body.getAll('selectedParts')).toEqual(['APP_SETTINGS,TASK_STATE,TASK_DEFINITION_STATE']);
+  });
+});
