@@ -667,15 +667,33 @@ public class PipelineStateService {
             String ownerKey,
             PipelineStatePayload defaults
     ) {
+        PipelineState existing = pipelineStateRepository.findByTaskIdAndOwnerTypeAndOwnerKey(taskId, ownerType, ownerKey)
+                .orElse(null);
+        if (existing != null) {
+            return existing;
+        }
+
+        String stateJson = serialize(defaults);
+        Instant now = Instant.now(clock);
+        pipelineStateRepository.insertIfAbsent(
+                taskId,
+                ownerType.name(),
+                ownerKey,
+                stateJson,
+                0L,
+                now,
+                "system"
+        );
+
         return pipelineStateRepository.findByTaskIdAndOwnerTypeAndOwnerKey(taskId, ownerType, ownerKey)
                 .orElseGet(() -> {
                     PipelineState created = new PipelineState();
                     created.setTaskId(taskId);
                     created.setOwnerType(ownerType);
                     created.setOwnerKey(ownerKey);
-                    created.setStateJson(serialize(defaults));
+                    created.setStateJson(stateJson);
                     created.setRevision(0L);
-                    created.setUpdatedAt(Instant.now(clock));
+                    created.setUpdatedAt(now);
                     created.setUpdatedBy("system");
                     return pipelineStateRepository.save(created);
                 });
