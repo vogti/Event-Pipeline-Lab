@@ -39,6 +39,7 @@ interface AdminTasksSectionProps {
   onStudentEventVisibilityScopeChange: (scope: StudentDeviceScope) => void;
   onStudentCommandTargetScopeChange: (scope: StudentDeviceScope) => void;
   onStudentSendEventEnabledChange: (enabled: boolean) => void;
+  onStudentDevicePanelVisibleChange: (visible: boolean) => void;
   onStudentDeviceViewDisturbedChange: (disturbed: boolean) => void;
   onToggleAllowedBlock: (blockType: string, enabled: boolean) => void;
   onScenarioOverlaysChange: (scenarioOverlays: string[]) => void;
@@ -90,6 +91,7 @@ export function AdminTasksSection({
   onStudentEventVisibilityScopeChange,
   onStudentCommandTargetScopeChange,
   onStudentSendEventEnabledChange,
+  onStudentDevicePanelVisibleChange,
   onStudentDeviceViewDisturbedChange,
   onToggleAllowedBlock,
   onScenarioOverlaysChange,
@@ -482,6 +484,15 @@ export function AdminTasksSection({
                     onChange={(event) => onStudentSendEventEnabledChange(event.target.checked)}
                   />
                   <span>{t('taskEventsStudentSendEventEnabled')}</span>
+                </label>
+
+                <label className="checkbox-inline pipeline-field">
+                  <input
+                    type="checkbox"
+                    checked={editingTaskConfig.studentDevicePanelVisible}
+                    onChange={(event) => onStudentDevicePanelVisibleChange(event.target.checked)}
+                  />
+                  <span>{t('taskEventsShowDevicePanel')}</span>
                 </label>
 
                 <button

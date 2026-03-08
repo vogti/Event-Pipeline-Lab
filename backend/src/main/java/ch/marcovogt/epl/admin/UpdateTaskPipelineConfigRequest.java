@@ -17,6 +17,7 @@ public record UpdateTaskPipelineConfigRequest(
         @NotNull StudentDeviceScope studentEventVisibilityScope,
         @NotNull StudentDeviceScope studentCommandTargetScope,
         boolean studentSendEventEnabled,
+        boolean studentDevicePanelVisible,
         boolean studentDeviceViewDisturbed
 ) {
 }

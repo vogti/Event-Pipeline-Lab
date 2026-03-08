@@ -57,6 +57,7 @@ export interface TaskPipelineConfig {
   studentEventVisibilityScope: StudentDeviceScope;
   studentCommandTargetScope: StudentDeviceScope;
   studentSendEventEnabled: boolean;
+  studentDevicePanelVisible: boolean;
   studentDeviceViewDisturbed: boolean;
   availableProcessingBlocks: string[];
   minSlotCount: number;
@@ -70,6 +71,7 @@ export interface TaskPipelineConfig {
 export interface TaskCapabilities {
   canViewRoomEvents: boolean;
   canSendDeviceCommands: boolean;
+  showDevicePanel: boolean;
   studentSendEventEnabled: boolean;
   canFilterByTopic: boolean;
   showInternalEventsToggle: boolean;

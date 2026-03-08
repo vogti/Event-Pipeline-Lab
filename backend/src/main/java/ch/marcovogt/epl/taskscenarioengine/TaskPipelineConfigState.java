@@ -39,6 +39,9 @@ public class TaskPipelineConfigState {
     @Column(name = "student_send_event_enabled", nullable = false)
     private boolean studentSendEventEnabled;
 
+    @Column(name = "student_device_panel_visible")
+    private Boolean studentDevicePanelVisible;
+
     @Column(name = "student_device_view_disturbed", nullable = false)
     private boolean studentDeviceViewDisturbed;
 
@@ -110,6 +113,14 @@ public class TaskPipelineConfigState {
 
     public void setStudentSendEventEnabled(boolean studentSendEventEnabled) {
         this.studentSendEventEnabled = studentSendEventEnabled;
+    }
+
+    public Boolean getStudentDevicePanelVisible() {
+        return studentDevicePanelVisible;
+    }
+
+    public void setStudentDevicePanelVisible(Boolean studentDevicePanelVisible) {
+        this.studentDevicePanelVisible = studentDevicePanelVisible;
     }
 
     public boolean isStudentDeviceViewDisturbed() {

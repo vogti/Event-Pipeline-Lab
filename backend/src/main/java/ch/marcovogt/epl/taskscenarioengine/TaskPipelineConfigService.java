@@ -47,6 +47,9 @@ public class TaskPipelineConfigService {
                 ? normalizeScenarioOverlays(base.scenarioOverlays())
                 : normalizeScenarioOverlays(parseScenarioOverlays(rawScenarioOverlays));
         int slotCount = clampSlotCount(override.getSlotCount());
+        boolean studentDevicePanelVisible = override.getStudentDevicePanelVisible() == null
+                ? base.studentDevicePanelVisible()
+                : override.getStudentDevicePanelVisible();
         PipelineTaskConfig overridden = new PipelineTaskConfig(
                 override.isVisibleToStudents(),
                 base.lecturerMode(),
@@ -65,6 +68,7 @@ public class TaskPipelineConfigService {
                                 : override.getStudentCommandTargetScope()
                 ),
                 override.isStudentSendEventEnabled(),
+                studentDevicePanelVisible,
                 override.isStudentDeviceViewDisturbed(),
                 base.ingestFilters(),
                 scenarioOverlays,
@@ -98,6 +102,7 @@ public class TaskPipelineConfigService {
                 normalizeScope(pipeline.studentEventVisibilityScope()),
                 normalizeScope(pipeline.studentCommandTargetScope()),
                 pipeline.studentSendEventEnabled(),
+                pipeline.studentDevicePanelVisible(),
                 pipeline.studentDeviceViewDisturbed(),
                 availableBlocks(),
                 MIN_SLOT_COUNT,
@@ -119,6 +124,7 @@ public class TaskPipelineConfigService {
             StudentDeviceScope studentEventVisibilityScope,
             StudentDeviceScope studentCommandTargetScope,
             boolean studentSendEventEnabled,
+            boolean studentDevicePanelVisible,
             boolean studentDeviceViewDisturbed,
             String actor
     ) {
@@ -142,6 +148,7 @@ public class TaskPipelineConfigService {
         state.setStudentEventVisibilityScope(normalizedEventScope);
         state.setStudentCommandTargetScope(normalizedCommandScope);
         state.setStudentSendEventEnabled(studentSendEventEnabled);
+        state.setStudentDevicePanelVisible(studentDevicePanelVisible);
         state.setStudentDeviceViewDisturbed(studentDeviceViewDisturbed);
         state.setUpdatedAt(Instant.now(clock));
         state.setUpdatedBy(actor == null || actor.isBlank() ? "system" : actor);

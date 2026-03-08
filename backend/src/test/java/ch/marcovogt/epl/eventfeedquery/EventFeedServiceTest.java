@@ -65,6 +65,7 @@ class EventFeedServiceTest {
                 true,
                 true,
                 true,
+                true,
                 List.of(),
                 List.of(),
                 StudentDeviceScope.ALL_DEVICES,
@@ -101,6 +102,7 @@ class EventFeedServiceTest {
         );
 
         TaskCapabilities capabilities = new TaskCapabilities(
+                true,
                 true,
                 true,
                 true,

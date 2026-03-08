@@ -565,6 +565,7 @@ function sameTaskCapabilities(a: TaskCapabilities, b: TaskCapabilities): boolean
   return (
     a.canViewRoomEvents === b.canViewRoomEvents &&
     a.canSendDeviceCommands === b.canSendDeviceCommands &&
+    a.showDevicePanel === b.showDevicePanel &&
     a.studentSendEventEnabled === b.studentSendEventEnabled &&
     a.canFilterByTopic === b.canFilterByTopic &&
     a.showInternalEventsToggle === b.showInternalEventsToggle &&

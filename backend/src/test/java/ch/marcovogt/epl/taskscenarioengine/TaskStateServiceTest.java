@@ -122,6 +122,7 @@ class TaskStateServiceTest {
                 StudentDeviceScope.OWN_DEVICE,
                 false,
                 false,
+                false,
                 List.of("DEDUP"),
                 4,
                 6,
@@ -140,6 +141,7 @@ class TaskStateServiceTest {
                 any(),
                 anyBoolean(),
                 anyBoolean(),
+                anyBoolean(),
                 any()
         ))
                 .thenReturn(expected);
@@ -154,6 +156,7 @@ class TaskStateServiceTest {
                 StudentDeviceScope.OWN_DEVICE,
                 false,
                 false,
+                false,
                 "admin"
         );
 
@@ -166,6 +169,7 @@ class TaskStateServiceTest {
                 any(),
                 any(),
                 any(),
+                anyBoolean(),
                 anyBoolean(),
                 anyBoolean(),
                 any()

@@ -484,6 +484,7 @@ class PipelineStateServiceTest {
                 new TaskCapabilities(
                         false,
                         true,
+                        true,
                         false,
                         true,
                         false,
@@ -503,6 +504,7 @@ class PipelineStateServiceTest {
                         StudentDeviceScope.OWN_DEVICE,
                         false,
                         false,
+                        true,
                         List.of(),
                         List.of(),
                         List.of("DEVICE_CONTROL", "VIRTUAL_SIGNAL"),
@@ -523,6 +525,7 @@ class PipelineStateServiceTest {
                 new TaskCapabilities(
                         false,
                         true,
+                        true,
                         false,
                         true,
                         false,
@@ -542,6 +545,7 @@ class PipelineStateServiceTest {
                         StudentDeviceScope.OWN_DEVICE,
                         false,
                         false,
+                        true,
                         List.of(),
                         List.of(),
                         List.of("DEVICE_CONTROL", "VIRTUAL_SIGNAL"),

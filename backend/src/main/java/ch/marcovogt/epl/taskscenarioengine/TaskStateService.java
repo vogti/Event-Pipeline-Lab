@@ -35,6 +35,7 @@ public class TaskStateService {
             true,
             true,
             true,
+            true,
             List.of("*"),
             List.of("LED_GREEN", "LED_ORANGE", "COUNTER_RESET"),
             StudentDeviceScope.ALL_DEVICES,
@@ -221,6 +222,7 @@ public class TaskStateService {
             StudentDeviceScope studentEventVisibilityScope,
             StudentDeviceScope studentCommandTargetScope,
             boolean studentSendEventEnabled,
+            boolean studentDevicePanelVisible,
             boolean studentDeviceViewDisturbed,
             String actor
     ) {
@@ -234,6 +236,7 @@ public class TaskStateService {
                 studentEventVisibilityScope,
                 studentCommandTargetScope,
                 studentSendEventEnabled,
+                studentDevicePanelVisible,
                 studentDeviceViewDisturbed,
                 actor
         );
@@ -594,6 +597,28 @@ public class TaskStateService {
         if (capabilities == null || pipeline == null) {
             return null;
         }
+        String rawPipelineJson = state.getPipelineJson();
+        boolean hasStudentDevicePanelVisible = rawPipelineJson != null
+                && rawPipelineJson.contains("\"studentDevicePanelVisible\"");
+        PipelineTaskConfig effectivePipeline = hasStudentDevicePanelVisible
+                ? pipeline
+                : new PipelineTaskConfig(
+                        pipeline.visibleToStudents(),
+                        pipeline.lecturerMode(),
+                        pipeline.slotCount(),
+                        pipeline.allowedProcessingBlocks(),
+                        pipeline.inputMode(),
+                        pipeline.deviceScope(),
+                        pipeline.studentEventVisibilityScope(),
+                        pipeline.studentCommandTargetScope(),
+                        pipeline.studentSendEventEnabled(),
+                        capabilities.canSendDeviceCommands(),
+                        pipeline.studentDeviceViewDisturbed(),
+                        pipeline.ingestFilters(),
+                        pipeline.scenarioOverlays(),
+                        pipeline.sinkTargets(),
+                        pipeline.sinkGoal()
+                );
         String id = normalizeTaskId(state.getTaskId());
         return new TaskDefinition(
                 id,
@@ -610,7 +635,7 @@ public class TaskStateService {
                         nonBlankOrDefault(state.getDescriptionEn(), id)
                 ),
                 capabilities,
-                pipeline
+                effectivePipeline
         );
     }
 
@@ -628,10 +653,14 @@ public class TaskStateService {
                 : (base.studentCommandTargetScope() != null
                 ? base.studentCommandTargetScope()
                 : StudentDeviceScope.OWN_DEVICE);
+        boolean showDevicePanel = pipeline != null
+                ? pipeline.studentDevicePanelVisible()
+                : (base.showDevicePanel() || base.canSendDeviceCommands());
 
         return new TaskCapabilities(
                 eventScope == StudentDeviceScope.ALL_DEVICES,
                 base.canSendDeviceCommands(),
+                showDevicePanel,
                 pipeline != null
                         ? pipeline.studentSendEventEnabled()
                         : base.studentSendEventEnabled(),

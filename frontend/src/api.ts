@@ -324,6 +324,7 @@ export const api = {
     studentEventVisibilityScope: StudentDeviceScope,
     studentCommandTargetScope: StudentDeviceScope,
     studentSendEventEnabled: boolean,
+    studentDevicePanelVisible: boolean,
     studentDeviceViewDisturbed: boolean
   ): Promise<TaskPipelineConfig> {
     return request<TaskPipelineConfig>(
@@ -339,6 +340,7 @@ export const api = {
           studentEventVisibilityScope,
           studentCommandTargetScope,
           studentSendEventEnabled,
+          studentDevicePanelVisible,
           studentDeviceViewDisturbed
         })
       },

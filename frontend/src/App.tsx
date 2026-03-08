@@ -2919,6 +2919,18 @@ export default function App() {
     });
   }, []);
 
+  const changeTaskPipelineStudentDevicePanelVisible = useCallback((visible: boolean) => {
+    setAdminTaskPipelineConfigDraft((previous) => {
+      if (!previous) {
+        return previous;
+      }
+      return {
+        ...previous,
+        studentDevicePanelVisible: visible
+      };
+    });
+  }, []);
+
   const changeTaskPipelineStudentDeviceViewDisturbed = useCallback((disturbed: boolean) => {
     setAdminTaskPipelineConfigDraft((previous) => {
       if (!previous) {
@@ -3008,6 +3020,7 @@ export default function App() {
         normalizeStudentDeviceScope(adminTaskPipelineConfigDraft.studentEventVisibilityScope),
         normalizeStudentDeviceScope(adminTaskPipelineConfigDraft.studentCommandTargetScope),
         Boolean(adminTaskPipelineConfigDraft.studentSendEventEnabled),
+        Boolean(adminTaskPipelineConfigDraft.studentDevicePanelVisible),
         Boolean(adminTaskPipelineConfigDraft.studentDeviceViewDisturbed)
       );
       setAdminTaskPipelineConfig(updated);
@@ -3229,7 +3242,7 @@ export default function App() {
     if (
       !token
       || session?.role !== 'STUDENT'
-      || !studentData?.capabilities.canSendDeviceCommands
+      || !studentData?.capabilities.showDevicePanel
     ) {
       return;
     }
@@ -3252,7 +3265,7 @@ export default function App() {
     refreshStudentDeviceState,
     session?.groupKey,
     session?.role,
-    studentData?.capabilities.canSendDeviceCommands,
+    studentData?.capabilities.showDevicePanel,
     token
   ]);
 
@@ -5565,7 +5578,7 @@ export default function App() {
               taskDescription={taskActiveDescription(studentData.activeTask, language)}
             />
 
-            {studentData.capabilities.canSendDeviceCommands ? (
+            {studentData.capabilities.showDevicePanel ? (
               <StudentCommandsSection
                 t={t}
                 studentCommandWhitelist={studentData.capabilities.studentCommandWhitelist}
@@ -5751,6 +5764,7 @@ export default function App() {
                   onStudentEventVisibilityScopeChange={changeTaskPipelineStudentEventVisibilityScope}
                   onStudentCommandTargetScopeChange={changeTaskPipelineStudentCommandTargetScope}
                   onStudentSendEventEnabledChange={changeTaskPipelineStudentSendEventEnabled}
+                  onStudentDevicePanelVisibleChange={changeTaskPipelineStudentDevicePanelVisible}
                   onStudentDeviceViewDisturbedChange={changeTaskPipelineStudentDeviceViewDisturbed}
                   onToggleAllowedBlock={toggleTaskPipelineAllowedBlock}
                   onScenarioOverlaysChange={changeTaskPipelineScenarioOverlays}

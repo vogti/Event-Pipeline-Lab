@@ -12,6 +12,7 @@ public record TaskPipelineConfigDto(
         StudentDeviceScope studentEventVisibilityScope,
         StudentDeviceScope studentCommandTargetScope,
         boolean studentSendEventEnabled,
+        boolean studentDevicePanelVisible,
         boolean studentDeviceViewDisturbed,
         List<String> availableProcessingBlocks,
         int minSlotCount,
