@@ -25,6 +25,7 @@ public class MqttGatewayClient implements SmartLifecycle {
 
     private static final Logger log = LoggerFactory.getLogger(MqttGatewayClient.class);
     private static final int MQTT_REASON_MAX_INFLIGHT = MqttException.REASON_CODE_MAX_INFLIGHT;
+    private static final int MQTT_REASON_CLIENT_TIMEOUT = MqttException.REASON_CODE_CLIENT_TIMEOUT;
 
     private final MqttGatewayProperties properties;
     private final EventIngestionService eventIngestionService;
@@ -105,6 +106,7 @@ public class MqttGatewayClient implements SmartLifecycle {
     public void publish(String topic, String payload, int qos, boolean retained) {
         int maxAttempts = Math.max(1, properties.getPublishRetryAttempts());
         long retryDelayMs = Math.max(0L, properties.getPublishRetryDelayMs());
+        long ackTimeoutMs = Math.max(0L, properties.getPublishAckTimeoutMs());
         String source = publishSourceContext.currentSource();
         if (source != null && !source.isBlank()) {
             publishedEventSourceTracker.register(topic, payload, source);
@@ -116,17 +118,28 @@ public class MqttGatewayClient implements SmartLifecycle {
             }
 
             try {
-                client.publish(topic, payload.getBytes(StandardCharsets.UTF_8), qos, retained);
+                IMqttDeliveryToken token = client.publish(topic, payload.getBytes(StandardCharsets.UTF_8), qos, retained);
+                if (qos > 0) {
+                    if (ackTimeoutMs > 0) {
+                        token.waitForCompletion(ackTimeoutMs);
+                    } else {
+                        token.waitForCompletion();
+                    }
+                }
                 log.debug("MQTT publish topic={} qos={} retained={}", topic, qos, retained);
                 return;
             } catch (MqttException ex) {
-                boolean retryable = ex.getReasonCode() == MQTT_REASON_MAX_INFLIGHT && attempt < maxAttempts;
+                boolean retryable = (ex.getReasonCode() == MQTT_REASON_MAX_INFLIGHT
+                        || ex.getReasonCode() == MQTT_REASON_CLIENT_TIMEOUT)
+                        && attempt < maxAttempts;
                 if (retryable) {
                     long backoff = retryDelayMs * attempt;
-                    log.debug(
-                            "MQTT publish retry due max inflight topic={} attempt={} delayMs={}",
+                    log.warn(
+                            "MQTT publish retry topic={} reasonCode={} attempt={}/{} delayMs={}",
                             topic,
+                            ex.getReasonCode(),
                             attempt,
+                            maxAttempts,
                             backoff
                     );
                     sleep(backoff);
@@ -165,12 +178,13 @@ public class MqttGatewayClient implements SmartLifecycle {
                 public void onSuccess(org.eclipse.paho.client.mqttv3.IMqttToken asyncActionToken) {
                     reconnectScheduled.set(false);
                     log.info(
-                            "Connected to MQTT broker={} clientId={} maxInflight={} publishRetryAttempts={} publishRetryDelayMs={}",
+                            "Connected to MQTT broker={} clientId={} maxInflight={} publishRetryAttempts={} publishRetryDelayMs={} publishAckTimeoutMs={}",
                             properties.getBrokerUri(),
                             resolvedClientId,
                             Math.max(10, properties.getMaxInflight()),
                             Math.max(1, properties.getPublishRetryAttempts()),
-                            Math.max(0L, properties.getPublishRetryDelayMs())
+                            Math.max(0L, properties.getPublishRetryDelayMs()),
+                            Math.max(0L, properties.getPublishAckTimeoutMs())
                     );
                 }
 

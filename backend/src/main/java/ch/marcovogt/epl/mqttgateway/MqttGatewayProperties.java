@@ -18,6 +18,7 @@ public class MqttGatewayProperties {
     private int maxInflight = 1000;
     private int publishRetryAttempts = 3;
     private long publishRetryDelayMs = 25;
+    private long publishAckTimeoutMs = 2000;
     private boolean cleanSession = true;
     private boolean appendRandomClientSuffix = true;
 
@@ -99,6 +100,14 @@ public class MqttGatewayProperties {
 
     public void setPublishRetryDelayMs(long publishRetryDelayMs) {
         this.publishRetryDelayMs = publishRetryDelayMs;
+    }
+
+    public long getPublishAckTimeoutMs() {
+        return publishAckTimeoutMs;
+    }
+
+    public void setPublishAckTimeoutMs(long publishAckTimeoutMs) {
+        this.publishAckTimeoutMs = publishAckTimeoutMs;
     }
 
     public boolean isCleanSession() {
