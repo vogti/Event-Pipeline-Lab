@@ -1169,6 +1169,35 @@ export default function App() {
     });
   }, []);
 
+  useEffect(() => {
+    if (!token || session?.role !== 'ADMIN' || adminPage !== 'groups') {
+      return;
+    }
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        await refreshAdminGroups(token);
+      } catch (error) {
+        if (!cancelled) {
+          reportBackgroundError('adminGroups', error);
+        }
+      }
+    };
+
+    void refresh();
+    const timerId = window.setInterval(() => {
+      if (document.hidden) {
+        return;
+      }
+      void refresh();
+    }, 5000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timerId);
+    };
+  }, [adminPage, refreshAdminGroups, reportBackgroundError, session?.role, token]);
+
   const loadAdminPipelineForGroup = useCallback(
     async (groupKey: string) => {
       if (!token) {
