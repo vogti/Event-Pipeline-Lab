@@ -10,12 +10,20 @@ import static org.mockito.Mockito.verify;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import ch.marcovogt.epl.auditlogging.AuditEntryRepository;
 import ch.marcovogt.epl.authsession.AuthAccountRepository;
 import ch.marcovogt.epl.authsession.AuthSessionRepository;
 import ch.marcovogt.epl.deviceregistryhealth.DeviceStatusRepository;
 import ch.marcovogt.epl.eventfeedquery.EventFeedService;
+import ch.marcovogt.epl.eventfeedquery.FeedScenarioStateRepository;
 import ch.marcovogt.epl.eventingestionnormalization.CanonicalEventRepository;
+import ch.marcovogt.epl.externalsources.ExternalStreamSourceStateRepository;
 import ch.marcovogt.epl.groupcollaborationsync.GroupStateRepository;
+import ch.marcovogt.epl.pipelinebuilder.PipelineStateRepository;
+import ch.marcovogt.epl.taskscenarioengine.TaskDefinitionState;
+import ch.marcovogt.epl.taskscenarioengine.TaskDefinitionStateRepository;
+import ch.marcovogt.epl.taskscenarioengine.TaskPipelineConfigState;
+import ch.marcovogt.epl.taskscenarioengine.TaskPipelineConfigStateRepository;
 import ch.marcovogt.epl.taskscenarioengine.TaskStateRepository;
 import ch.marcovogt.epl.virtualdevice.VirtualDeviceStateRepository;
 import java.io.ByteArrayInputStream;
@@ -46,7 +54,19 @@ class SystemDataTransferServiceTest {
     private TaskStateRepository taskStateRepository;
 
     @Mock
+    private TaskDefinitionStateRepository taskDefinitionStateRepository;
+
+    @Mock
+    private TaskPipelineConfigStateRepository taskPipelineConfigStateRepository;
+
+    @Mock
+    private FeedScenarioStateRepository feedScenarioStateRepository;
+
+    @Mock
     private GroupStateRepository groupStateRepository;
+
+    @Mock
+    private PipelineStateRepository pipelineStateRepository;
 
     @Mock
     private AuthAccountRepository authAccountRepository;
@@ -59,6 +79,12 @@ class SystemDataTransferServiceTest {
 
     @Mock
     private VirtualDeviceStateRepository virtualDeviceStateRepository;
+
+    @Mock
+    private ExternalStreamSourceStateRepository externalStreamSourceStateRepository;
+
+    @Mock
+    private AuditEntryRepository auditEntryRepository;
 
     @Mock
     private CanonicalEventRepository canonicalEventRepository;
@@ -78,11 +104,17 @@ class SystemDataTransferServiceTest {
         service = new SystemDataTransferService(
                 appSettingsRepository,
                 taskStateRepository,
+                taskDefinitionStateRepository,
+                taskPipelineConfigStateRepository,
+                feedScenarioStateRepository,
                 groupStateRepository,
+                pipelineStateRepository,
                 authAccountRepository,
                 authSessionRepository,
                 deviceStatusRepository,
                 virtualDeviceStateRepository,
+                externalStreamSourceStateRepository,
+                auditEntryRepository,
                 canonicalEventRepository,
                 eventFeedService,
                 appSettingsService,
@@ -173,6 +205,48 @@ class SystemDataTransferServiceTest {
     }
 
     @Test
+    void exportArchiveShouldContainTaskDefinitionAndPipelineConfigData() throws Exception {
+        TaskDefinitionState definition = new TaskDefinitionState();
+        definition.setTaskId("task_custom");
+        definition.setCustomTask(true);
+        definition.setTitleDe("Titel");
+        definition.setTitleEn("Title");
+        definition.setDescriptionDe("Beschreibung");
+        definition.setDescriptionEn("Description");
+        definition.setActiveDescriptionDe("Aktiv DE");
+        definition.setActiveDescriptionEn("Active EN");
+        definition.setStudentCapabilitiesJson("{\"foo\":true}");
+        definition.setPipelineJson("{\"bar\":1}");
+        definition.setDeleted(false);
+        definition.setUpdatedAt(Instant.parse("2026-02-26T10:00:00Z"));
+        definition.setUpdatedBy("admin");
+        when(taskDefinitionStateRepository.findAll(any(Sort.class))).thenReturn(List.of(definition));
+
+        TaskPipelineConfigState pipelineConfig = new TaskPipelineConfigState();
+        pipelineConfig.setTaskId("task_custom");
+        pipelineConfig.setVisibleToStudents(true);
+        pipelineConfig.setSlotCount(4);
+        pipelineConfig.setAllowedProcessingBlocksJson("[\"FILTER_SOURCE\"]");
+        pipelineConfig.setScenarioOverlaysJson("[]");
+        pipelineConfig.setStudentSendEventEnabled(true);
+        pipelineConfig.setStudentDeviceViewDisturbed(false);
+        pipelineConfig.setUpdatedAt(Instant.parse("2026-02-26T10:00:00Z"));
+        pipelineConfig.setUpdatedBy("admin");
+        when(taskPipelineConfigStateRepository.findAll(any(Sort.class))).thenReturn(List.of(pipelineConfig));
+
+        byte[] archiveBytes = service.exportDataArchive(Set.of(
+                SystemDataPart.TASK_DEFINITION_STATE,
+                SystemDataPart.TASK_PIPELINE_CONFIG_STATE
+        ));
+        Map<String, String> entries = unzipUtf8Entries(archiveBytes);
+
+        assertThat(entries).containsKey("parts/task_definition_state.json");
+        assertThat(entries).containsKey("parts/task_pipeline_config_state.json");
+        assertThat(entries.get("parts/task_definition_state.json")).contains("\"taskId\":\"task_custom\"");
+        assertThat(entries.get("parts/task_pipeline_config_state.json")).contains("\"slotCount\":4");
+    }
+
+    @Test
     void verifyArchiveShouldDetectAvailableParts() {
         byte[] archiveBytes = createArchive(
                 """
@@ -214,6 +288,16 @@ class SystemDataTransferServiceTest {
 
         assertThat(verified.valid()).isFalse();
         assertThat(verified.errors()).anyMatch(message -> message.contains("schema.json"));
+    }
+
+    @Test
+    void exportDataShouldIncludeAllSystemDataParts() {
+        SystemDataTransferDocument export = service.exportData(Set.of(SystemDataPart.values()));
+
+        assertThat(export.parts().keySet())
+                .containsExactlyElementsOf(
+                        List.of(SystemDataPart.values()).stream().map(SystemDataPart::name).toList()
+                );
     }
 
     private byte[] createArchive(String schemaJson, Map<String, String> partFiles) {

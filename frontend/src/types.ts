@@ -232,10 +232,16 @@ export interface ResetEventsResponse {
 export type SystemDataPart =
   | 'APP_SETTINGS'
   | 'TASK_STATE'
+  | 'TASK_DEFINITION_STATE'
+  | 'TASK_PIPELINE_CONFIG_STATE'
+  | 'FEED_SCENARIO_STATE'
   | 'GROUP_STATE'
+  | 'PIPELINE_STATE'
   | 'AUTH_ACCOUNTS'
   | 'DEVICE_STATUS'
   | 'VIRTUAL_DEVICE_STATE'
+  | 'EXTERNAL_STREAM_SOURCE_STATE'
+  | 'AUDIT_ENTRIES'
   | 'EVENT_DATA';
 
 export interface SystemDataTransferDocument {

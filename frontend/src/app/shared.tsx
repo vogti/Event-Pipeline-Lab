@@ -43,10 +43,16 @@ const MAX_FEED_SOURCE_EVENTS = 2000;
 const SYSTEM_DATA_PART_ORDER: SystemDataPart[] = [
   'APP_SETTINGS',
   'TASK_STATE',
+  'TASK_DEFINITION_STATE',
+  'TASK_PIPELINE_CONFIG_STATE',
+  'FEED_SCENARIO_STATE',
   'GROUP_STATE',
+  'PIPELINE_STATE',
   'AUTH_ACCOUNTS',
   'DEVICE_STATUS',
   'VIRTUAL_DEVICE_STATE',
+  'EXTERNAL_STREAM_SOURCE_STATE',
+  'AUDIT_ENTRIES',
   'EVENT_DATA'
 ];
 
@@ -83,14 +89,26 @@ function systemDataPartLabel(part: SystemDataPart, t: (key: I18nKey) => string):
       return t('partAppSettings');
     case 'TASK_STATE':
       return t('partTaskState');
+    case 'TASK_DEFINITION_STATE':
+      return t('partTaskDefinitionState');
+    case 'TASK_PIPELINE_CONFIG_STATE':
+      return t('partTaskPipelineConfigState');
+    case 'FEED_SCENARIO_STATE':
+      return t('partFeedScenarioState');
     case 'GROUP_STATE':
       return t('partGroupState');
+    case 'PIPELINE_STATE':
+      return t('partPipelineState');
     case 'AUTH_ACCOUNTS':
       return t('partAuthAccounts');
     case 'DEVICE_STATUS':
       return t('partDeviceStatus');
     case 'VIRTUAL_DEVICE_STATE':
       return t('partVirtualDeviceState');
+    case 'EXTERNAL_STREAM_SOURCE_STATE':
+      return t('partExternalStreamSourceState');
+    case 'AUDIT_ENTRIES':
+      return t('partAuditEntries');
     case 'EVENT_DATA':
       return t('partEventData');
     default:

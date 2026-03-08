@@ -3,6 +3,8 @@ package ch.marcovogt.epl.admin;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import ch.marcovogt.epl.auditlogging.AuditEntry;
+import ch.marcovogt.epl.auditlogging.AuditEntryRepository;
 import ch.marcovogt.epl.authsession.AuthAccount;
 import ch.marcovogt.epl.authsession.AuthAccountRepository;
 import ch.marcovogt.epl.authsession.AuthSessionRepository;
@@ -10,10 +12,20 @@ import ch.marcovogt.epl.common.DeviceIdMapping;
 import ch.marcovogt.epl.deviceregistryhealth.DeviceStatus;
 import ch.marcovogt.epl.deviceregistryhealth.DeviceStatusRepository;
 import ch.marcovogt.epl.eventfeedquery.EventFeedService;
+import ch.marcovogt.epl.eventfeedquery.FeedScenarioState;
+import ch.marcovogt.epl.eventfeedquery.FeedScenarioStateRepository;
 import ch.marcovogt.epl.eventingestionnormalization.CanonicalEvent;
 import ch.marcovogt.epl.eventingestionnormalization.CanonicalEventRepository;
+import ch.marcovogt.epl.externalsources.ExternalStreamSourceState;
+import ch.marcovogt.epl.externalsources.ExternalStreamSourceStateRepository;
 import ch.marcovogt.epl.groupcollaborationsync.GroupState;
 import ch.marcovogt.epl.groupcollaborationsync.GroupStateRepository;
+import ch.marcovogt.epl.pipelinebuilder.PipelineState;
+import ch.marcovogt.epl.pipelinebuilder.PipelineStateRepository;
+import ch.marcovogt.epl.taskscenarioengine.TaskDefinitionState;
+import ch.marcovogt.epl.taskscenarioengine.TaskDefinitionStateRepository;
+import ch.marcovogt.epl.taskscenarioengine.TaskPipelineConfigState;
+import ch.marcovogt.epl.taskscenarioengine.TaskPipelineConfigStateRepository;
 import ch.marcovogt.epl.taskscenarioengine.TaskState;
 import ch.marcovogt.epl.taskscenarioengine.TaskStateRepository;
 import ch.marcovogt.epl.virtualdevice.VirtualDeviceState;
@@ -53,7 +65,15 @@ public class SystemDataTransferService {
     };
     private static final TypeReference<List<TaskState>> TASK_STATE_LIST = new TypeReference<>() {
     };
+    private static final TypeReference<List<TaskDefinitionState>> TASK_DEFINITION_STATE_LIST = new TypeReference<>() {
+    };
+    private static final TypeReference<List<TaskPipelineConfigState>> TASK_PIPELINE_CONFIG_STATE_LIST = new TypeReference<>() {
+    };
+    private static final TypeReference<List<FeedScenarioState>> FEED_SCENARIO_STATE_LIST = new TypeReference<>() {
+    };
     private static final TypeReference<List<GroupState>> GROUP_STATE_LIST = new TypeReference<>() {
+    };
+    private static final TypeReference<List<PipelineState>> PIPELINE_STATE_LIST = new TypeReference<>() {
     };
     private static final TypeReference<List<AuthAccount>> AUTH_ACCOUNT_LIST = new TypeReference<>() {
     };
@@ -61,16 +81,26 @@ public class SystemDataTransferService {
     };
     private static final TypeReference<List<VirtualDeviceState>> VIRTUAL_DEVICE_STATE_LIST = new TypeReference<>() {
     };
+    private static final TypeReference<List<ExternalStreamSourceState>> EXTERNAL_STREAM_SOURCE_STATE_LIST = new TypeReference<>() {
+    };
+    private static final TypeReference<List<AuditEntry>> AUDIT_ENTRY_LIST = new TypeReference<>() {
+    };
     private static final TypeReference<List<CanonicalEvent>> EVENT_DATA_LIST = new TypeReference<>() {
     };
 
     private final AppSettingsRepository appSettingsRepository;
     private final TaskStateRepository taskStateRepository;
+    private final TaskDefinitionStateRepository taskDefinitionStateRepository;
+    private final TaskPipelineConfigStateRepository taskPipelineConfigStateRepository;
+    private final FeedScenarioStateRepository feedScenarioStateRepository;
     private final GroupStateRepository groupStateRepository;
+    private final PipelineStateRepository pipelineStateRepository;
     private final AuthAccountRepository authAccountRepository;
     private final AuthSessionRepository authSessionRepository;
     private final DeviceStatusRepository deviceStatusRepository;
     private final VirtualDeviceStateRepository virtualDeviceStateRepository;
+    private final ExternalStreamSourceStateRepository externalStreamSourceStateRepository;
+    private final AuditEntryRepository auditEntryRepository;
     private final CanonicalEventRepository canonicalEventRepository;
     private final EventFeedService eventFeedService;
     private final AppSettingsService appSettingsService;
@@ -80,11 +110,17 @@ public class SystemDataTransferService {
     public SystemDataTransferService(
             AppSettingsRepository appSettingsRepository,
             TaskStateRepository taskStateRepository,
+            TaskDefinitionStateRepository taskDefinitionStateRepository,
+            TaskPipelineConfigStateRepository taskPipelineConfigStateRepository,
+            FeedScenarioStateRepository feedScenarioStateRepository,
             GroupStateRepository groupStateRepository,
+            PipelineStateRepository pipelineStateRepository,
             AuthAccountRepository authAccountRepository,
             AuthSessionRepository authSessionRepository,
             DeviceStatusRepository deviceStatusRepository,
             VirtualDeviceStateRepository virtualDeviceStateRepository,
+            ExternalStreamSourceStateRepository externalStreamSourceStateRepository,
+            AuditEntryRepository auditEntryRepository,
             CanonicalEventRepository canonicalEventRepository,
             EventFeedService eventFeedService,
             AppSettingsService appSettingsService,
@@ -92,11 +128,17 @@ public class SystemDataTransferService {
     ) {
         this.appSettingsRepository = appSettingsRepository;
         this.taskStateRepository = taskStateRepository;
+        this.taskDefinitionStateRepository = taskDefinitionStateRepository;
+        this.taskPipelineConfigStateRepository = taskPipelineConfigStateRepository;
+        this.feedScenarioStateRepository = feedScenarioStateRepository;
         this.groupStateRepository = groupStateRepository;
+        this.pipelineStateRepository = pipelineStateRepository;
         this.authAccountRepository = authAccountRepository;
         this.authSessionRepository = authSessionRepository;
         this.deviceStatusRepository = deviceStatusRepository;
         this.virtualDeviceStateRepository = virtualDeviceStateRepository;
+        this.externalStreamSourceStateRepository = externalStreamSourceStateRepository;
+        this.auditEntryRepository = auditEntryRepository;
         this.canonicalEventRepository = canonicalEventRepository;
         this.eventFeedService = eventFeedService;
         this.appSettingsService = appSettingsService;
@@ -414,8 +456,26 @@ public class SystemDataTransferService {
             case TASK_STATE -> objectMapper.valueToTree(
                     taskStateRepository.findAll(Sort.by(Sort.Direction.ASC, "id"))
             );
+            case TASK_DEFINITION_STATE -> objectMapper.valueToTree(
+                    taskDefinitionStateRepository.findAll(Sort.by(Sort.Direction.ASC, "taskId"))
+            );
+            case TASK_PIPELINE_CONFIG_STATE -> objectMapper.valueToTree(
+                    taskPipelineConfigStateRepository.findAll(Sort.by(Sort.Direction.ASC, "taskId"))
+            );
+            case FEED_SCENARIO_STATE -> objectMapper.valueToTree(
+                    feedScenarioStateRepository.findAll(Sort.by(Sort.Direction.ASC, "id"))
+            );
             case GROUP_STATE -> objectMapper.valueToTree(
                     groupStateRepository.findAll(Sort.by(Sort.Direction.ASC, "groupKey"))
+            );
+            case PIPELINE_STATE -> objectMapper.valueToTree(
+                    pipelineStateRepository.findAll(
+                            Sort.by(
+                                    Sort.Order.asc("taskId"),
+                                    Sort.Order.asc("ownerType"),
+                                    Sort.Order.asc("ownerKey")
+                            )
+                    )
             );
             case AUTH_ACCOUNTS -> objectMapper.valueToTree(
                     authAccountRepository.findAll(Sort.by(Sort.Direction.ASC, "username"))
@@ -428,6 +488,12 @@ public class SystemDataTransferService {
             );
             case VIRTUAL_DEVICE_STATE -> objectMapper.valueToTree(
                     virtualDeviceStateRepository.findAllByOrderByDeviceIdAsc()
+            );
+            case EXTERNAL_STREAM_SOURCE_STATE -> objectMapper.valueToTree(
+                    externalStreamSourceStateRepository.findAllByOrderBySourceIdAsc()
+            );
+            case AUDIT_ENTRIES -> objectMapper.valueToTree(
+                    auditEntryRepository.findAll(Sort.by(Sort.Direction.ASC, "id"))
             );
             case EVENT_DATA -> objectMapper.valueToTree(
                     canonicalEventRepository.findAll(
@@ -445,10 +511,16 @@ public class SystemDataTransferService {
             return switch (part) {
                 case APP_SETTINGS -> replaceAppSettings(payload);
                 case TASK_STATE -> replaceTaskState(payload);
+                case TASK_DEFINITION_STATE -> replaceTaskDefinitionState(payload);
+                case TASK_PIPELINE_CONFIG_STATE -> replaceTaskPipelineConfigState(payload);
+                case FEED_SCENARIO_STATE -> replaceFeedScenarioState(payload);
                 case GROUP_STATE -> replaceGroupState(payload);
+                case PIPELINE_STATE -> replacePipelineState(payload);
                 case AUTH_ACCOUNTS -> replaceAuthAccounts(payload);
                 case DEVICE_STATUS -> replaceDeviceStatus(payload);
                 case VIRTUAL_DEVICE_STATE -> replaceVirtualDeviceState(payload);
+                case EXTERNAL_STREAM_SOURCE_STATE -> replaceExternalStreamSourceState(payload);
+                case AUDIT_ENTRIES -> replaceAuditEntries(payload);
                 case EVENT_DATA -> replaceEventData(payload);
             };
         } catch (ResponseStatusException ex) {
@@ -492,11 +564,59 @@ public class SystemDataTransferService {
         return rows.size();
     }
 
+    private long replaceTaskDefinitionState(JsonNode payload) {
+        List<TaskDefinitionState> rows = readRows(
+                payload,
+                TASK_DEFINITION_STATE_LIST,
+                SystemDataPart.TASK_DEFINITION_STATE
+        );
+        taskDefinitionStateRepository.deleteAllInBatch();
+        if (!rows.isEmpty()) {
+            taskDefinitionStateRepository.saveAll(rows);
+        }
+        return rows.size();
+    }
+
+    private long replaceTaskPipelineConfigState(JsonNode payload) {
+        List<TaskPipelineConfigState> rows = readRows(
+                payload,
+                TASK_PIPELINE_CONFIG_STATE_LIST,
+                SystemDataPart.TASK_PIPELINE_CONFIG_STATE
+        );
+        taskPipelineConfigStateRepository.deleteAllInBatch();
+        if (!rows.isEmpty()) {
+            taskPipelineConfigStateRepository.saveAll(rows);
+        }
+        return rows.size();
+    }
+
+    private long replaceFeedScenarioState(JsonNode payload) {
+        List<FeedScenarioState> rows = readRows(
+                payload,
+                FEED_SCENARIO_STATE_LIST,
+                SystemDataPart.FEED_SCENARIO_STATE
+        );
+        feedScenarioStateRepository.deleteAllInBatch();
+        if (!rows.isEmpty()) {
+            feedScenarioStateRepository.saveAll(rows);
+        }
+        return rows.size();
+    }
+
     private long replaceGroupState(JsonNode payload) {
         List<GroupState> rows = readRows(payload, GROUP_STATE_LIST, SystemDataPart.GROUP_STATE);
         groupStateRepository.deleteAllInBatch();
         if (!rows.isEmpty()) {
             groupStateRepository.saveAll(rows);
+        }
+        return rows.size();
+    }
+
+    private long replacePipelineState(JsonNode payload) {
+        List<PipelineState> rows = readRows(payload, PIPELINE_STATE_LIST, SystemDataPart.PIPELINE_STATE);
+        pipelineStateRepository.deleteAllInBatch();
+        if (!rows.isEmpty()) {
+            pipelineStateRepository.saveAll(rows);
         }
         return rows.size();
     }
@@ -533,6 +653,28 @@ public class SystemDataTransferService {
         virtualDeviceStateRepository.deleteAllInBatch();
         if (!rows.isEmpty()) {
             virtualDeviceStateRepository.saveAll(rows);
+        }
+        return rows.size();
+    }
+
+    private long replaceExternalStreamSourceState(JsonNode payload) {
+        List<ExternalStreamSourceState> rows = readRows(
+                payload,
+                EXTERNAL_STREAM_SOURCE_STATE_LIST,
+                SystemDataPart.EXTERNAL_STREAM_SOURCE_STATE
+        );
+        externalStreamSourceStateRepository.deleteAllInBatch();
+        if (!rows.isEmpty()) {
+            externalStreamSourceStateRepository.saveAll(rows);
+        }
+        return rows.size();
+    }
+
+    private long replaceAuditEntries(JsonNode payload) {
+        List<AuditEntry> rows = readRows(payload, AUDIT_ENTRY_LIST, SystemDataPart.AUDIT_ENTRIES);
+        auditEntryRepository.deleteAllInBatch();
+        if (!rows.isEmpty()) {
+            auditEntryRepository.saveAll(rows);
         }
         return rows.size();
     }
