@@ -63,7 +63,6 @@ epl:
     max-inflight: ${MQTT_MAX_INFLIGHT:1000}
     publish-retry-attempts: ${MQTT_PUBLISH_RETRY_ATTEMPTS:3}
     publish-retry-delay-ms: ${MQTT_PUBLISH_RETRY_DELAY_MS:25}
-    publish-ack-timeout-ms: ${MQTT_PUBLISH_ACK_TIMEOUT_MS:2000}
     clean-session: true
     append-random-client-suffix: true
     topic-filters:
