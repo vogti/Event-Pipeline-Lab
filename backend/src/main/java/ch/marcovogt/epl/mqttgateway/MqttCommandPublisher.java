@@ -9,10 +9,14 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicLong;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 @Service
 public class MqttCommandPublisher {
+
+    private static final Logger log = LoggerFactory.getLogger(MqttCommandPublisher.class);
 
     private final MqttGatewayClient mqttGatewayClient;
     private final AuthService authService;
@@ -97,24 +101,40 @@ public class MqttCommandPublisher {
         if (commandType == null) {
             return false;
         }
+        List<String> targetDeviceIds = resolveFanOutDeviceIds();
 
         if (commandType == BroadcastCommandType.LED_GREEN || commandType == BroadcastCommandType.LED_ORANGE) {
             boolean targetOn = parseLedTargetState(payload);
             String normalizedPayload = targetOn ? "on" : "off";
-            mqttGatewayClient.publish(topic, normalizedPayload, qos, retained);
-            fanOutToPhysicalDevices(deviceId -> {
+            // Command topics are intentionally non-retained to avoid sticky command state after reconnects.
+            mqttGatewayClient.publish(topic, normalizedPayload, qos, false);
+            fanOutToPhysicalDevices(targetDeviceIds, deviceId -> {
                 if (commandType == BroadcastCommandType.LED_GREEN) {
                     publishLedGreen(deviceId, targetOn);
                 } else {
                     publishLedOrange(deviceId, targetOn);
                 }
             });
+            log.info(
+                    "Broadcast LED command topic={} payload={} targets={} retainedInput={}",
+                    topic,
+                    normalizedPayload,
+                    targetDeviceIds.size(),
+                    retained
+            );
             return true;
         }
 
         if (commandType == BroadcastCommandType.COUNTER_RESET) {
-            mqttGatewayClient.publish(topic, "{}", qos, retained);
-            fanOutToPhysicalDevices(this::publishCounterReset);
+            // Command topics are intentionally non-retained to avoid sticky command state after reconnects.
+            mqttGatewayClient.publish(topic, "{}", qos, false);
+            fanOutToPhysicalDevices(targetDeviceIds, this::publishCounterReset);
+            log.info(
+                    "Broadcast counter reset topic={} targets={} retainedInput={}",
+                    topic,
+                    targetDeviceIds.size(),
+                    retained
+            );
             return true;
         }
 
@@ -143,7 +163,11 @@ public class MqttCommandPublisher {
     }
 
     private void fanOutToPhysicalDevices(DeviceCommandAction action) {
-        for (String deviceId : resolveFanOutDeviceIds()) {
+        fanOutToPhysicalDevices(resolveFanOutDeviceIds(), action);
+    }
+
+    private void fanOutToPhysicalDevices(List<String> deviceIds, DeviceCommandAction action) {
+        for (String deviceId : deviceIds) {
             publishSourceContext.runWithSource(PublishedEventSourceTracker.INTERNAL_FANOUT_SOURCE, () -> action.publish(deviceId));
         }
     }
@@ -162,13 +186,16 @@ public class MqttCommandPublisher {
                 }
             }
         }
-        for (String groupKey : authService.listStudentGroupKeys()) {
-            if (groupKey == null || groupKey.isBlank()) {
-                continue;
-            }
-            String normalized = groupKey.trim().toLowerCase(Locale.ROOT);
-            if (DeviceIdMapping.isPhysicalDeviceId(normalized)) {
-                deviceIds.add(normalized);
+        List<String> studentGroupKeys = authService.listStudentGroupKeys();
+        if (studentGroupKeys != null) {
+            for (String groupKey : studentGroupKeys) {
+                if (groupKey == null || groupKey.isBlank()) {
+                    continue;
+                }
+                String normalized = groupKey.trim().toLowerCase(Locale.ROOT);
+                if (DeviceIdMapping.isPhysicalDeviceId(normalized)) {
+                    deviceIds.add(normalized);
+                }
             }
         }
         String adminDeviceId = appSettingsService.getAdminDeviceId();

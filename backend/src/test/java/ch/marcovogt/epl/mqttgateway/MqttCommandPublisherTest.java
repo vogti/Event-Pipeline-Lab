@@ -143,6 +143,19 @@ class MqttCommandPublisherTest {
     }
 
     @Test
+    void publishCustomShouldForceBroadcastCommandsToNonRetained() {
+        mockFanOutContext();
+        when(authService.listStudentGroupKeys()).thenReturn(List.of("epld01"));
+        when(appSettingsService.getAdminDeviceId()).thenReturn(null);
+
+        publisher.publishCustom("command/led/green", "on", 1, true);
+
+        verify(mqttGatewayClient).publish("command/led/green", "on", 1, false);
+        verify(mqttGatewayClient).publish("epld/epld01/cmd/led/green", "on", 1, false);
+        verify(mqttGatewayClient).publish("epld01/command/led/green", "on", 1, false);
+    }
+
+    @Test
     void publishCustomShouldFanOutBroadcastCounterResetTopicToAllPhysicalDevices() {
         mockFanOutContext();
         when(authService.listStudentGroupKeys()).thenReturn(List.of("epld01"));
@@ -178,6 +191,20 @@ class MqttCommandPublisherTest {
                 .publish(eq("epld01/rpc"), argThat(payload -> payload.contains("\"method\":\"Switch.Set\"")), eq(1), eq(false));
         verify(mqttGatewayClient, times(1))
                 .publish(eq("epld02/rpc"), argThat(payload -> payload.contains("\"method\":\"Switch.Set\"")), eq(1), eq(false));
+    }
+
+    @Test
+    void publishCustomShouldHandleMissingGroupKeyList() {
+        mockFanOutContext();
+        when(authService.listStudentGroupKeys()).thenReturn(null);
+        when(appSettingsService.getAdminDeviceId()).thenReturn(null);
+        when(deviceStatusRepository.findAllByOrderByDeviceIdAsc()).thenReturn(List.of(new DeviceStatus("epld03")));
+
+        publisher.publishCustom("command/counter/reset", "{}", 1, false);
+
+        verify(mqttGatewayClient).publish("command/counter/reset", "{}", 1, false);
+        verify(mqttGatewayClient).publish("epld/epld03/cmd/counter/reset", "{}", 1, false);
+        verify(mqttGatewayClient).publish("epld03/command/counter/reset", "{}", 1, false);
     }
 
     private void mockFanOutContext() {
