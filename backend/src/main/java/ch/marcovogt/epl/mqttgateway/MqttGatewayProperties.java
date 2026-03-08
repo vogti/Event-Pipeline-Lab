@@ -15,6 +15,9 @@ public class MqttGatewayProperties {
     private List<String> topicFilters = new ArrayList<>(List.of("epld/+/event/#", "epld/+/status/#"));
     private int qos = 1;
     private long reconnectDelayMs = 5000;
+    private int maxInflight = 1000;
+    private int publishRetryAttempts = 3;
+    private long publishRetryDelayMs = 25;
     private boolean cleanSession = true;
     private boolean appendRandomClientSuffix = true;
 
@@ -72,6 +75,30 @@ public class MqttGatewayProperties {
 
     public void setReconnectDelayMs(long reconnectDelayMs) {
         this.reconnectDelayMs = reconnectDelayMs;
+    }
+
+    public int getMaxInflight() {
+        return maxInflight;
+    }
+
+    public void setMaxInflight(int maxInflight) {
+        this.maxInflight = maxInflight;
+    }
+
+    public int getPublishRetryAttempts() {
+        return publishRetryAttempts;
+    }
+
+    public void setPublishRetryAttempts(int publishRetryAttempts) {
+        this.publishRetryAttempts = publishRetryAttempts;
+    }
+
+    public long getPublishRetryDelayMs() {
+        return publishRetryDelayMs;
+    }
+
+    public void setPublishRetryDelayMs(long publishRetryDelayMs) {
+        this.publishRetryDelayMs = publishRetryDelayMs;
     }
 
     public boolean isCleanSession() {

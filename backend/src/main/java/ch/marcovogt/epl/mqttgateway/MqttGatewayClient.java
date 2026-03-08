@@ -24,6 +24,7 @@ import org.springframework.stereotype.Component;
 public class MqttGatewayClient implements SmartLifecycle {
 
     private static final Logger log = LoggerFactory.getLogger(MqttGatewayClient.class);
+    private static final int MQTT_REASON_MAX_INFLIGHT = MqttException.REASON_CODE_MAX_INFLIGHT;
 
     private final MqttGatewayProperties properties;
     private final EventIngestionService eventIngestionService;
@@ -102,20 +103,37 @@ public class MqttGatewayClient implements SmartLifecycle {
     }
 
     public void publish(String topic, String payload, int qos, boolean retained) {
-        MqttAsyncClient client = mqttClient;
-        if (client == null || !client.isConnected()) {
-            throw new IllegalStateException("MQTT client is not connected");
+        int maxAttempts = Math.max(1, properties.getPublishRetryAttempts());
+        long retryDelayMs = Math.max(0L, properties.getPublishRetryDelayMs());
+        String source = publishSourceContext.currentSource();
+        if (source != null && !source.isBlank()) {
+            publishedEventSourceTracker.register(topic, payload, source);
         }
-
-        try {
-            String source = publishSourceContext.currentSource();
-            if (source != null && !source.isBlank()) {
-                publishedEventSourceTracker.register(topic, payload, source);
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            MqttAsyncClient client = mqttClient;
+            if (client == null || !client.isConnected()) {
+                throw new IllegalStateException("MQTT client is not connected");
             }
-            client.publish(topic, payload.getBytes(StandardCharsets.UTF_8), qos, retained);
-            log.debug("MQTT publish topic={} qos={} retained={}", topic, qos, retained);
-        } catch (MqttException ex) {
-            throw new IllegalStateException("Failed to publish MQTT command", ex);
+
+            try {
+                client.publish(topic, payload.getBytes(StandardCharsets.UTF_8), qos, retained);
+                log.debug("MQTT publish topic={} qos={} retained={}", topic, qos, retained);
+                return;
+            } catch (MqttException ex) {
+                boolean retryable = ex.getReasonCode() == MQTT_REASON_MAX_INFLIGHT && attempt < maxAttempts;
+                if (retryable) {
+                    long backoff = retryDelayMs * attempt;
+                    log.debug(
+                            "MQTT publish retry due max inflight topic={} attempt={} delayMs={}",
+                            topic,
+                            attempt,
+                            backoff
+                    );
+                    sleep(backoff);
+                    continue;
+                }
+                throw new IllegalStateException("Failed to publish MQTT command", ex);
+            }
         }
     }
 
@@ -134,6 +152,7 @@ public class MqttGatewayClient implements SmartLifecycle {
             MqttConnectOptions options = new MqttConnectOptions();
             options.setAutomaticReconnect(false);
             options.setCleanSession(properties.isCleanSession());
+            options.setMaxInflight(Math.max(10, properties.getMaxInflight()));
             if (hasText(properties.getUsername())) {
                 options.setUserName(properties.getUsername());
             }
@@ -145,7 +164,14 @@ public class MqttGatewayClient implements SmartLifecycle {
                 @Override
                 public void onSuccess(org.eclipse.paho.client.mqttv3.IMqttToken asyncActionToken) {
                     reconnectScheduled.set(false);
-                    log.info("Connected to MQTT broker={} clientId={}", properties.getBrokerUri(), resolvedClientId);
+                    log.info(
+                            "Connected to MQTT broker={} clientId={} maxInflight={} publishRetryAttempts={} publishRetryDelayMs={}",
+                            properties.getBrokerUri(),
+                            resolvedClientId,
+                            Math.max(10, properties.getMaxInflight()),
+                            Math.max(1, properties.getPublishRetryAttempts()),
+                            Math.max(0L, properties.getPublishRetryDelayMs())
+                    );
                 }
 
                 @Override
@@ -222,6 +248,17 @@ public class MqttGatewayClient implements SmartLifecycle {
             } catch (MqttException ex) {
                 log.error("MQTT subscribe exception topicFilter={} reason={}", topicFilter, ex.getMessage());
             }
+        }
+    }
+
+    private void sleep(long delayMs) {
+        if (delayMs <= 0L) {
+            return;
+        }
+        try {
+            Thread.sleep(delayMs);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
         }
     }
 

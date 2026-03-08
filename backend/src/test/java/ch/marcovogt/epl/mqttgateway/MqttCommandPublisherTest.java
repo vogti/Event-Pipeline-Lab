@@ -207,6 +207,27 @@ class MqttCommandPublisherTest {
         verify(mqttGatewayClient).publish("epld03/command/counter/reset", "{}", 1, false);
     }
 
+    @Test
+    void publishCustomShouldContinueFanOutWhenSingleDeviceFailsAndReportAggregateFailure() {
+        mockFanOutContext();
+        when(authService.listStudentGroupKeys()).thenReturn(List.of("epld01", "epld02", "epld03"));
+        when(appSettingsService.getAdminDeviceId()).thenReturn(null);
+        doAnswer(invocation -> {
+            String topic = invocation.getArgument(0, String.class);
+            if ("epld/epld02/cmd/led/green".equals(topic)) {
+                throw new IllegalStateException("forced-failure");
+            }
+            return null;
+        }).when(mqttGatewayClient).publish(anyString(), eq("on"), eq(1), eq(false));
+
+        assertThatThrownBy(() -> publisher.publishCustom("command/led/green", "on", 1, false))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Broadcast fan-out failed for 1 of 3 devices");
+
+        verify(mqttGatewayClient).publish("epld/epld01/cmd/led/green", "on", 1, false);
+        verify(mqttGatewayClient).publish("epld/epld03/cmd/led/green", "on", 1, false);
+    }
+
     private void mockFanOutContext() {
         doAnswer(invocation -> {
             Runnable action = invocation.getArgument(1);

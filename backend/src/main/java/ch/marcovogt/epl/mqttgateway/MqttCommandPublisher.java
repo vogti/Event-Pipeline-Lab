@@ -167,8 +167,22 @@ public class MqttCommandPublisher {
     }
 
     private void fanOutToPhysicalDevices(List<String> deviceIds, DeviceCommandAction action) {
+        int failures = 0;
         for (String deviceId : deviceIds) {
-            publishSourceContext.runWithSource(PublishedEventSourceTracker.INTERNAL_FANOUT_SOURCE, () -> action.publish(deviceId));
+            try {
+                publishSourceContext.runWithSource(
+                        PublishedEventSourceTracker.INTERNAL_FANOUT_SOURCE,
+                        () -> action.publish(deviceId)
+                );
+            } catch (RuntimeException ex) {
+                failures++;
+                log.warn("Broadcast fan-out failed for deviceId={} reason={}", deviceId, ex.getMessage());
+            }
+        }
+        if (failures > 0) {
+            throw new IllegalStateException(
+                    "Broadcast fan-out failed for " + failures + " of " + deviceIds.size() + " devices"
+            );
         }
     }
 
